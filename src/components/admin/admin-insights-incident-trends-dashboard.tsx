@@ -103,7 +103,10 @@ export function AdminInsightsIncidentTrendsDashboard() {
                     <div className="h-1.5 overflow-hidden rounded-full bg-[#E4EDF7]">
                       <div className="h-full rounded-full bg-[#16A34A]" style={{ width: `${card.progress}%` }} />
                     </div>
-                    <p className="text-right text-[10px] font-semibold text-[#16A34A]">{card.progress}%</p>
+                    <p className="text-right text-[10px] font-semibold text-[#16A34A]">
+                      {card.progress}
+                      %
+                    </p>
                   </div>
                 )
               : null}
@@ -196,7 +199,10 @@ export function AdminInsightsIncidentTrendsDashboard() {
                 <li key={item.label} className="space-y-1">
                   <div className="flex items-center justify-between text-[11px] font-medium text-[#526D82]">
                     <span>{item.label}</span>
-                    <span className="font-semibold text-[#1E293B]">{item.value}%</span>
+                    <span className="font-semibold text-[#1E293B]">
+                      {item.value}
+                      %
+                    </span>
                   </div>
                   <div className="h-1.5 rounded-full bg-[#E2ECF7]">
                     <div className="h-full rounded-full bg-[#1677DA]" style={{ width: `${item.value}%` }} />

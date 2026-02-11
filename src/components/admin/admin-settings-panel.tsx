@@ -1,7 +1,6 @@
+import { APP_ROUTE_PATHS } from "@/routes/paths";
 import { ChevronRight } from "lucide-react";
 import { Link } from "react-router-dom";
-
-import { APP_ROUTE_PATHS } from "@/routes/paths";
 
 type SettingsItem = {
   label: string;

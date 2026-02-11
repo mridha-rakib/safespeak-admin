@@ -1,3 +1,5 @@
+import { Button } from "@/components/ui/button";
+import { APP_ROUTE_PATHS } from "@/routes/paths";
 import {
   AlignCenter,
   AlignJustify,
@@ -9,12 +11,9 @@ import {
   Italic,
   Underline,
 } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
-
-import { Button } from "@/components/ui/button";
-import { APP_ROUTE_PATHS } from "@/routes/paths";
 
 type TermsConditionsValues = {
   contentHtml: string;
@@ -71,6 +70,14 @@ export function AdminTermsConditionsPanel() {
   const [toolbarState, setToolbarState] = useState<ToolbarState>(INITIAL_TOOLBAR_STATE);
   const defaultEditorHtml = useMemo(() => toEditorHtml(DEFAULT_TERMS_CONDITIONS), []);
 
+  useEffect(() => {
+    if (!editorRef.current) {
+      return;
+    }
+
+    editorRef.current.innerHTML = defaultEditorHtml;
+  }, [defaultEditorHtml]);
+
   const { register, setValue, handleSubmit } = useForm<TermsConditionsValues>({
     defaultValues: {
       contentHtml: defaultEditorHtml,
@@ -98,7 +105,8 @@ export function AdminTermsConditionsPanel() {
         alignRight: Boolean(document.queryCommandState("justifyRight")),
         alignJustify: Boolean(document.queryCommandState("justifyFull")),
       });
-    } catch {
+    }
+    catch {
       setToolbarState(INITIAL_TOOLBAR_STATE);
     }
   };
@@ -110,7 +118,8 @@ export function AdminTermsConditionsPanel() {
       case "h2":
         if (toolbarState.h2) {
           document.execCommand("formatBlock", false, "p");
-        } else {
+        }
+        else {
           document.execCommand("formatBlock", false, "h2");
         }
         break;
@@ -185,7 +194,6 @@ export function AdminTermsConditionsPanel() {
             onKeyUp={syncToolbarState}
             onMouseUp={syncToolbarState}
             className="h-[430px] overflow-y-auto rounded-lg border border-[#D8E3EE] bg-white p-3 text-[14px] leading-[1.5] text-[#3B4551] outline-none transition focus:ring-2 focus:ring-[#4BA3D9] [&_h2]:mb-3 [&_h2]:text-[24px] [&_h2]:font-semibold [&_h2]:text-[#1E293B] [&_p]:mb-6 [&_p:last-child]:mb-0"
-            dangerouslySetInnerHTML={{ __html: defaultEditorHtml }}
           />
 
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-[#DFE7EF] bg-[#FCFDFE] px-3 py-2">
@@ -237,7 +245,7 @@ export function AdminTermsConditionsPanel() {
                   <button
                     key={action.label}
                     type="button"
-                    onMouseDown={(event) => event.preventDefault()}
+                    onMouseDown={event => event.preventDefault()}
                     onClick={() => applyEditorAction(action.id)}
                     className={`inline-flex h-6 min-w-6 items-center justify-center rounded border px-1 text-[10px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4BA3D9] ${
                       isActive

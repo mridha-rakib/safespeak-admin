@@ -20,7 +20,7 @@ const FEEDBACK_ITEMS: FeedbackItem[] = [
     message: "Vel et commodo et scelerisque aliquam. Sed libero, non praesent felis, sem eget venenatis neque.",
   },
   {
-    id: "01",
+    id: "02",
     name: "Robert Fox",
     email: "fox@email",
     joinedDate: "02-24-2024",
@@ -28,7 +28,7 @@ const FEEDBACK_ITEMS: FeedbackItem[] = [
     message: "Tempor at nisl eu mauris lectus. Amet lobortis auctor at egestas aenean.",
   },
   {
-    id: "01",
+    id: "03",
     name: "Robert Fox",
     email: "fox@email",
     joinedDate: "02-24-2024",
@@ -36,7 +36,7 @@ const FEEDBACK_ITEMS: FeedbackItem[] = [
     message: "Rhoncus cras nunc lectus morbi dui sem diam.",
   },
   {
-    id: "01",
+    id: "04",
     name: "Robert Fox",
     email: "fox@email",
     joinedDate: "02-24-2024",
@@ -44,7 +44,7 @@ const FEEDBACK_ITEMS: FeedbackItem[] = [
     message: "Sed gravida eget semper vulputate vitae.",
   },
   {
-    id: "01",
+    id: "05",
     name: "Robert Fox",
     email: "fox@email",
     joinedDate: "02-24-2024",
@@ -52,7 +52,7 @@ const FEEDBACK_ITEMS: FeedbackItem[] = [
     message: "Vel et commodo et scelerisque aliquam.",
   },
   {
-    id: "01",
+    id: "06",
     name: "Robert Fox",
     email: "fox@email",
     joinedDate: "02-24-2024",
@@ -60,7 +60,7 @@ const FEEDBACK_ITEMS: FeedbackItem[] = [
     message: "Sed libero, non praesent felis, sem eget venenatis neque.",
   },
   {
-    id: "01",
+    id: "07",
     name: "Robert Fox",
     email: "fox@email",
     joinedDate: "02-24-2024",
@@ -68,7 +68,7 @@ const FEEDBACK_ITEMS: FeedbackItem[] = [
     message: "Tempor at nisl eu mauris lectus.",
   },
   {
-    id: "01",
+    id: "08",
     name: "Robert Fox",
     email: "fox@email",
     joinedDate: "02-24-2024",
@@ -76,7 +76,7 @@ const FEEDBACK_ITEMS: FeedbackItem[] = [
     message: "Amet lobortis auctor at egestas aenean.",
   },
   {
-    id: "01",
+    id: "09",
     name: "Robert Fox",
     email: "fox@email",
     joinedDate: "02-24-2024",
@@ -84,7 +84,7 @@ const FEEDBACK_ITEMS: FeedbackItem[] = [
     message: "Rhoncus cras nunc lectus morbi dui sem diam.",
   },
   {
-    id: "01",
+    id: "10",
     name: "Robert Fox",
     email: "fox@email",
     joinedDate: "02-24-2024",
@@ -127,8 +127,8 @@ export function AdminFeedbackManagement() {
                 </tr>
               </thead>
               <tbody>
-                {FEEDBACK_ITEMS.map((item, index) => (
-                  <tr key={`${item.email}-${index}`} className="text-[13px] text-[#28495F]">
+                {FEEDBACK_ITEMS.map(item => (
+                  <tr key={item.id} className="text-[13px] text-[#28495F]">
                     <td className="px-3 py-2.5">{item.id}</td>
                     <td className="px-3 py-2.5">
                       <div className="flex items-center gap-2.5">

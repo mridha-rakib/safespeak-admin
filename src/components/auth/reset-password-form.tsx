@@ -1,7 +1,3 @@
-import { useForm } from "react-hook-form";
-import { ArrowLeft } from "lucide-react";
-import { useLocation, useNavigate } from "react-router-dom";
-
 import frameIcon from "@/assets/Frame.svg";
 import { AUTH_CARD_CLASS, AUTH_CARD_CONTENT_CLASS, AUTH_CARD_HEADER_CLASS } from "@/components/auth/auth-card-layout";
 import { Button } from "@/components/ui/button";
@@ -9,6 +5,9 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { APP_ROUTE_PATHS } from "@/routes/paths";
+import { ArrowLeft } from "lucide-react";
+import { useForm } from "react-hook-form";
+import { useLocation, useNavigate } from "react-router-dom";
 
 type ResetPasswordValues = {
   newPassword: string;
@@ -41,7 +40,7 @@ export function ResetPasswordForm() {
   const newPasswordValue = watch("newPassword");
 
   const onSubmit = (values: ResetPasswordValues) => {
-    console.log("Reset password submitted", { ...values, contactEmail });
+    console.warn("Reset password submitted", { ...values, contactEmail });
     navigate(APP_ROUTE_PATHS.login, { replace: true });
   };
 

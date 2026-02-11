@@ -23,6 +23,10 @@ export const ADMIN_SIDEBAR_ITEMS: AdminSidebarItem[] = [
     to: APP_ROUTE_PATHS.adminUsers,
   },
   {
+    label: "Content Management",
+    to: APP_ROUTE_PATHS.adminContentManagement,
+  },
+  {
     label: "Insights",
     to: APP_ROUTE_PATHS.adminInsights,
     showChevron: true,

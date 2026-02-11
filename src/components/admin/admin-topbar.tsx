@@ -1,7 +1,6 @@
+import { APP_ROUTE_PATHS } from "@/routes/paths";
 import { Bell, Menu, UserRound } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-
-import { APP_ROUTE_PATHS } from "@/routes/paths";
 
 export function AdminTopBar() {
   const navigate = useNavigate();

@@ -1,8 +1,3 @@
-import { useEffect } from "react";
-import { useForm } from "react-hook-form";
-import { useNavigate } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
-
 import frameIcon from "@/assets/Frame.svg";
 import { AUTH_CARD_CLASS, AUTH_CARD_CONTENT_CLASS, AUTH_CARD_HEADER_CLASS } from "@/components/auth/auth-card-layout";
 import { Button } from "@/components/ui/button";
@@ -10,6 +5,10 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { APP_ROUTE_PATHS } from "@/routes/paths";
+import { ArrowLeft } from "lucide-react";
+import { useEffect } from "react";
+import { useForm } from "react-hook-form";
+import { useNavigate } from "react-router-dom";
 
 type ForgotPasswordValues = {
   email: string;
@@ -35,7 +34,7 @@ export function ForgotPasswordForm() {
   }, [trigger]);
 
   const onSubmit = (values: ForgotPasswordValues) => {
-    console.log("Forgot password form submitted", values);
+    console.warn("Forgot password form submitted", values);
     navigate(APP_ROUTE_PATHS.verifyOtp, {
       state: { email: values.email },
     });

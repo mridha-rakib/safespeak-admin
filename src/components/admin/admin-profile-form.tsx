@@ -1,8 +1,7 @@
-import { Camera, Pencil } from "lucide-react";
-import { useForm } from "react-hook-form";
-
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Camera, Pencil } from "lucide-react";
+import { useForm } from "react-hook-form";
 
 type AdminProfileValues = {
   userName: string;
@@ -82,7 +81,7 @@ export function AdminProfileForm() {
               {...register("email", {
                 required: "Email is required",
                 pattern: {
-                  value: /\S+@\S+\.\S+/,
+                  value: /\S[^\s@]*@\S+\.\S+/,
                   message: "Enter a valid email address",
                 },
               })}

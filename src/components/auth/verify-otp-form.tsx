@@ -1,14 +1,13 @@
-import { useRef } from "react";
-import { useForm } from "react-hook-form";
-import { ArrowLeft } from "lucide-react";
-import { useLocation, useNavigate } from "react-router-dom";
-
 import frameIcon from "@/assets/Frame.svg";
 import { AUTH_CARD_CLASS, AUTH_CARD_CONTENT_CLASS, AUTH_CARD_HEADER_CLASS } from "@/components/auth/auth-card-layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { APP_ROUTE_PATHS } from "@/routes/paths";
+import { ArrowLeft } from "lucide-react";
+import { useRef } from "react";
+import { useForm } from "react-hook-form";
+import { useLocation, useNavigate } from "react-router-dom";
 
 type VerifyOtpValues = {
   digit1: string;
@@ -43,14 +42,14 @@ export function VerifyOtpForm() {
 
   const onSubmit = (values: VerifyOtpValues) => {
     const otpCode = `${values.digit1}${values.digit2}${values.digit3}${values.digit4}`;
-    console.log("Verify OTP form submitted", { otpCode, contactEmail });
+    console.warn("Verify OTP form submitted", { otpCode, contactEmail });
     navigate(APP_ROUTE_PATHS.resetPassword, {
       state: { email: contactEmail },
     });
   };
 
   const onResend = () => {
-    console.log("Resend OTP requested", { contactEmail });
+    console.warn("Resend OTP requested", { contactEmail });
   };
 
   const onGoBack = () => {
@@ -104,7 +103,7 @@ export function VerifyOtpForm() {
               <div className="flex items-center gap-4">
                 {OTP_FIELDS.map((field, index) => {
                   const registration = register(field, {
-                    onChange: event => {
+                    onChange: (event) => {
                       const onlyDigits = event.target.value.replace(/\D/g, "").slice(-1);
                       setValue(field, onlyDigits, { shouldDirty: true, shouldTouch: true });
 
@@ -125,7 +124,7 @@ export function VerifyOtpForm() {
                       name={registration.name}
                       onBlur={registration.onBlur}
                       onChange={registration.onChange}
-                      onKeyDown={event => {
+                      onKeyDown={(event) => {
                         if (event.key !== "Backspace") {
                           return;
                         }
@@ -134,7 +133,7 @@ export function VerifyOtpForm() {
                           otpInputRefs.current[index - 1]?.focus();
                         }
                       }}
-                      ref={element => {
+                      ref={(element) => {
                         registration.ref(element);
                         otpInputRefs.current[index] = element;
                       }}

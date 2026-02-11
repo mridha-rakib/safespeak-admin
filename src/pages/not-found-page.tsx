@@ -1,8 +1,7 @@
-import { Link } from "react-router-dom";
-
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { APP_ROUTE_PATHS } from "@/routes/paths";
+import { Link } from "react-router-dom";
 
 export function NotFoundPage() {
   return (

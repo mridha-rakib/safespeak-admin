@@ -1,9 +1,8 @@
-import { useMemo, useState } from "react";
-import { Ban, ChevronDown, Eye, RotateCcw, Search } from "lucide-react";
-import { useSearchParams } from "react-router-dom";
-
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Ban, ChevronDown, Eye, RotateCcw, Search } from "lucide-react";
+import { useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 type AdminUser = {
   id: string;
@@ -41,7 +40,8 @@ export function AdminUsersList() {
 
     if (tab === "blocked") {
       params.set("tab", "blocked");
-    } else {
+    }
+    else {
       params.delete("tab");
     }
 
@@ -139,7 +139,7 @@ export function AdminUsersList() {
                 </tr>
               </thead>
               <tbody>
-                {filteredUsers.map(user => {
+                {filteredUsers.map((user) => {
                   const isBlocked = blockedUserIds.includes(user.id);
 
                   return (
@@ -258,7 +258,10 @@ export function AdminUsersList() {
               <div className="w-full max-w-[360px] rounded-md border border-[#D6DFEA] bg-white p-4 shadow-xl">
                 <div className="text-center">
                   <h3 className="text-[36px] font-semibold leading-none text-[#1E4B63]">User Details</h3>
-                  <p className="mt-1 text-[11px] text-[#607B90]">See all details about {selectedUser.name}</p>
+                  <p className="mt-1 text-[11px] text-[#607B90]">
+                    See all details about
+                    {selectedUser.name}
+                  </p>
                 </div>
 
                 <div className="mt-4 flex items-center gap-2 border-b border-[#E2EBF4] pb-3">
@@ -309,7 +312,8 @@ export function AdminUsersList() {
                         if (blockedUserIds.length === 1) {
                           setActiveTab("all");
                         }
-                      } else {
+                      }
+                      else {
                         setBlockTarget(selectedUser);
                       }
                       setSelectedUser(null);

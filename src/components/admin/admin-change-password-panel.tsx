@@ -1,11 +1,10 @@
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { APP_ROUTE_PATHS } from "@/routes/paths";
 import { ArrowLeft, Eye, EyeOff } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { Link, useNavigate } from "react-router-dom";
-
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { APP_ROUTE_PATHS } from "@/routes/paths";
 
 type ChangePasswordValues = {
   currentPassword: string;

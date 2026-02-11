@@ -1,6 +1,3 @@
-import { useForm } from "react-hook-form";
-import { Link } from "react-router-dom";
-
 import frameIcon from "@/assets/Frame.svg";
 import { AUTH_CARD_CLASS, AUTH_CARD_CONTENT_CLASS, AUTH_CARD_HEADER_CLASS } from "@/components/auth/auth-card-layout";
 import { Button } from "@/components/ui/button";
@@ -9,6 +6,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { APP_ROUTE_PATHS } from "@/routes/paths";
+import { useForm } from "react-hook-form";
+import { Link } from "react-router-dom";
 
 type LoginFormValues = {
   email: string;
@@ -28,7 +27,7 @@ export function LoginForm() {
   const rememberPassword = watch("rememberPassword");
 
   const onSubmit = (values: LoginFormValues) => {
-    console.log("Login form submitted", values);
+    console.warn("Login form submitted", values);
   };
 
   return (

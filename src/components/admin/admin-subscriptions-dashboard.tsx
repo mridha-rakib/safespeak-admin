@@ -1,19 +1,18 @@
-import { ChevronLeft, ChevronRight, Search } from "lucide-react";
-
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ChevronLeft, ChevronRight, Search } from "lucide-react";
 
 const SUBSCRIPTIONS = [
   { id: "01", user: "Robert Fox", email: "fox@email", status: "Paid", plan: "Monthly", expirationDate: "02-24-2024" },
-  { id: "01", user: "Robert Fox", email: "fox@email", status: "Paid", plan: "Monthly", expirationDate: "02-24-2024" },
-  { id: "01", user: "Robert Fox", email: "fox@email", status: "Paid", plan: "Monthly", expirationDate: "02-24-2024" },
-  { id: "01", user: "Robert Fox", email: "fox@email", status: "Expired", plan: "6 Months", expirationDate: "02-24-2024" },
-  { id: "01", user: "Robert Fox", email: "fox@email", status: "Expired", plan: "6 Months", expirationDate: "02-24-2024" },
-  { id: "01", user: "Robert Fox", email: "fox@email", status: "Expired", plan: "6 Months", expirationDate: "02-24-2024" },
-  { id: "01", user: "Robert Fox", email: "fox@email", status: "Expired", plan: "Yearly", expirationDate: "02-24-2024" },
-  { id: "01", user: "Robert Fox", email: "fox@email", status: "Expired", plan: "Yearly", expirationDate: "02-24-2024" },
-  { id: "01", user: "Robert Fox", email: "fox@email", status: "Expired", plan: "Yearly", expirationDate: "02-24-2024" },
-  { id: "01", user: "Robert Fox", email: "fox@email", status: "Expired", plan: "Yearly", expirationDate: "02-24-2024" },
+  { id: "02", user: "Robert Fox", email: "fox@email", status: "Paid", plan: "Monthly", expirationDate: "02-24-2024" },
+  { id: "03", user: "Robert Fox", email: "fox@email", status: "Paid", plan: "Monthly", expirationDate: "02-24-2024" },
+  { id: "04", user: "Robert Fox", email: "fox@email", status: "Expired", plan: "6 Months", expirationDate: "02-24-2024" },
+  { id: "05", user: "Robert Fox", email: "fox@email", status: "Expired", plan: "6 Months", expirationDate: "02-24-2024" },
+  { id: "06", user: "Robert Fox", email: "fox@email", status: "Expired", plan: "6 Months", expirationDate: "02-24-2024" },
+  { id: "07", user: "Robert Fox", email: "fox@email", status: "Expired", plan: "Yearly", expirationDate: "02-24-2024" },
+  { id: "08", user: "Robert Fox", email: "fox@email", status: "Expired", plan: "Yearly", expirationDate: "02-24-2024" },
+  { id: "09", user: "Robert Fox", email: "fox@email", status: "Expired", plan: "Yearly", expirationDate: "02-24-2024" },
+  { id: "10", user: "Robert Fox", email: "fox@email", status: "Expired", plan: "Yearly", expirationDate: "02-24-2024" },
 ] as const;
 
 export function AdminSubscriptionsDashboard() {
@@ -56,8 +55,8 @@ export function AdminSubscriptionsDashboard() {
               </tr>
             </thead>
             <tbody>
-              {SUBSCRIPTIONS.map((subscription, index) => (
-                <tr key={`${subscription.email}-${index}`} className="border-b border-[#E1EAF3] text-[13px] text-[#2E4F66]">
+              {SUBSCRIPTIONS.map(subscription => (
+                <tr key={subscription.id} className="border-b border-[#E1EAF3] text-[13px] text-[#2E4F66]">
                   <td className="px-3 py-2.5">{subscription.id}</td>
                   <td className="px-3 py-2.5">
                     <div className="flex items-center gap-2.5">

@@ -1,9 +1,8 @@
-import { useRef, useState } from "react";
-import { Eye, EyeOff, ImagePlus } from "lucide-react";
-import { useForm } from "react-hook-form";
-
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Eye, EyeOff, ImagePlus } from "lucide-react";
+import { useRef, useState } from "react";
+import { useForm } from "react-hook-form";
 
 type CreateAdminFormValues = {
   name: string;
@@ -73,7 +72,7 @@ export function AdminCreateAdminForm() {
             {...register("email", {
               required: "Email is required",
               pattern: {
-                value: /\S+@\S+\.\S+/,
+                value: /\S[^\s@]*@\S+\.\S+/,
                 message: "Enter a valid email address",
               },
             })}

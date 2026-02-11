@@ -17,10 +17,10 @@ const USER_GROWTH_BY_MONTH = [
 
 const TRANSACTIONS = [
   { id: "01", name: "Robert Fox", date: "15/09/2024", payOn: "Stripe", trId: "TRX-84921A", amount: "$ 20.99" },
-  { id: "01", name: "Robert Fox", date: "15/09/2024", payOn: "Stripe", trId: "TRX-84921A", amount: "$ 20.99" },
-  { id: "01", name: "Robert Fox", date: "15/09/2024", payOn: "Stripe", trId: "TRX-84921A", amount: "$ 20.99" },
-  { id: "01", name: "Robert Fox", date: "15/09/2024", payOn: "Stripe", trId: "TRX-84921A", amount: "$ 20.99" },
-  { id: "01", name: "Robert Fox", date: "15/09/2024", payOn: "Stripe", trId: "TRX-84921A", amount: "$ 20.99" },
+  { id: "02", name: "Robert Fox", date: "15/09/2024", payOn: "Stripe", trId: "TRX-84921B", amount: "$ 20.99" },
+  { id: "03", name: "Robert Fox", date: "15/09/2024", payOn: "Stripe", trId: "TRX-84921C", amount: "$ 20.99" },
+  { id: "04", name: "Robert Fox", date: "15/09/2024", payOn: "Stripe", trId: "TRX-84921D", amount: "$ 20.99" },
+  { id: "05", name: "Robert Fox", date: "15/09/2024", payOn: "Stripe", trId: "TRX-84921E", amount: "$ 20.99" },
 ] as const;
 
 const MAX_GROWTH_VALUE = 1600;
@@ -58,7 +58,7 @@ export function AdminEarningsDashboard() {
               <div className="relative h-[220px]">
                 <div className="absolute inset-0 grid grid-rows-5">
                   {Array.from({ length: 5 }).map((_, index) => (
-                    <div key={index} className="border-b border-dashed border-[#C9D5E0]" />
+                    <div key={`grid-line-${index + 1}`} className="border-b border-dashed border-[#C9D5E0]" />
                   ))}
                 </div>
 
@@ -99,8 +99,8 @@ export function AdminEarningsDashboard() {
               </tr>
             </thead>
             <tbody>
-              {TRANSACTIONS.map((transaction, index) => (
-                <tr key={`${transaction.trId}-${index}`} className="border-b border-[#DFE7EF] text-[14px] text-[#2E4F66]">
+              {TRANSACTIONS.map(transaction => (
+                <tr key={transaction.trId} className="border-b border-[#DFE7EF] text-[14px] text-[#2E4F66]">
                   <td className="px-3 py-2.5">{transaction.id}</td>
                   <td className="px-3 py-2.5">
                     <div className="flex items-center gap-2.5">

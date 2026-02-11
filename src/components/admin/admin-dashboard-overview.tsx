@@ -1,7 +1,6 @@
+import { cn } from "@/lib/utils";
 import { TrendingDown, TrendingUp } from "lucide-react";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
-
-import { cn } from "@/lib/utils";
 
 const STATS = [
   {

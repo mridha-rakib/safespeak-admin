@@ -1,27 +1,26 @@
-import { Navigate, createBrowserRouter } from "react-router-dom";
-
 import { AdminLayout } from "@/layouts/admin-layout";
-import { AdminCreateAdminPage } from "@/pages/admin/create-admin-page";
+import { AuthLayout } from "@/layouts/auth-layout";
 import { AdminChangePasswordPage } from "@/pages/admin/change-password-page";
+import { AdminContentManagementPage } from "@/pages/admin/content-management-page";
+import { AdminCreateAdminPage } from "@/pages/admin/create-admin-page";
 import { AdminDashboardPage } from "@/pages/admin/dashboard-page";
 import { AdminEarningsPage } from "@/pages/admin/earnings-page";
 import { AdminFeedbackPage } from "@/pages/admin/feedback-page";
 import { AdminInsightsIncidentTrendsPage } from "@/pages/admin/insights-incident-trends-page";
 import { AdminInsightsPatternsPage } from "@/pages/admin/insights-patterns-page";
-import { AdminInsightsPage } from "@/pages/admin/insights-page";
 import { AdminPrivacyPolicyPage } from "@/pages/admin/privacy-policy-page";
 import { AdminProfilePage } from "@/pages/admin/profile-page";
 import { AdminSettingsPage } from "@/pages/admin/settings-page";
 import { AdminSubscriptionsPage } from "@/pages/admin/subscriptions-page";
 import { AdminTermsConditionsPage } from "@/pages/admin/terms-conditions-page";
 import { AdminUsersPage } from "@/pages/admin/users-page";
-import { AuthLayout } from "@/layouts/auth-layout";
 import { ForgotPasswordPage } from "@/pages/forgot-password-page";
 import { LoginPage } from "@/pages/login-page";
 import { NotFoundPage } from "@/pages/not-found-page";
 import { ResetPasswordPage } from "@/pages/reset-password-page";
 import { VerifyOtpPage } from "@/pages/verify-otp-page";
 import { APP_ROUTE_PATHS, APP_ROUTE_SEGMENTS } from "@/routes/paths";
+import { createBrowserRouter, Navigate } from "react-router-dom";
 
 export const appRouter = createBrowserRouter([
   {
@@ -71,8 +70,12 @@ export const appRouter = createBrowserRouter([
         element: <AdminUsersPage />,
       },
       {
+        path: APP_ROUTE_SEGMENTS.contentManagement,
+        element: <AdminContentManagementPage />,
+      },
+      {
         path: APP_ROUTE_SEGMENTS.insights,
-        element: <AdminInsightsPage />,
+        element: <Navigate to={APP_ROUTE_PATHS.adminInsightsIncidentTrends} replace />,
       },
       {
         path: `${APP_ROUTE_SEGMENTS.insights}/${APP_ROUTE_SEGMENTS.incidentTrends}`,
