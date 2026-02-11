@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import * as React from "react";
 
-function Input({ ref, className, type, ...props }: React.ComponentPropsWithoutRef<"input"> & { ref?: React.RefObject<HTMLInputElement | null> }) {
+function Input({ ref, className, type, ...props }: React.ComponentPropsWithRef<"input">) {
   return (
     <input
       ref={ref}
