@@ -1,0 +1,2 @@
+pnpm exec lint-staged
+bun exec lint-staged

@@ -1,0 +1,32 @@
+export const APP_ROUTE_SEGMENTS = {
+  admin: "admin",
+  dashboard: "dashboard",
+  users: "users",
+  insights: "insights",
+  incidentTrends: "incident-trends",
+  patterns: "patterns",
+  createAdmin: "create-admin",
+  feedback: "feedback",
+  settings: "settings",
+  login: "login",
+  forgotPassword: "forgot-password",
+  verifyOtp: "verify-otp",
+  resetPassword: "reset-password",
+} as const;
+
+export const APP_ROUTE_PATHS = {
+  root: "/",
+  adminRoot: `/${APP_ROUTE_SEGMENTS.admin}`,
+  adminDashboard: `/${APP_ROUTE_SEGMENTS.admin}/${APP_ROUTE_SEGMENTS.dashboard}`,
+  adminUsers: `/${APP_ROUTE_SEGMENTS.admin}/${APP_ROUTE_SEGMENTS.users}`,
+  adminInsights: `/${APP_ROUTE_SEGMENTS.admin}/${APP_ROUTE_SEGMENTS.insights}`,
+  adminInsightsIncidentTrends: `/${APP_ROUTE_SEGMENTS.admin}/${APP_ROUTE_SEGMENTS.insights}/${APP_ROUTE_SEGMENTS.incidentTrends}`,
+  adminInsightsPatterns: `/${APP_ROUTE_SEGMENTS.admin}/${APP_ROUTE_SEGMENTS.insights}/${APP_ROUTE_SEGMENTS.patterns}`,
+  adminCreateAdmin: `/${APP_ROUTE_SEGMENTS.admin}/${APP_ROUTE_SEGMENTS.createAdmin}`,
+  adminFeedback: `/${APP_ROUTE_SEGMENTS.admin}/${APP_ROUTE_SEGMENTS.feedback}`,
+  adminSettings: `/${APP_ROUTE_SEGMENTS.admin}/${APP_ROUTE_SEGMENTS.settings}`,
+  login: `/${APP_ROUTE_SEGMENTS.login}`,
+  forgotPassword: `/${APP_ROUTE_SEGMENTS.forgotPassword}`,
+  verifyOtp: `/${APP_ROUTE_SEGMENTS.verifyOtp}`,
+  resetPassword: `/${APP_ROUTE_SEGMENTS.resetPassword}`,
+} as const;
