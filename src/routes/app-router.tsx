@@ -2,12 +2,18 @@ import { Navigate, createBrowserRouter } from "react-router-dom";
 
 import { AdminLayout } from "@/layouts/admin-layout";
 import { AdminCreateAdminPage } from "@/pages/admin/create-admin-page";
+import { AdminChangePasswordPage } from "@/pages/admin/change-password-page";
 import { AdminDashboardPage } from "@/pages/admin/dashboard-page";
+import { AdminEarningsPage } from "@/pages/admin/earnings-page";
 import { AdminFeedbackPage } from "@/pages/admin/feedback-page";
 import { AdminInsightsIncidentTrendsPage } from "@/pages/admin/insights-incident-trends-page";
 import { AdminInsightsPatternsPage } from "@/pages/admin/insights-patterns-page";
 import { AdminInsightsPage } from "@/pages/admin/insights-page";
+import { AdminPrivacyPolicyPage } from "@/pages/admin/privacy-policy-page";
+import { AdminProfilePage } from "@/pages/admin/profile-page";
 import { AdminSettingsPage } from "@/pages/admin/settings-page";
+import { AdminSubscriptionsPage } from "@/pages/admin/subscriptions-page";
+import { AdminTermsConditionsPage } from "@/pages/admin/terms-conditions-page";
 import { AdminUsersPage } from "@/pages/admin/users-page";
 import { AuthLayout } from "@/layouts/auth-layout";
 import { ForgotPasswordPage } from "@/pages/forgot-password-page";
@@ -57,6 +63,10 @@ export const appRouter = createBrowserRouter([
         element: <AdminDashboardPage />,
       },
       {
+        path: APP_ROUTE_SEGMENTS.profile,
+        element: <AdminProfilePage />,
+      },
+      {
         path: APP_ROUTE_SEGMENTS.users,
         element: <AdminUsersPage />,
       },
@@ -81,8 +91,28 @@ export const appRouter = createBrowserRouter([
         element: <AdminFeedbackPage />,
       },
       {
+        path: APP_ROUTE_SEGMENTS.earnings,
+        element: <AdminEarningsPage />,
+      },
+      {
+        path: APP_ROUTE_SEGMENTS.subscriptions,
+        element: <AdminSubscriptionsPage />,
+      },
+      {
         path: APP_ROUTE_SEGMENTS.settings,
         element: <AdminSettingsPage />,
+      },
+      {
+        path: `${APP_ROUTE_SEGMENTS.settings}/${APP_ROUTE_SEGMENTS.changePassword}`,
+        element: <AdminChangePasswordPage />,
+      },
+      {
+        path: `${APP_ROUTE_SEGMENTS.settings}/${APP_ROUTE_SEGMENTS.privacyPolicy}`,
+        element: <AdminPrivacyPolicyPage />,
+      },
+      {
+        path: `${APP_ROUTE_SEGMENTS.settings}/${APP_ROUTE_SEGMENTS.termsConditions}`,
+        element: <AdminTermsConditionsPage />,
       },
     ],
   },

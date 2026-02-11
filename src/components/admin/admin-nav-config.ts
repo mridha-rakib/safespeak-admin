@@ -46,6 +46,14 @@ export const ADMIN_SIDEBAR_ITEMS: AdminSidebarItem[] = [
     to: APP_ROUTE_PATHS.adminFeedback,
   },
   {
+    label: "Earnings",
+    to: APP_ROUTE_PATHS.adminEarnings,
+  },
+  {
+    label: "Subscriptions",
+    to: APP_ROUTE_PATHS.adminSubscriptions,
+  },
+  {
     label: "Settings",
     to: APP_ROUTE_PATHS.adminSettings,
   },

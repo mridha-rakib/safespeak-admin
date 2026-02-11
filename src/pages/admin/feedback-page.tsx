@@ -1,10 +1,5 @@
-import { AdminPanelPlaceholder } from "@/components/admin/admin-panel-placeholder";
+import { AdminFeedbackManagement } from "@/components/admin/admin-feedback-management";
 
 export function AdminFeedbackPage() {
-  return (
-    <AdminPanelPlaceholder
-      title="Feedback"
-      description="Review user feedback and moderate escalations from the platform."
-    />
-  );
+  return <AdminFeedbackManagement />;
 }

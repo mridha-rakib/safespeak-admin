@@ -14,16 +14,16 @@ type AdminSidebarProps = {
 
 function SidebarBrand() {
   return (
-    <div className="relative mx-auto h-[184px] w-[184px] leading-none">
-      <div className="absolute left-[6px] top-[14px]">
-        <p className="text-[68px] font-extrabold tracking-tight text-[#01579B]">Safe</p>
-        <p className="-mt-1 text-[68px] font-extrabold tracking-tight text-[#01579B]">Speak</p>
+    <div className="relative mx-auto h-[111px] w-[114px] leading-none">
+      <div className="absolute left-0 top-1.5">
+        <p className="text-[40px] font-extrabold tracking-tight text-[#01579B]">Safe</p>
+        <p className="-mt-1 text-[40px] font-extrabold tracking-tight text-[#01579B]">Speak</p>
       </div>
       <img
         src={frameIcon}
         alt=""
         aria-hidden="true"
-        className="pointer-events-none absolute left-[120px] top-[2px] h-[64px] w-[64px]"
+        className="pointer-events-none absolute left-[64px] top-[-4px] h-[44px] w-[44px]"
       />
     </div>
   );
@@ -63,7 +63,7 @@ export function AdminSidebar({ items = ADMIN_SIDEBAR_ITEMS, className }: AdminSi
 
   return (
     <aside className={cn("w-full max-w-[326px] shrink-0", className)}>
-      <Card className="flex h-full min-h-[760px] flex-col rounded-xl border border-[#D5DEE7] bg-white px-[22px] py-[34px] text-[#111827] shadow-[0_1px_6px_rgba(0,0,0,0.25)]">
+      <Card className="flex h-full min-h-[903px] flex-col rounded-xl border border-[#D5DEE7] bg-white px-[22px] py-[34px] text-[#111827] shadow-[0_1px_6px_rgba(0,0,0,0.25)]">
         <SidebarBrand />
         <nav className="mt-8 flex flex-col gap-1.5" aria-label="Admin">
           {items.map((item) => {

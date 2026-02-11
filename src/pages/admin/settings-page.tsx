@@ -1,10 +1,5 @@
-import { AdminPanelPlaceholder } from "@/components/admin/admin-panel-placeholder";
+import { AdminSettingsPanel } from "@/components/admin/admin-settings-panel";
 
 export function AdminSettingsPage() {
-  return (
-    <AdminPanelPlaceholder
-      title="Settings"
-      description="Configure platform behavior, security controls, and admin preferences."
-    />
-  );
+  return <AdminSettingsPanel />;
 }
