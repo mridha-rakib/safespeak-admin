@@ -25,6 +25,7 @@ export function AdminTopBar() {
       <div className="flex items-center gap-2">
         <button
           type="button"
+          onClick={() => navigate(APP_ROUTE_PATHS.adminNotifications)}
           className="relative inline-flex h-11 w-11 items-center justify-center rounded-full border border-[#0F67AE] text-[#0F67AE] transition hover:bg-[#EEF6FF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4BA3D9]"
           aria-label="Notifications"
         >

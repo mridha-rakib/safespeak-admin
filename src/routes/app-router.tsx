@@ -8,6 +8,7 @@ import { AdminEarningsPage } from "@/pages/admin/earnings-page";
 import { AdminFeedbackPage } from "@/pages/admin/feedback-page";
 import { AdminInsightsIncidentTrendsPage } from "@/pages/admin/insights-incident-trends-page";
 import { AdminInsightsPatternsPage } from "@/pages/admin/insights-patterns-page";
+import { AdminNotificationsPage } from "@/pages/admin/notifications-page";
 import { AdminPrivacyPolicyPage } from "@/pages/admin/privacy-policy-page";
 import { AdminProfilePage } from "@/pages/admin/profile-page";
 import { AdminSettingsPage } from "@/pages/admin/settings-page";
@@ -100,6 +101,10 @@ export const appRouter = createBrowserRouter([
       {
         path: APP_ROUTE_SEGMENTS.subscriptions,
         element: <AdminSubscriptionsPage />,
+      },
+      {
+        path: APP_ROUTE_SEGMENTS.notifications,
+        element: <AdminNotificationsPage />,
       },
       {
         path: APP_ROUTE_SEGMENTS.settings,
