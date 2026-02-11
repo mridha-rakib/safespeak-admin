@@ -23,7 +23,7 @@ function SidebarBrand() {
         src={frameIcon}
         alt=""
         aria-hidden="true"
-        className="pointer-events-none absolute left-[64px] top-[-4px] h-[44px] w-[44px]"
+        className="pointer-events-none absolute left-[69.5px] top-[9px] h-[28px] w-[29px]"
       />
     </div>
   );
