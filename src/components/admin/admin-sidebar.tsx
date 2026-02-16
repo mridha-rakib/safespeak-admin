@@ -11,20 +11,21 @@ import { NavLink, useLocation } from "react-router-dom";
 type AdminSidebarProps = {
   items?: AdminSidebarItem[];
   className?: string;
+  onNavigate?: () => void;
 };
 
 function SidebarBrand() {
   return (
-    <div className="relative mx-auto h-[111px] w-[114px] leading-none">
+    <div className="relative mx-auto h-[96px] w-[98px] leading-none sm:h-[111px] sm:w-[114px]">
       <div className="absolute left-0 top-1.5">
-        <p className="text-[40px] font-extrabold tracking-tight text-[#01579B]">Safe</p>
-        <p className="-mt-1 text-[40px] font-extrabold tracking-tight text-[#01579B]">Speak</p>
+        <p className="text-[34px] font-extrabold tracking-tight text-[#01579B] sm:text-[40px]">Safe</p>
+        <p className="-mt-1 text-[34px] font-extrabold tracking-tight text-[#01579B] sm:text-[40px]">Speak</p>
       </div>
       <img
         src={frameIcon}
         alt=""
         aria-hidden="true"
-        className="pointer-events-none absolute left-[69.5px] top-[9px] h-[28px] w-[29px]"
+        className="pointer-events-none absolute left-[58px] top-[8px] h-[24px] w-[25px] sm:left-[69.5px] sm:top-[9px] sm:h-[28px] sm:w-[29px]"
       />
     </div>
   );
@@ -33,17 +34,20 @@ function SidebarBrand() {
 function SidebarLink({
   item,
   hasChildren,
+  onNavigate,
 }: {
   item: AdminSidebarItem;
   hasChildren: boolean;
+  onNavigate?: () => void;
 }) {
   return (
     <NavLink
       to={item.to}
       end={item.exact}
+      onClick={onNavigate}
       className={({ isActive }) =>
         cn(
-          "flex min-h-12 items-center justify-between rounded-md px-4 text-[16px] font-medium leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4BA3D9]",
+          "flex min-h-11 items-center justify-between rounded-md px-3 text-[14px] font-medium leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4BA3D9] sm:min-h-12 sm:px-4 sm:text-[16px]",
           item.tone === "danger"
             ? "text-[#EF4444] hover:bg-red-50"
             : "text-[#1F2937] hover:bg-[#EAF1F7]",
@@ -57,7 +61,7 @@ function SidebarLink({
   );
 }
 
-export function AdminSidebar({ items = ADMIN_SIDEBAR_ITEMS, className }: AdminSidebarProps) {
+export function AdminSidebar({ items = ADMIN_SIDEBAR_ITEMS, className, onNavigate }: AdminSidebarProps) {
   const location = useLocation();
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() =>
     items.reduce<Record<string, boolean>>((acc, item) => {
@@ -92,13 +96,13 @@ export function AdminSidebar({ items = ADMIN_SIDEBAR_ITEMS, className }: AdminSi
   }, [items, location.pathname]);
 
   return (
-    <aside className={cn("w-full max-w-[326px] shrink-0", className)}>
-      <Card className="flex h-full min-h-[903px] flex-col gap-10 rounded-[12px] border border-[#D5DEE7] bg-white px-[34px] pb-[64px] pt-[64px] text-[#111827] shadow-[0_1px_6px_rgba(0,0,0,0.25)]">
+    <aside className={cn("w-full shrink-0 lg:max-w-[300px] xl:max-w-[326px]", className)}>
+      <Card className="flex h-full min-h-0 max-h-[calc(100dvh-1rem)] flex-col gap-6 overflow-y-auto rounded-[12px] border border-[#D5DEE7] bg-white px-4 pb-6 pt-6 text-[#111827] shadow-[0_1px_6px_rgba(0,0,0,0.25)] sm:px-6 sm:pb-8 sm:pt-8 lg:max-h-none lg:gap-8 lg:px-7 lg:pb-10 lg:pt-10 xl:admin-panel-min-h xl:gap-10 xl:px-[34px] xl:pb-[64px] xl:pt-[64px]">
         <SidebarBrand />
         <nav className="flex flex-col gap-1.5" aria-label="Admin">
           {items.map((item) => {
             const hasChildren = Boolean(item.children?.length);
-            const isGroupActive = hasChildren && location.pathname === item.to;
+            const isGroupActive = hasChildren && location.pathname.startsWith(item.to);
             const showChildren = hasChildren && Boolean(openGroups[item.to]);
 
             return (
@@ -114,7 +118,7 @@ export function AdminSidebar({ items = ADMIN_SIDEBAR_ITEMS, className }: AdminSi
                           }));
                         }}
                         className={cn(
-                          "flex min-h-12 w-full items-center justify-between rounded-md px-4 text-[16px] font-semibold leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4BA3D9]",
+                          "flex min-h-11 w-full items-center justify-between rounded-md px-3 text-[14px] font-semibold leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4BA3D9] sm:min-h-12 sm:px-4 sm:text-[16px]",
                           isGroupActive
                             ? "bg-[#01579B] text-white"
                             : showChildren
@@ -136,7 +140,7 @@ export function AdminSidebar({ items = ADMIN_SIDEBAR_ITEMS, className }: AdminSi
                       </button>
                     )
                   : (
-                      <SidebarLink item={item} hasChildren={false} />
+                      <SidebarLink item={item} hasChildren={false} onNavigate={onNavigate} />
                     )}
                 {showChildren
                   ? (
@@ -148,9 +152,10 @@ export function AdminSidebar({ items = ADMIN_SIDEBAR_ITEMS, className }: AdminSi
                           <NavLink
                             key={child.to}
                             to={child.to}
+                            onClick={onNavigate}
                             className={({ isActive }) =>
                               cn(
-                                "block rounded-md px-3 py-1.5 text-[13px] font-medium text-[#1F2937] transition-colors hover:bg-[#EAF1F7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4BA3D9]",
+                                "block rounded-md px-3 py-1.5 text-[12px] font-medium text-[#1F2937] transition-colors hover:bg-[#EAF1F7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4BA3D9] sm:text-[13px]",
                                 isActive ? "bg-[#0F67AE] text-white hover:bg-[#0F67AE]" : "",
                               )}
                           >
@@ -165,7 +170,7 @@ export function AdminSidebar({ items = ADMIN_SIDEBAR_ITEMS, className }: AdminSi
           })}
         </nav>
         <div className="mt-auto">
-          <SidebarLink item={ADMIN_LOGOUT_ITEM} hasChildren={false} />
+          <SidebarLink item={ADMIN_LOGOUT_ITEM} hasChildren={false} onNavigate={onNavigate} />
         </div>
       </Card>
     </aside>

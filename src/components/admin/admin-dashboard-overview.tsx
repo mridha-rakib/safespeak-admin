@@ -66,18 +66,18 @@ export function AdminDashboardOverview({
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
+    <div className="flex w-full flex-col gap-4 sm:gap-5 lg:gap-6">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="space-y-1">
           <p className="text-xs text-[#607B90]">
             Admin
             {"  >  "}
             Minimalist Sanctuary
           </p>
-          <h2 className="text-[34px] font-medium leading-none text-[#1E293B]">{title}</h2>
-          <p className="text-sm text-[#607B90]">{description}</p>
+          <h2 className="text-[28px] font-medium leading-none text-[#1E293B] sm:text-[30px] lg:text-[34px]">{title}</h2>
+          <p className="text-xs text-[#607B90] sm:text-sm">{description}</p>
         </div>
-        <div className="flex items-center gap-2 rounded-md border border-[#D8E3EE] bg-[#F9FCFF] px-3 py-2 text-xs text-[#1E293B]">
+        <div className="inline-flex w-full items-center gap-2 self-start rounded-md border border-[#D8E3EE] bg-[#F9FCFF] px-3 py-2 text-xs text-[#1E293B] sm:w-auto">
           <span className="h-2 w-2 rounded-full bg-[#01579B]" />
           <span className="font-medium">
             System Health:
@@ -87,31 +87,33 @@ export function AdminDashboardOverview({
         </div>
       </div>
 
-      <div className="flex items-center gap-7 border-b border-[#D6E0EB] pb-2">
-        {RANGE_TABS.map(tab => (
-          <Link
-            key={tab.key}
-            to={buildRangeHref(tab.key)}
-            className={cn(
-              "pb-2 text-[13px] font-semibold transition",
-              activeRange === tab.key
-                ? "border-b-2 border-[#0F67AE] text-[#1E293B]"
-                : "text-[#607B90] hover:text-[#1E293B]",
-            )}
-          >
-            {tab.label}
-          </Link>
-        ))}
+      <div className="-mx-1 overflow-x-auto border-b border-[#D6E0EB] px-1 pb-2">
+        <div className="flex min-w-max items-center gap-5 sm:gap-7">
+          {RANGE_TABS.map(tab => (
+            <Link
+              key={tab.key}
+              to={buildRangeHref(tab.key)}
+              className={cn(
+                "pb-2 text-[13px] font-semibold transition",
+                activeRange === tab.key
+                  ? "border-b-2 border-[#0F67AE] text-[#1E293B]"
+                  : "text-[#607B90] hover:text-[#1E293B]",
+              )}
+            >
+              {tab.label}
+            </Link>
+          ))}
+        </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3">
         {STATS.map(stat => (
           <article
             key={stat.label}
             className="rounded-xl border border-[#D6DFEA] bg-white p-4 shadow-[inset_0_-35px_0_rgba(244,248,252,0.7)]"
           >
             <p className="text-xs font-semibold tracking-wide text-[#607B90]">{stat.label}</p>
-            <p className="mt-2 text-[52px] font-light leading-none text-[#1E293B]">{stat.value}</p>
+            <p className="mt-2 text-[38px] font-light leading-none text-[#1E293B] sm:text-[44px] lg:text-[52px]">{stat.value}</p>
             <p className={`mt-3 inline-flex items-center gap-1 text-xs font-semibold ${stat.tone}`}>
               {stat.trend === "up"
                 ? (
@@ -126,11 +128,11 @@ export function AdminDashboardOverview({
         ))}
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[2fr_1fr]">
+      <div className="grid gap-3 sm:gap-4 xl:grid-cols-[2fr_1fr]">
         <article className="rounded-xl border border-[#D6DFEA] bg-white p-4">
-          <h3 className="text-[30px] font-semibold leading-none text-[#1E293B]">Session Volume Over Time</h3>
+          <h3 className="text-[24px] font-semibold leading-none text-[#1E293B] sm:text-[26px] lg:text-[30px]">Session Volume Over Time</h3>
           <p className="mt-1 text-xs text-[#607B90]">Aggregate user activity across all regions</p>
-          <div className="mt-4 h-[280px] rounded-lg bg-[#F8FBFF] px-4 py-5">
+          <div className="mt-4 h-[220px] rounded-lg bg-[#F8FBFF] px-4 py-5 sm:h-[250px] lg:h-[280px]">
             <svg viewBox="0 0 600 220" className="h-full w-full">
               <path
                 d="M15,170 C70,110 120,190 180,145 C250,80 300,20 360,145 C420,240 490,160 575,30"
@@ -203,11 +205,11 @@ export function AdminDashboardOverview({
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-4">
         {MICRO_STATS.map(item => (
           <article key={item.label} className="rounded-lg border border-[#D6DFEA] bg-white p-4">
             <p className="text-[10px] font-semibold text-[#607B90]">{item.label}</p>
-            <p className="mt-2 text-[28px] leading-none text-[#1E293B]">{item.value}</p>
+            <p className="mt-2 text-[24px] leading-none text-[#1E293B] sm:text-[26px] lg:text-[28px]">{item.value}</p>
           </article>
         ))}
       </div>

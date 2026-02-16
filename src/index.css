@@ -1,5 +1,41 @@
 @import "tailwindcss";
 
+@theme {
+  --breakpoint-sm: 40rem;
+  --breakpoint-md: 48rem;
+  --breakpoint-lg: 64rem;
+  --breakpoint-xl: 80rem;
+  --breakpoint-2xl: 96rem;
+}
+
+@layer utilities {
+  .admin-panel-title {
+    font-size: 1.875rem;
+  }
+
+  @media (min-width: 40rem) {
+    .admin-panel-title {
+      font-size: 2.25rem;
+    }
+  }
+
+  @media (min-width: 64rem) {
+    .admin-panel-title {
+      font-size: 2.75rem;
+    }
+  }
+
+  .admin-panel-min-h {
+    min-height: 32rem;
+  }
+
+  @media (min-width: 64rem) {
+    .admin-panel-min-h {
+      min-height: 56.4375rem;
+    }
+  }
+}
+
 :root {
   font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
 }

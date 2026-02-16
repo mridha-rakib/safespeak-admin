@@ -41,7 +41,7 @@ export function AdminCreateAdminForm() {
   return (
     <div className="rounded-xl border border-[#CAD7E3] bg-white shadow-[0_1px_6px_rgba(0,0,0,0.2)]">
       <div className="rounded-t-xl bg-[#0F67AE] px-4 py-2.5">
-        <h2 className="text-[44px] font-semibold leading-none text-white">Create Admin</h2>
+        <h2 className="admin-panel-title font-semibold leading-none text-white">Create Admin</h2>
       </div>
 
       <form className="space-y-3 p-4 sm:p-6" onSubmit={handleSubmit(onSubmit)}>

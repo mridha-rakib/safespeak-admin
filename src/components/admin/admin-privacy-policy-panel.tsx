@@ -163,7 +163,7 @@ export function AdminPrivacyPolicyPanel() {
             >
               <ArrowLeft className="h-5 w-5" />
             </button>
-            <h2 className="text-[44px] font-semibold leading-none text-white">Privacy Policy</h2>
+            <h2 className="admin-panel-title font-semibold leading-none text-white">Privacy Policy</h2>
           </div>
 
           <Button
@@ -175,7 +175,7 @@ export function AdminPrivacyPolicyPanel() {
           </Button>
         </div>
 
-        <div className="min-h-[903px] px-4 pb-6 pt-5 sm:px-6">
+        <div className="admin-panel-min-h px-4 pb-6 pt-5 sm:px-6">
           <input
             type="hidden"
             {...contentHtmlField}

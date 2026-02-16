@@ -76,12 +76,12 @@ export function AdminUsersList() {
   return (
     <>
       <div className="rounded-xl border border-[#CAD7E3] bg-white p-3 shadow-[0_1px_6px_rgba(0,0,0,0.24)]">
-        <div className="flex items-center justify-between gap-3 rounded-md bg-[#0F67AE] px-4 py-2.5">
+        <div className="flex flex-col gap-3 rounded-md bg-[#0F67AE] px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-[20px] font-semibold text-white">
             {isBlockedTab ? "Blocked List" : "User List"}
           </h2>
-          <div className="flex items-center gap-2">
-            <div className="relative">
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+            <div className="relative w-full sm:w-auto">
               <Search
                 className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#607B90]"
                 aria-hidden="true"
@@ -90,7 +90,7 @@ export function AdminUsersList() {
                 value={searchTerm}
                 onChange={event => setSearchTerm(event.target.value)}
                 placeholder="Search User"
-                className="h-8 w-[190px] rounded-md border border-transparent bg-white pl-8 text-xs text-[#1E293B] shadow-none focus-visible:ring-[#4BA3D9]"
+                className="h-8 w-full rounded-md border border-transparent bg-white pl-8 text-xs text-[#1E293B] shadow-none focus-visible:ring-[#4BA3D9] sm:w-[190px]"
               />
             </div>
             {!isBlockedTab
@@ -98,7 +98,7 @@ export function AdminUsersList() {
                   <Button
                     type="button"
                     onClick={() => setActiveTab("blocked")}
-                    className="h-8 rounded-md bg-[#0A4F88] px-3 text-xs font-semibold text-white hover:bg-[#084777]"
+                    className="h-8 rounded-md bg-[#0A4F88] px-3 text-xs font-semibold text-white hover:bg-[#084777] sm:w-auto"
                   >
                     Blocked Users
                   </Button>
@@ -107,7 +107,7 @@ export function AdminUsersList() {
                   <Button
                     type="button"
                     onClick={() => setActiveTab("all")}
-                    className="h-8 rounded-md bg-[#0A4F88] px-3 text-xs font-semibold text-white hover:bg-[#084777]"
+                    className="h-8 rounded-md bg-[#0A4F88] px-3 text-xs font-semibold text-white hover:bg-[#084777] sm:w-auto"
                   >
                     User List
                   </Button>
@@ -218,7 +218,7 @@ export function AdminUsersList() {
             </table>
           </div>
 
-          <div className="mt-3 flex items-center justify-between border-t border-[#D8E3EE] pt-2 text-[10px] font-medium text-[#607B90]">
+          <div className="mt-3 flex flex-col gap-2 border-t border-[#D8E3EE] pt-2 text-[10px] font-medium text-[#607B90] sm:flex-row sm:items-center sm:justify-between">
             <p>
               SHOWING 1-
               {filteredUsers.length}
@@ -227,7 +227,7 @@ export function AdminUsersList() {
               {" "}
               {activeTab === "blocked" ? blockedUserIds.length : 250}
             </p>
-            <div className="flex items-center gap-1.5">
+            <div className="flex flex-wrap items-center gap-1.5 sm:justify-end">
               <button type="button" className="rounded px-1.5 py-0.5 hover:bg-[#EEF5FC]">
                 {"<"}
               </button>

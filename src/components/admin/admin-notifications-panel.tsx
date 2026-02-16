@@ -305,106 +305,108 @@ export function AdminNotificationsPanel() {
             </div>
           </div>
 
-          {groupedEntries.length === 0
-            ? (
-                <div className="rounded-xl border border-dashed border-[#D5E4F2] bg-[#F8FBFF] px-6 py-10 text-center">
-                  <p className="text-[18px] font-semibold text-[#0F172A]">You're all caught up</p>
-                  <p className="text-sm text-[#6B7280]">No notifications match this filter.</p>
-                </div>
-              )
-            : (
-                <div className="space-y-4">
-                  {groupedEntries.map(([dateLabel, groupItems]) => (
-                    <section key={dateLabel} className="space-y-2 rounded-xl border border-[#D7E3F0] bg-white/90 p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2 text-[#0F172A]">
-                          <Clock3 className="h-4 w-4 text-[#0F67AE]" />
-                          <p className="text-[15px] font-semibold">{dateLabel}</p>
+          <div className="space-y-4 lg:max-h-[640px] lg:overflow-y-auto lg:pr-2 lg:[scrollbar-gutter:stable] lg:[scrollbar-width:thin] lg:[&::-webkit-scrollbar-thumb]:rounded-full lg:[&::-webkit-scrollbar-thumb]:bg-[#B8CADB] lg:[&::-webkit-scrollbar-track]:bg-[#EDF4FA] lg:[&::-webkit-scrollbar]:w-2">
+            {groupedEntries.length === 0
+              ? (
+                  <div className="rounded-xl border border-dashed border-[#D5E4F2] bg-[#F8FBFF] px-6 py-10 text-center">
+                    <p className="text-[18px] font-semibold text-[#0F172A]">You're all caught up</p>
+                    <p className="text-sm text-[#6B7280]">No notifications match this filter.</p>
+                  </div>
+                )
+              : (
+                  <div className="space-y-4">
+                    {groupedEntries.map(([dateLabel, groupItems]) => (
+                      <section key={dateLabel} className="space-y-2 rounded-xl border border-[#D7E3F0] bg-white/90 p-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2 text-[#0F172A]">
+                            <Clock3 className="h-4 w-4 text-[#0F67AE]" />
+                            <p className="text-[15px] font-semibold">{dateLabel}</p>
+                          </div>
+                          <span className="text-xs font-semibold text-[#607B90]">
+                            {groupItems.length}
+                            {" "}
+                            items
+                          </span>
                         </div>
-                        <span className="text-xs font-semibold text-[#607B90]">
-                          {groupItems.length}
-                          {" "}
-                          items
-                        </span>
-                      </div>
 
-                      <div className="space-y-2">
-                        {groupItems.map((item) => {
-                          const category = CATEGORY_STYLES[item.category];
-                          const CategoryIcon = category.icon;
-                          return (
-                            <article
-                              key={item.id}
-                              className="relative overflow-hidden rounded-lg border border-[#E1EAF2] bg-gradient-to-r from-[#F9FCFF] to-white px-4 py-3 shadow-[0_1px_0_rgba(15,103,174,0.08)] transition hover:-translate-y-0.5 hover:border-[#0F67AE] hover:shadow-[0_10px_30px_rgba(15,103,174,0.12)]"
-                            >
-                              <div className="flex items-start gap-3">
-                                <div className="relative mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-full bg-[#E8F4FF] text-[#0F67AE]">
-                                  <Bell className="h-[18px] w-[18px]" />
-                                  {item.unread
-                                    ? (
-                                        <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-[#EF4444]" />
-                                      )
-                                    : null}
-                                </div>
-
-                                <div className="flex-1 space-y-1">
-                                  <div className="flex items-start justify-between gap-3">
-                                    <div>
-                                      <p className="text-[18px] font-semibold leading-tight text-[#0F172A]">
-                                        {item.title}
-                                      </p>
-                                      <p className="text-sm text-[#4D6778]">{item.body}</p>
-                                    </div>
+                        <div className="space-y-2">
+                          {groupItems.map((item) => {
+                            const category = CATEGORY_STYLES[item.category];
+                            const CategoryIcon = category.icon;
+                            return (
+                              <article
+                                key={item.id}
+                                className="relative overflow-hidden rounded-lg border border-[#E1EAF2] bg-gradient-to-r from-[#F9FCFF] to-white px-4 py-3 shadow-[0_1px_0_rgba(15,103,174,0.08)] transition hover:-translate-y-0.5 hover:border-[#0F67AE] hover:shadow-[0_10px_30px_rgba(15,103,174,0.12)]"
+                              >
+                                <div className="flex items-start gap-3">
+                                  <div className="relative mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-full bg-[#E8F4FF] text-[#0F67AE]">
+                                    <Bell className="h-[18px] w-[18px]" />
                                     {item.unread
                                       ? (
-                                          <button
-                                            type="button"
-                                            onClick={() => markOneRead(item.id)}
-                                            className="text-[12px] font-semibold text-[#0F67AE] underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F67AE]/30"
-                                          >
-                                            Mark read
-                                          </button>
+                                          <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-[#EF4444]" />
                                         )
-                                      : (
-                                          <span className="text-[12px] font-semibold uppercase tracking-wide text-[#6B7280]">
-                                            Seen
-                                          </span>
-                                        )}
+                                      : null}
                                   </div>
 
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold", getToneColor(item.tone))}>
-                                      {item.tone === "critical"
-                                        ? <AlertTriangle className="h-3.5 w-3.5" />
-                                        : <ShieldCheck className="h-3.5 w-3.5" />}
-                                      {item.tone === "critical"
-                                        ? "Critical"
-                                        : item.tone === "warning"
-                                          ? "Action"
-                                          : "Info"}
-                                    </span>
-                                    <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold", category.bg, category.text)}>
-                                      <CategoryIcon className="h-3.5 w-3.5" />
-                                      {category.label}
-                                    </span>
-                                    <span className="inline-flex items-center gap-1 rounded-full bg-[#EEF2F6] px-2 py-1 text-[11px] font-semibold text-[#0F172A]">
-                                      <Clock3 className="h-3.5 w-3.5" />
-                                      {item.timestamp}
-                                    </span>
-                                    <span className="inline-flex items-center gap-1 rounded-full bg-[#F3F6FB] px-2 py-1 text-[11px] font-semibold text-[#0F172A]">
-                                      {item.channel}
-                                    </span>
+                                  <div className="flex-1 space-y-1">
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div>
+                                        <p className="text-[18px] font-semibold leading-tight text-[#0F172A]">
+                                          {item.title}
+                                        </p>
+                                        <p className="text-sm text-[#4D6778]">{item.body}</p>
+                                      </div>
+                                      {item.unread
+                                        ? (
+                                            <button
+                                              type="button"
+                                              onClick={() => markOneRead(item.id)}
+                                              className="text-[12px] font-semibold text-[#0F67AE] underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F67AE]/30"
+                                            >
+                                              Mark read
+                                            </button>
+                                          )
+                                        : (
+                                            <span className="text-[12px] font-semibold uppercase tracking-wide text-[#6B7280]">
+                                              Seen
+                                            </span>
+                                          )}
+                                    </div>
+
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold", getToneColor(item.tone))}>
+                                        {item.tone === "critical"
+                                          ? <AlertTriangle className="h-3.5 w-3.5" />
+                                          : <ShieldCheck className="h-3.5 w-3.5" />}
+                                        {item.tone === "critical"
+                                          ? "Critical"
+                                          : item.tone === "warning"
+                                            ? "Action"
+                                            : "Info"}
+                                      </span>
+                                      <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold", category.bg, category.text)}>
+                                        <CategoryIcon className="h-3.5 w-3.5" />
+                                        {category.label}
+                                      </span>
+                                      <span className="inline-flex items-center gap-1 rounded-full bg-[#EEF2F6] px-2 py-1 text-[11px] font-semibold text-[#0F172A]">
+                                        <Clock3 className="h-3.5 w-3.5" />
+                                        {item.timestamp}
+                                      </span>
+                                      <span className="inline-flex items-center gap-1 rounded-full bg-[#F3F6FB] px-2 py-1 text-[11px] font-semibold text-[#0F172A]">
+                                        {item.channel}
+                                      </span>
+                                    </div>
                                   </div>
                                 </div>
-                              </div>
-                            </article>
-                          );
-                        })}
-                      </div>
-                    </section>
-                  ))}
-                </div>
-              )}
+                              </article>
+                            );
+                          })}
+                        </div>
+                      </section>
+                    ))}
+                  </div>
+                )}
+          </div>
         </div>
 
         <aside className="space-y-4">
@@ -426,7 +428,7 @@ export function AdminNotificationsPanel() {
               </div>
               <div className="flex items-center justify-between">
                 <span>Channels</span>
-                <span className="font-semibold text-[#0F172A]">In-app, Email, Push</span>
+                <span className="font-semibold text-[#0F172A]">In-app, Push</span>
               </div>
             </div>
           </div>
@@ -438,25 +440,11 @@ export function AdminNotificationsPanel() {
                 <span className="font-semibold text-[#0F172A]">In-app</span>
                 <span className="text-[11px] font-semibold text-[#0F67AE]">Realtime</span>
               </div>
-              <div className="flex items-center justify-between rounded-lg bg-[#FFF7ED] px-3 py-2">
-                <span className="font-semibold text-[#0F172A]">Email</span>
-                <span className="text-[11px] font-semibold text-[#9A3412]">8:00 AM digest</span>
-              </div>
               <div className="flex items-center justify-between rounded-lg bg-[#F0F9FF] px-3 py-2">
                 <span className="font-semibold text-[#0F172A]">Push</span>
                 <span className="text-[11px] font-semibold text-[#0C4A6E]">Quiet hours 10p-7a</span>
               </div>
             </div>
-          </div>
-
-          <div className="rounded-xl border border-[#D7E3F0] bg-gradient-to-br from-[#0F67AE]/10 via-white to-white p-4 shadow-[0_1px_0_rgba(15,103,174,0.08)]">
-            <p className="text-sm font-semibold text-[#0F172A]">Daily digest</p>
-            <p className="mt-1 text-[12px] text-[#4D6778]">
-              Send a curated summary to admins every morning.
-            </p>
-            <Button className="mt-3 w-full bg-[#0F67AE] text-white hover:bg-[#0B4E84]" size="sm">
-              Schedule for 9:00 AM
-            </Button>
           </div>
         </aside>
       </div>

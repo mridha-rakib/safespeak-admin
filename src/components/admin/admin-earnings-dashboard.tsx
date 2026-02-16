@@ -29,10 +29,10 @@ export function AdminEarningsDashboard() {
   return (
     <div className="rounded-xl border border-[#CAD7E3] bg-white shadow-[0_1px_6px_rgba(0,0,0,0.25)]">
       <div className="rounded-t-xl bg-[#0F67AE] px-4 py-2.5">
-        <h2 className="text-[44px] font-semibold leading-none text-white">Earnings</h2>
+        <h2 className="admin-panel-title font-semibold leading-none text-white">Earnings</h2>
       </div>
 
-      <div className="min-h-[903px] px-4 pb-4 pt-4">
+      <div className="admin-panel-min-h px-4 pb-4 pt-4">
         <div className="rounded-lg border border-[#D4DFEA] bg-white p-3">
           <div className="mb-2 flex items-center justify-between">
             <p className="text-[18px] font-semibold text-[#1E4B63]">User growth</p>

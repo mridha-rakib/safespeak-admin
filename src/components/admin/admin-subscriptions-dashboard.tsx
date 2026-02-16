@@ -18,30 +18,30 @@ const SUBSCRIPTIONS = [
 export function AdminSubscriptionsDashboard() {
   return (
     <div className="rounded-xl border border-[#CAD7E3] bg-white shadow-[0_1px_6px_rgba(0,0,0,0.25)]">
-      <div className="flex items-center justify-between gap-3 rounded-t-xl bg-[#0F67AE] px-4 py-2.5">
-        <h2 className="text-[44px] font-semibold leading-none text-white">Subscriptions</h2>
-        <div className="flex items-center gap-3">
-          <div className="relative">
+      <div className="flex flex-col gap-3 rounded-t-xl bg-[#0F67AE] px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+        <h2 className="admin-panel-title font-semibold leading-none text-white">Subscriptions</h2>
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-3">
+          <div className="relative w-full sm:w-auto">
             <Search
               className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#8AA2B5]"
               aria-hidden="true"
             />
             <Input
               placeholder="Search User"
-              className="h-9 w-[260px] rounded-md border border-transparent bg-white pl-8 text-[12px] text-[#1E293B] shadow-none focus-visible:ring-[#4BA3D9]"
+              className="h-9 w-full rounded-md border border-transparent bg-white pl-8 text-[12px] text-[#1E293B] shadow-none focus-visible:ring-[#4BA3D9] sm:w-[260px]"
             />
           </div>
           <Button
             type="button"
             variant="secondary"
-            className="h-9 rounded-md border border-[#DDE6EF] bg-white px-4 text-[13px] font-semibold text-[#0F67AE] hover:bg-[#F2F7FD]"
+            className="h-9 rounded-md border border-[#DDE6EF] bg-white px-4 text-[13px] font-semibold text-[#0F67AE] hover:bg-[#F2F7FD] sm:w-auto"
           >
             Manages Fees
           </Button>
         </div>
       </div>
 
-      <div className="min-h-[903px] px-3 pb-3 pt-1">
+      <div className="admin-panel-min-h px-3 pb-3 pt-1">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[820px] border-collapse">
             <thead>
@@ -78,9 +78,9 @@ export function AdminSubscriptionsDashboard() {
           </table>
         </div>
 
-        <div className="mt-4 flex items-center justify-between px-1 text-[11px] font-medium text-[#0F67AE]">
+        <div className="mt-4 flex flex-col gap-2 px-1 text-[11px] font-medium text-[#0F67AE] sm:flex-row sm:items-center sm:justify-between">
           <p>SHOWING 1-8 OF 250</p>
-          <div className="flex items-center gap-2 text-[#607B90]">
+          <div className="flex flex-wrap items-center gap-2 text-[#607B90] sm:justify-end">
             <button type="button" className="inline-flex h-6 w-6 items-center justify-center rounded hover:bg-[#EDF5FC]">
               <ChevronLeft className="h-3.5 w-3.5" />
             </button>

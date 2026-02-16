@@ -100,10 +100,10 @@ export function AdminFeedbackManagement() {
     <>
       <div className="rounded-xl border border-[#CAD7E3] bg-white shadow-[0_1px_6px_rgba(0,0,0,0.25)]">
         <div className="rounded-t-xl bg-[#0F67AE] px-4 py-2.5">
-          <h2 className="text-[44px] font-semibold leading-none text-white">Report Management</h2>
+          <h2 className="admin-panel-title font-semibold leading-none text-white">Report Management</h2>
         </div>
 
-        <div className="min-h-[903px] px-3 pb-3 pt-2 sm:px-4">
+        <div className="admin-panel-min-h px-3 pb-3 pt-2 sm:px-4">
           <div className="mb-2 flex justify-end">
             <button
               type="button"

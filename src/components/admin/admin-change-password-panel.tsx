@@ -47,10 +47,10 @@ export function AdminChangePasswordPanel() {
         >
           <ArrowLeft className="h-5 w-5" />
         </button>
-        <h2 className="text-[44px] font-semibold leading-none text-white">Change Password</h2>
+        <h2 className="admin-panel-title font-semibold leading-none text-white">Change Password</h2>
       </div>
 
-      <form className="min-h-[903px] px-4 pb-8 pt-6 sm:px-6" onSubmit={handleSubmit(onSubmit)}>
+      <form className="admin-panel-min-h px-4 pb-8 pt-6 sm:px-6" onSubmit={handleSubmit(onSubmit)}>
         <div className="mx-auto w-full max-w-[760px] space-y-2">
           <div className="space-y-1">
             <label htmlFor="current-password" className="text-[22px] font-medium text-[#1E3A4F]">

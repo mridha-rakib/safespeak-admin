@@ -25,6 +25,33 @@ export const ADMIN_SIDEBAR_ITEMS: AdminSidebarItem[] = [
   {
     label: "Content Management",
     to: APP_ROUTE_PATHS.adminContentManagement,
+    showChevron: true,
+    children: [
+      {
+        label: "Landing Page",
+        to: APP_ROUTE_PATHS.adminContentLandingPage,
+      },
+      {
+        label: "Media Asset",
+        to: APP_ROUTE_PATHS.adminContentMediaAsset,
+      },
+      {
+        label: "Knowledge Sources",
+        to: APP_ROUTE_PATHS.adminContentKnowledgeSources,
+      },
+      {
+        label: "Resource Library",
+        to: APP_ROUTE_PATHS.adminContentResourceLibrary,
+      },
+      {
+        label: "Upload Resource",
+        to: APP_ROUTE_PATHS.adminContentUploadResource,
+      },
+      {
+        label: "Educational Content",
+        to: APP_ROUTE_PATHS.adminContentEducationalContent,
+      },
+    ],
   },
   {
     label: "Insights",

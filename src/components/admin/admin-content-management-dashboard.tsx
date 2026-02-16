@@ -235,12 +235,12 @@ export function AdminContentManagementDashboard() {
                 : null}
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <label className="relative block">
+              <label className="relative block w-full sm:w-auto">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#94A3B8]" />
                 <input
                   type="search"
                   placeholder="Search cards..."
-                  className="h-9 w-[220px] rounded-full border border-[#D5DEE7] bg-white pl-9 pr-3 text-sm text-[#0F172A] outline-none transition focus:border-[#4BA3D9]"
+                  className="h-9 w-full rounded-full border border-[#D5DEE7] bg-white pl-9 pr-3 text-sm text-[#0F172A] outline-none transition focus:border-[#4BA3D9] sm:w-[220px]"
                 />
               </label>
               <button
@@ -360,7 +360,7 @@ export function AdminContentManagementDashboard() {
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#111827]/50 p-4">
               <div className="w-full max-w-[760px] rounded-[10px] border border-[#E1E7EF] bg-white shadow-[0_8px_32px_rgba(0,0,0,0.22)]">
                 <div className="px-6 pb-4 pt-6 sm:px-8">
-                  <h3 className="text-center text-[42px] font-semibold leading-none text-[#0F172A]">Upload Educational Content</h3>
+                  <h3 className="text-center text-[28px] font-semibold leading-none text-[#0F172A] sm:text-[34px] lg:text-[42px]">Upload Educational Content</h3>
                   <p className="mx-auto mt-3 max-w-[520px] text-center text-[16px] text-[#64748B]">
                     Please upload your educational content using the standard format. Ensure your data matches the template structure before proceeding.
                   </p>

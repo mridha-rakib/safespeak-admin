@@ -27,7 +27,7 @@ export function AdminProfileForm() {
   return (
     <div className="rounded-xl border border-[#CAD7E3] bg-white shadow-[0_1px_6px_rgba(0,0,0,0.2)]">
       <div className="rounded-t-xl bg-[#0F67AE] px-4 py-2.5">
-        <h2 className="text-[44px] font-semibold leading-none text-white">Profile</h2>
+        <h2 className="admin-panel-title font-semibold leading-none text-white">Profile</h2>
       </div>
 
       <div className="p-4 sm:p-6">
@@ -45,7 +45,7 @@ export function AdminProfileForm() {
             </button>
           </div>
 
-          <h3 className="mt-3 text-[44px] font-semibold leading-none text-[#34475A]">Mr. Admin</h3>
+          <h3 className="mt-3 text-[30px] font-semibold leading-none text-[#34475A] sm:text-[36px] lg:text-[44px]">Mr. Admin</h3>
           <button
             type="button"
             className="mt-3 inline-flex items-center gap-1 text-[18px] font-semibold text-[#0F67AE] underline underline-offset-2 transition hover:text-[#0A5792] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F67AE]"

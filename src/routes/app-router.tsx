@@ -1,7 +1,12 @@
 import { AdminLayout } from "@/layouts/admin-layout";
 import { AuthLayout } from "@/layouts/auth-layout";
 import { AdminChangePasswordPage } from "@/pages/admin/change-password-page";
+import { AdminContentKnowledgeSourcesRoutePage } from "@/pages/admin/content-knowledge-sources-page";
+import { AdminContentLandingRoutePage } from "@/pages/admin/content-landing-page";
 import { AdminContentManagementPage } from "@/pages/admin/content-management-page";
+import { AdminContentMediaAssetRoutePage } from "@/pages/admin/content-media-asset-page";
+import { AdminContentResourceLibraryRoutePage } from "@/pages/admin/content-resource-library-page";
+import { AdminContentUploadResourceRoutePage } from "@/pages/admin/content-upload-resource-page";
 import { AdminCreateAdminPage } from "@/pages/admin/create-admin-page";
 import { AdminDashboardPage } from "@/pages/admin/dashboard-page";
 import { AdminEarningsPage } from "@/pages/admin/earnings-page";
@@ -72,6 +77,30 @@ export const appRouter = createBrowserRouter([
       },
       {
         path: APP_ROUTE_SEGMENTS.contentManagement,
+        element: <Navigate to={APP_ROUTE_PATHS.adminContentLandingPage} replace />,
+      },
+      {
+        path: `${APP_ROUTE_SEGMENTS.contentManagement}/${APP_ROUTE_SEGMENTS.contentLandingPage}`,
+        element: <AdminContentLandingRoutePage />,
+      },
+      {
+        path: `${APP_ROUTE_SEGMENTS.contentManagement}/${APP_ROUTE_SEGMENTS.contentMediaAsset}`,
+        element: <AdminContentMediaAssetRoutePage />,
+      },
+      {
+        path: `${APP_ROUTE_SEGMENTS.contentManagement}/${APP_ROUTE_SEGMENTS.contentKnowledgeSources}`,
+        element: <AdminContentKnowledgeSourcesRoutePage />,
+      },
+      {
+        path: `${APP_ROUTE_SEGMENTS.contentManagement}/${APP_ROUTE_SEGMENTS.contentResourceLibrary}`,
+        element: <AdminContentResourceLibraryRoutePage />,
+      },
+      {
+        path: `${APP_ROUTE_SEGMENTS.contentManagement}/${APP_ROUTE_SEGMENTS.contentUploadResource}`,
+        element: <AdminContentUploadResourceRoutePage />,
+      },
+      {
+        path: `${APP_ROUTE_SEGMENTS.contentManagement}/${APP_ROUTE_SEGMENTS.contentEducationalContent}`,
         element: <AdminContentManagementPage />,
       },
       {
