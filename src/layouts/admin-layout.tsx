@@ -13,10 +13,10 @@ export function AdminLayout() {
 
   return (
     <div className="min-h-dvh bg-[#D7E1EB] p-2 sm:p-3 md:p-4 lg:p-5">
-      <div className="mx-auto w-full max-w-[1440px] rounded-xl border border-[#C7D4E1] bg-[#E7EFF7] p-3 sm:p-4 md:p-5 lg:p-6 xl:p-8 2xl:max-w-[1536px]">
+      <div className="w-full rounded-xl border border-[#C7D4E1] bg-[#E7EFF7] p-3 sm:p-4 md:p-5 lg:p-6 xl:p-8">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:gap-5">
           <AdminSidebar className="hidden lg:block" />
-          <section className="w-full min-w-0 flex-1 space-y-3 sm:space-y-4 lg:max-w-[1026px] lg:space-y-5">
+          <section className="w-full min-w-0 flex-1 space-y-3 sm:space-y-4 lg:space-y-5">
             <AdminTopBar onMenuClick={() => setIsMobileSidebarOpen(true)} />
             <div className="admin-panel-min-h rounded-xl border border-[#D1DDE9] bg-[#EAF1F7] p-3 sm:p-4 md:p-5 lg:p-6">
               <Outlet />

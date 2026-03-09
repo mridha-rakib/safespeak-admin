@@ -97,7 +97,7 @@ export function AdminSidebar({ items = ADMIN_SIDEBAR_ITEMS, className, onNavigat
 
   return (
     <aside className={cn("w-full shrink-0 lg:max-w-[300px] xl:max-w-[326px]", className)}>
-      <Card className="flex h-full min-h-0 max-h-[calc(100dvh-1rem)] flex-col gap-6 overflow-y-auto rounded-[12px] border border-[#D5DEE7] bg-white px-4 pb-6 pt-6 text-[#111827] shadow-[0_1px_6px_rgba(0,0,0,0.25)] sm:px-6 sm:pb-8 sm:pt-8 lg:max-h-none lg:gap-8 lg:px-7 lg:pb-10 lg:pt-10 xl:admin-panel-min-h xl:gap-10 xl:px-[34px] xl:pb-[64px] xl:pt-[64px]">
+      <Card className="flex h-full min-h-0 max-h-[calc(100dvh-1rem)] flex-col gap-6 overflow-y-auto rounded-[12px] border border-[#D5DEE7] bg-white px-4 pb-6 pt-6 text-[#111827] sm:px-6 sm:pb-8 sm:pt-8 lg:max-h-none lg:gap-8 lg:px-7 lg:pb-10 lg:pt-10 xl:admin-panel-min-h xl:gap-10 xl:px-[34px] xl:pb-[64px] xl:pt-[64px]">
         <SidebarBrand />
         <nav className="flex flex-col gap-1.5" aria-label="Admin">
           {items.map((item) => {

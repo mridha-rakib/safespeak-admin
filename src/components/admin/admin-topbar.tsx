@@ -11,7 +11,7 @@ export function AdminTopBar({ onMenuClick, showMenuButton = true }: AdminTopBarP
   const navigate = useNavigate();
 
   return (
-    <div className="flex min-h-[72px] flex-wrap items-center justify-between gap-3 rounded-lg border border-[#CAD6E2] bg-[#FDFDFD] px-3 py-3 shadow-[0_1px_6px_rgba(0,0,0,0.24)] sm:min-h-[84px] sm:flex-nowrap sm:px-4">
+    <div className="flex min-h-[72px] flex-wrap items-center justify-between gap-3 rounded-lg border border-[#CAD6E2] bg-[#FDFDFD] px-3 py-3 sm:min-h-[84px] sm:flex-nowrap sm:px-4">
       <div className="flex min-w-0 items-center gap-2.5 sm:gap-4">
         {showMenuButton
           ? (
