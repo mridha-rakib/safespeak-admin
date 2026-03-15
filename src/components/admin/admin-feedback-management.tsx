@@ -95,6 +95,13 @@ const FEEDBACK_ITEMS: FeedbackItem[] = [
 
 export function AdminFeedbackManagement() {
   const [selectedFeedback, setSelectedFeedback] = useState<FeedbackItem | null>(null);
+  const [isNewestFirst, setIsNewestFirst] = useState(true);
+
+  const orderedFeedback = [...FEEDBACK_ITEMS].sort((left, right) => {
+    return isNewestFirst
+      ? right.id.localeCompare(left.id)
+      : left.id.localeCompare(right.id);
+  });
 
   return (
     <>
@@ -107,10 +114,11 @@ export function AdminFeedbackManagement() {
           <div className="mb-2 flex justify-end">
             <button
               type="button"
+              onClick={() => setIsNewestFirst(prev => !prev)}
               className="inline-flex h-8 items-center gap-1 rounded border border-[#A9C0D7] bg-white px-2.5 text-[11px] font-medium text-[#1E293B] transition hover:bg-[#F6FAFE] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4BA3D9]"
             >
               <CalendarDays className="h-3.5 w-3.5" />
-              Date
+              {isNewestFirst ? "Newest First" : "Oldest First"}
               <ChevronDown className="h-3 w-3" />
             </button>
           </div>
@@ -127,7 +135,7 @@ export function AdminFeedbackManagement() {
                 </tr>
               </thead>
               <tbody>
-                {FEEDBACK_ITEMS.map(item => (
+                {orderedFeedback.map(item => (
                   <tr key={item.id} className="text-[13px] text-[#28495F]">
                     <td className="px-3 py-2.5">{item.id}</td>
                     <td className="px-3 py-2.5">
@@ -167,19 +175,19 @@ export function AdminFeedbackManagement() {
                 </h3>
                 <div className="mt-3 flex items-center gap-2 border-b border-[#E1EAF3] pb-3">
                   <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-[#DFEAF4] text-[11px] font-semibold text-[#0F67AE]">
-                    JD
+                    {selectedFeedback.name.slice(0, 2).toUpperCase()}
                   </span>
-                  <p className="text-[22px] font-semibold text-[#1E293B]">John Doe</p>
+                  <p className="text-[22px] font-semibold text-[#1E293B]">{selectedFeedback.name}</p>
                 </div>
 
                 <dl className="mt-3 space-y-2 text-[14px]">
                   <div className="flex items-center justify-between gap-3">
                     <dt className="font-semibold text-[#1E3A4F]">Name</dt>
-                    <dd className="text-[#486173]">John Doe</dd>
+                    <dd className="text-[#486173]">{selectedFeedback.name}</dd>
                   </div>
                   <div className="flex items-center justify-between gap-3">
                     <dt className="font-semibold text-[#1E3A4F]">Email</dt>
-                    <dd className="text-[#486173]">john@email.com</dd>
+                    <dd className="text-[#486173]">{selectedFeedback.email}</dd>
                   </div>
                   <div className="flex items-center justify-between gap-3">
                     <dt className="font-semibold text-[#1E3A4F]">Phone</dt>

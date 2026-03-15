@@ -11,7 +11,7 @@ const SETTINGS_ITEMS: SettingsItem[] = [
   { label: "Change Password", to: APP_ROUTE_PATHS.adminChangePassword },
   { label: "Privacy Policy", to: APP_ROUTE_PATHS.adminPrivacyPolicy },
   { label: "Terms & Conditions", to: APP_ROUTE_PATHS.adminTermsConditions },
-  { label: "About Us" },
+  { label: "About Us", to: APP_ROUTE_PATHS.adminAboutUs },
 ];
 
 export function AdminSettingsPanel() {

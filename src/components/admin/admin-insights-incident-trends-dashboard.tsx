@@ -1,4 +1,5 @@
 import { AlertTriangle, CheckCircle2, ShieldAlert, UsersRound } from "lucide-react";
+import { useState } from "react";
 
 const SUMMARY_CARDS = [
   {
@@ -77,8 +78,17 @@ function heatCellClass(level: number) {
 }
 
 export function AdminInsightsIncidentTrendsDashboard() {
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+
   return (
     <div className="space-y-[18px]">
+      {statusMessage
+        ? (
+            <div className="rounded-xl border border-[#D8E3EE] bg-[#F8FBFF] px-4 py-3 text-sm font-medium text-[#0F67AE]">
+              {statusMessage}
+            </div>
+          )
+        : null}
       <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {SUMMARY_CARDS.map(card => (
           <article
@@ -162,6 +172,7 @@ export function AdminInsightsIncidentTrendsDashboard() {
             </div>
             <button
               type="button"
+              onClick={() => setStatusMessage("Trend export queued as CSV for the current report window.")}
               className="rounded-md bg-[#E6F0FB] px-3 py-1 text-[10px] font-semibold text-[#1677DA] transition hover:bg-[#DCEAF9]"
             >
               Export CSV

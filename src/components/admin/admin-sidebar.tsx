@@ -14,6 +14,18 @@ type AdminSidebarProps = {
   onNavigate?: () => void;
 };
 
+function pathMatches(pathname: string, candidate: string) {
+  return pathname === candidate || pathname.startsWith(`${candidate}/`);
+}
+
+function itemMatchesPath(item: AdminSidebarItem, pathname: string) {
+  if (pathMatches(pathname, item.to)) {
+    return true;
+  }
+
+  return Boolean(item.children?.some(child => pathMatches(pathname, child.to)));
+}
+
 function SidebarBrand() {
   return (
     <div className="relative mx-auto h-[96px] w-[98px] leading-none sm:h-[111px] sm:w-[114px]">
@@ -66,7 +78,7 @@ export function AdminSidebar({ items = ADMIN_SIDEBAR_ITEMS, className, onNavigat
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() =>
     items.reduce<Record<string, boolean>>((acc, item) => {
       if (item.children?.length) {
-        acc[item.to] = location.pathname.startsWith(item.to);
+        acc[item.to] = itemMatchesPath(item, location.pathname);
       }
       return acc;
     }, {}),
@@ -82,7 +94,7 @@ export function AdminSidebar({ items = ADMIN_SIDEBAR_ITEMS, className, onNavigat
           continue;
         }
 
-        if (location.pathname.startsWith(item.to) && !prev[item.to]) {
+        if (itemMatchesPath(item, location.pathname) && !prev[item.to]) {
           if (next === prev) {
             next = { ...prev };
           }
@@ -102,7 +114,7 @@ export function AdminSidebar({ items = ADMIN_SIDEBAR_ITEMS, className, onNavigat
         <nav className="flex flex-col gap-1.5" aria-label="Admin">
           {items.map((item) => {
             const hasChildren = Boolean(item.children?.length);
-            const isGroupActive = hasChildren && location.pathname.startsWith(item.to);
+            const isGroupActive = hasChildren && itemMatchesPath(item, location.pathname);
             const showChildren = hasChildren && Boolean(openGroups[item.to]);
 
             return (

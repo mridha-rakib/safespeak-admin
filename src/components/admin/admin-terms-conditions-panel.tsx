@@ -68,6 +68,7 @@ export function AdminTermsConditionsPanel() {
   const editorRef = useRef<HTMLDivElement | null>(null);
   const [selectedFileName, setSelectedFileName] = useState("");
   const [toolbarState, setToolbarState] = useState<ToolbarState>(INITIAL_TOOLBAR_STATE);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const defaultEditorHtml = useMemo(() => toEditorHtml(DEFAULT_TERMS_CONDITIONS), []);
 
   useEffect(() => {
@@ -87,7 +88,9 @@ export function AdminTermsConditionsPanel() {
   const { ref: contentHtmlRef, ...contentHtmlField } = register("contentHtml");
   const { ref: imageRef, ...imageField } = register("image");
 
-  const onSubmit = (_values: TermsConditionsValues) => {};
+  const onSubmit = () => {
+    setStatusMessage("Terms & conditions saved.");
+  };
 
   const syncToolbarState = () => {
     const selection = window.getSelection();
@@ -176,6 +179,9 @@ export function AdminTermsConditionsPanel() {
         </div>
 
         <div className="admin-panel-min-h px-4 pb-6 pt-5 sm:px-6">
+          {statusMessage
+            ? <p className="mb-3 rounded-md bg-[#EEF6FF] px-3 py-2 text-[13px] font-medium text-[#0F67AE]">{statusMessage}</p>
+            : null}
           <input
             type="hidden"
             {...contentHtmlField}

@@ -1,3 +1,6 @@
+import { AdminAboutPanel } from "@/components/admin/admin-about-panel";
+import { ADMIN_OPERATIONS_CONFIGS } from "@/components/admin/admin-operations-config";
+import { AdminOperationsSectionPage } from "@/components/admin/admin-operations-section-page";
 import { AdminLayout } from "@/layouts/admin-layout";
 import { AuthLayout } from "@/layouts/auth-layout";
 import { AdminChangePasswordPage } from "@/pages/admin/change-password-page";
@@ -76,8 +79,76 @@ export const appRouter = createBrowserRouter([
         element: <AdminUsersPage />,
       },
       {
+        path: APP_ROUTE_SEGMENTS.auditLogs,
+        element: <AdminOperationsSectionPage config={ADMIN_OPERATIONS_CONFIGS.auditLogs} />,
+      },
+      {
+        path: APP_ROUTE_SEGMENTS.securityCompliance,
+        element: <Navigate to={APP_ROUTE_PATHS.adminIdentityAccessManagement} replace />,
+      },
+      {
+        path: `${APP_ROUTE_SEGMENTS.securityCompliance}/${APP_ROUTE_SEGMENTS.identityAccessManagement}`,
+        element: <AdminOperationsSectionPage config={ADMIN_OPERATIONS_CONFIGS.identityAccessManagement} />,
+      },
+      {
+        path: `${APP_ROUTE_SEGMENTS.securityCompliance}/${APP_ROUTE_SEGMENTS.securityMonitoring}`,
+        element: <AdminOperationsSectionPage config={ADMIN_OPERATIONS_CONFIGS.securityMonitoring} />,
+      },
+      {
+        path: `${APP_ROUTE_SEGMENTS.securityCompliance}/${APP_ROUTE_SEGMENTS.dataProtection}`,
+        element: <AdminOperationsSectionPage config={ADMIN_OPERATIONS_CONFIGS.dataProtection} />,
+      },
+      {
+        path: `${APP_ROUTE_SEGMENTS.securityCompliance}/${APP_ROUTE_SEGMENTS.privacyControls}`,
+        element: <AdminOperationsSectionPage config={ADMIN_OPERATIONS_CONFIGS.privacyControls} />,
+      },
+      {
+        path: `${APP_ROUTE_SEGMENTS.securityCompliance}/${APP_ROUTE_SEGMENTS.legalCompliance}`,
+        element: <AdminOperationsSectionPage config={ADMIN_OPERATIONS_CONFIGS.legalCompliance} />,
+      },
+      {
+        path: APP_ROUTE_SEGMENTS.platformIntelligence,
+        element: <Navigate to={APP_ROUTE_PATHS.adminTaxonomiesManagement} replace />,
+      },
+      {
+        path: `${APP_ROUTE_SEGMENTS.platformIntelligence}/${APP_ROUTE_SEGMENTS.taxonomiesManagement}`,
+        element: <AdminOperationsSectionPage config={ADMIN_OPERATIONS_CONFIGS.taxonomiesManagement} />,
+      },
+      {
+        path: `${APP_ROUTE_SEGMENTS.platformIntelligence}/${APP_ROUTE_SEGMENTS.serviceDestinations}`,
+        element: <AdminOperationsSectionPage config={ADMIN_OPERATIONS_CONFIGS.serviceDestinations} />,
+      },
+      {
+        path: `${APP_ROUTE_SEGMENTS.platformIntelligence}/${APP_ROUTE_SEGMENTS.integrationManagement}`,
+        element: <AdminOperationsSectionPage config={ADMIN_OPERATIONS_CONFIGS.integrationManagement} />,
+      },
+      {
+        path: `${APP_ROUTE_SEGMENTS.platformIntelligence}/${APP_ROUTE_SEGMENTS.aiEngineControl}`,
+        element: <AdminOperationsSectionPage config={ADMIN_OPERATIONS_CONFIGS.aiEngineControl} />,
+      },
+      {
+        path: `${APP_ROUTE_SEGMENTS.platformIntelligence}/${APP_ROUTE_SEGMENTS.culturalProfiles}`,
+        element: <AdminOperationsSectionPage config={ADMIN_OPERATIONS_CONFIGS.culturalProfiles} />,
+      },
+      {
+        path: `${APP_ROUTE_SEGMENTS.platformIntelligence}/${APP_ROUTE_SEGMENTS.languagePacks}`,
+        element: <AdminOperationsSectionPage config={ADMIN_OPERATIONS_CONFIGS.languagePacks} />,
+      },
+      {
+        path: APP_ROUTE_SEGMENTS.crisisSafety,
+        element: <Navigate to={APP_ROUTE_PATHS.adminCrisisResponseCenter} replace />,
+      },
+      {
+        path: `${APP_ROUTE_SEGMENTS.crisisSafety}/${APP_ROUTE_SEGMENTS.crisisResponseCenter}`,
+        element: <AdminOperationsSectionPage config={ADMIN_OPERATIONS_CONFIGS.crisisResponseCenter} />,
+      },
+      {
+        path: `${APP_ROUTE_SEGMENTS.crisisSafety}/${APP_ROUTE_SEGMENTS.contentModeration}`,
+        element: <AdminOperationsSectionPage config={ADMIN_OPERATIONS_CONFIGS.contentModeration} />,
+      },
+      {
         path: APP_ROUTE_SEGMENTS.contentManagement,
-        element: <Navigate to={APP_ROUTE_PATHS.adminContentLandingPage} replace />,
+        element: <Navigate to={APP_ROUTE_PATHS.adminContentEducationalContent} replace />,
       },
       {
         path: `${APP_ROUTE_SEGMENTS.contentManagement}/${APP_ROUTE_SEGMENTS.contentLandingPage}`,
@@ -101,6 +172,10 @@ export const appRouter = createBrowserRouter([
       },
       {
         path: `${APP_ROUTE_SEGMENTS.contentManagement}/${APP_ROUTE_SEGMENTS.contentEducationalContent}`,
+        element: <AdminOperationsSectionPage config={ADMIN_OPERATIONS_CONFIGS.educationalContent} />,
+      },
+      {
+        path: `${APP_ROUTE_SEGMENTS.contentManagement}/${APP_ROUTE_SEGMENTS.microEducationCards}`,
         element: <AdminContentManagementPage />,
       },
       {
@@ -112,8 +187,16 @@ export const appRouter = createBrowserRouter([
         element: <AdminInsightsIncidentTrendsPage />,
       },
       {
+        path: `${APP_ROUTE_SEGMENTS.insights}/${APP_ROUTE_SEGMENTS.intelligenceCenter}`,
+        element: <AdminOperationsSectionPage config={ADMIN_OPERATIONS_CONFIGS.intelligenceCenter} />,
+      },
+      {
         path: `${APP_ROUTE_SEGMENTS.insights}/${APP_ROUTE_SEGMENTS.patterns}`,
         element: <AdminInsightsPatternsPage />,
+      },
+      {
+        path: `${APP_ROUTE_SEGMENTS.insights}/${APP_ROUTE_SEGMENTS.platformHealth}`,
+        element: <AdminOperationsSectionPage config={ADMIN_OPERATIONS_CONFIGS.platformHealth} />,
       },
       {
         path: APP_ROUTE_SEGMENTS.createAdmin,
@@ -150,6 +233,10 @@ export const appRouter = createBrowserRouter([
       {
         path: `${APP_ROUTE_SEGMENTS.settings}/${APP_ROUTE_SEGMENTS.termsConditions}`,
         element: <AdminTermsConditionsPage />,
+      },
+      {
+        path: `${APP_ROUTE_SEGMENTS.settings}/${APP_ROUTE_SEGMENTS.aboutUs}`,
+        element: <AdminAboutPanel />,
       },
     ],
   },

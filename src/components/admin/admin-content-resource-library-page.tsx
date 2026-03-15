@@ -1,5 +1,8 @@
 import { AdminContentManagementShell } from "@/components/admin/admin-content-management-shell";
+import { APP_ROUTE_PATHS } from "@/routes/paths";
 import { MoreVertical, Plus, Search, Upload } from "lucide-react";
+import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 const RESOURCE_ROWS = [
   {
@@ -36,6 +39,8 @@ const RESOURCE_ROWS = [
   },
 ] as const;
 
+const FILTERS = ["All Resources", "Banks", "Legal Aid", "Counseling"] as const;
+
 function categoryClass(category: string) {
   if (category === "Legal Awareness") {
     return "bg-[#E5ECFF] text-[#1D4ED8]";
@@ -59,7 +64,34 @@ function statusClass(status: string) {
   return "text-[#15803D]";
 }
 
+const PAGE_SIZE = 2;
+
 export function AdminContentResourceLibraryPage() {
+  const navigate = useNavigate();
+  const [searchValue, setSearchValue] = useState("");
+  const [activeFilter, setActiveFilter] = useState<(typeof FILTERS)[number]>("All Resources");
+  const [activePage, setActivePage] = useState(1);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+
+  const filteredRows = useMemo(() => {
+    const normalizedSearch = searchValue.trim().toLowerCase();
+
+    return RESOURCE_ROWS.filter((item) => {
+      const matchesSearch = normalizedSearch.length === 0
+        || item.name.toLowerCase().includes(normalizedSearch)
+        || item.language.toLowerCase().includes(normalizedSearch)
+        || item.category.toLowerCase().includes(normalizedSearch);
+
+      const matchesFilter = activeFilter === "All Resources"
+        || item.category.includes(activeFilter.replace(" Aid", ""));
+
+      return matchesSearch && matchesFilter;
+    });
+  }, [activeFilter, searchValue]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
+  const paginatedRows = filteredRows.slice((activePage - 1) * PAGE_SIZE, activePage * PAGE_SIZE);
+
   return (
     <AdminContentManagementShell>
       <section className="space-y-4 rounded-[12px] border border-[#D9E2EC] bg-white p-4">
@@ -67,22 +99,37 @@ export function AdminContentResourceLibraryPage() {
           <div>
             <h3 className="text-[26px] font-semibold leading-none text-[#0F172A] sm:text-[30px]">Resource Library</h3>
             <p className="mt-1 text-xs text-[#607B90]">Manage downloadable assets, training materials, and safety resources.</p>
+            {statusMessage
+              ? <p className="mt-2 text-[12px] font-medium text-[#0F67AE]">{statusMessage}</p>
+              : null}
           </div>
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
             <label className="relative w-full sm:w-auto">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#94A3B8]" />
               <input
                 type="search"
-                readOnly
-                value="Search cards..."
-                className="h-8 w-full rounded-full border border-[#D8E3EE] bg-white pl-8 pr-3 text-xs text-[#607B90] sm:w-[190px]"
+                value={searchValue}
+                onChange={(event) => {
+                  setSearchValue(event.target.value);
+                  setActivePage(1);
+                }}
+                placeholder="Search resources..."
+                className="h-8 w-full rounded-full border border-[#D8E3EE] bg-white pl-8 pr-3 text-xs text-[#334155] outline-none transition focus:border-[#0F67AE] sm:w-[190px]"
               />
             </label>
-            <button type="button" className="inline-flex h-8 items-center gap-1 rounded-full bg-[#F59E0B] px-3 text-[11px] font-semibold text-white">
+            <button
+              type="button"
+              onClick={() => navigate(APP_ROUTE_PATHS.adminContentUploadResource)}
+              className="inline-flex h-8 items-center gap-1 rounded-full bg-[#F59E0B] px-3 text-[11px] font-semibold text-white transition hover:bg-[#D88B07]"
+            >
               <Upload className="h-3.5 w-3.5" />
               Bulk Upload
             </button>
-            <button type="button" className="inline-flex h-8 items-center gap-1 rounded-full bg-[#0F67AE] px-3 text-[11px] font-semibold text-white">
+            <button
+              type="button"
+              onClick={() => navigate(APP_ROUTE_PATHS.adminContentUploadResource)}
+              className="inline-flex h-8 items-center gap-1 rounded-full bg-[#0F67AE] px-3 text-[11px] font-semibold text-white transition hover:bg-[#0B578F]"
+            >
               <Plus className="h-3.5 w-3.5" />
               New Resource
             </button>
@@ -90,10 +137,23 @@ export function AdminContentResourceLibraryPage() {
         </div>
 
         <div className="flex flex-wrap gap-1.5 text-[10px]">
-          <span className="rounded-full bg-[#EDF5FF] px-2 py-1 font-semibold text-[#0F67AE]">All Resources</span>
-          <span className="rounded-full border border-[#D8E3EE] px-2 py-1 text-[#607B90]">Banks</span>
-          <span className="rounded-full border border-[#D8E3EE] px-2 py-1 text-[#607B90]">Legal Aid</span>
-          <span className="rounded-full border border-[#D8E3EE] px-2 py-1 text-[#607B90]">Counseling</span>
+          {FILTERS.map(filter => (
+            <button
+              key={filter}
+              type="button"
+              onClick={() => {
+                setActiveFilter(filter);
+                setActivePage(1);
+                setStatusMessage(`Showing ${filter.toLowerCase()}.`);
+              }}
+              className={filter === activeFilter
+                ? "rounded-full bg-[#EDF5FF] px-2 py-1 font-semibold text-[#0F67AE]"
+                : "rounded-full border border-[#D8E3EE] px-2 py-1 text-[#607B90] transition hover:bg-[#F8FBFF]"
+              }
+            >
+              {filter}
+            </button>
+          ))}
         </div>
 
         <div className="overflow-x-auto rounded-[10px] border border-[#D5DEE7]">
@@ -110,7 +170,7 @@ export function AdminContentResourceLibraryPage() {
               </tr>
             </thead>
             <tbody>
-              {RESOURCE_ROWS.map(item => (
+              {paginatedRows.map(item => (
                 <tr key={item.name} className="border-t border-[#E4EAF1] text-[12px] text-[#1E293B]">
                   <td className="px-3 py-2.5"><input type="checkbox" readOnly /></td>
                   <td className="px-3 py-2.5">
@@ -126,21 +186,57 @@ export function AdminContentResourceLibraryPage() {
                     {item.status === "Expiring Soon" ? "EXPIRING SOON" : item.status === "Outdated" ? "OUTDATED" : "ACTIVE"}
                   </td>
                   <td className="px-3 py-2.5">
-                    <button type="button" className="inline-flex h-6 w-6 items-center justify-center rounded text-[#607B90] hover:bg-[#EEF3F8]">
+                    <button
+                      type="button"
+                      onClick={() => setStatusMessage(`Action menu opened for ${item.name}.`)}
+                      className="inline-flex h-6 w-6 items-center justify-center rounded text-[#607B90] transition hover:bg-[#EEF3F8]"
+                    >
                       <MoreVertical className="h-4 w-4" />
                     </button>
                   </td>
                 </tr>
               ))}
+              {paginatedRows.length === 0
+                ? (
+                    <tr>
+                      <td colSpan={7} className="px-3 py-8 text-center text-[12px] text-[#607B90]">
+                        No resources matched this filter.
+                      </td>
+                    </tr>
+                  )
+                : null}
             </tbody>
           </table>
         </div>
 
         <div className="flex flex-col gap-2 text-[10px] sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-[#607B90]">Showing 1-4 of 142 production resources</p>
+          <p className="text-[#607B90]">
+            Showing
+            {" "}
+            {filteredRows.length === 0 ? 0 : (activePage - 1) * PAGE_SIZE + 1}
+            -
+            {Math.min(activePage * PAGE_SIZE, filteredRows.length)}
+            {" of "}
+            {filteredRows.length}
+            {" matching resources"}
+          </p>
           <div className="flex items-center gap-2">
-            <button type="button" className="h-7 rounded border border-[#D8E3EE] px-3 text-[#607B90]">Previous</button>
-            <button type="button" className="h-7 rounded border border-[#D8E3EE] px-3 text-[#607B90]">Next</button>
+            <button
+              type="button"
+              disabled={activePage === 1}
+              onClick={() => setActivePage(prev => Math.max(1, prev - 1))}
+              className="h-7 rounded border border-[#D8E3EE] px-3 text-[#607B90] transition enabled:hover:bg-[#F8FBFF] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              disabled={activePage >= totalPages}
+              onClick={() => setActivePage(prev => Math.min(totalPages, prev + 1))}
+              className="h-7 rounded border border-[#D8E3EE] px-3 text-[#607B90] transition enabled:hover:bg-[#F8FBFF] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Next
+            </button>
           </div>
         </div>
       </section>

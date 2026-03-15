@@ -1,4 +1,5 @@
 import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { useMemo, useState } from "react";
 
 const USER_GROWTH_BY_MONTH = [
   { month: "Jan", value: 760 },
@@ -17,15 +18,27 @@ const USER_GROWTH_BY_MONTH = [
 
 const TRANSACTIONS = [
   { id: "01", name: "Robert Fox", date: "15/09/2024", payOn: "Stripe", trId: "TRX-84921A", amount: "$ 20.99" },
-  { id: "02", name: "Robert Fox", date: "15/09/2024", payOn: "Stripe", trId: "TRX-84921B", amount: "$ 20.99" },
-  { id: "03", name: "Robert Fox", date: "15/09/2024", payOn: "Stripe", trId: "TRX-84921C", amount: "$ 20.99" },
-  { id: "04", name: "Robert Fox", date: "15/09/2024", payOn: "Stripe", trId: "TRX-84921D", amount: "$ 20.99" },
-  { id: "05", name: "Robert Fox", date: "15/09/2024", payOn: "Stripe", trId: "TRX-84921E", amount: "$ 20.99" },
+  { id: "02", name: "Alina Rahman", date: "16/09/2024", payOn: "Stripe", trId: "TRX-84921B", amount: "$ 18.50" },
+  { id: "03", name: "Mina Patel", date: "16/09/2024", payOn: "PayPal", trId: "TRX-84921C", amount: "$ 12.90" },
+  { id: "04", name: "Jonas Lee", date: "17/09/2024", payOn: "Stripe", trId: "TRX-84921D", amount: "$ 20.99" },
+  { id: "05", name: "Amina Noor", date: "17/09/2024", payOn: "Stripe", trId: "TRX-84921E", amount: "$ 19.20" },
+  { id: "06", name: "Sara Morgan", date: "18/09/2024", payOn: "Apple Pay", trId: "TRX-84921F", amount: "$ 20.99" },
 ] as const;
 
+const YEARS = ["2024", "2025", "2026"] as const;
 const MAX_GROWTH_VALUE = 1600;
+const PAGE_SIZE = 3;
 
 export function AdminEarningsDashboard() {
+  const [activeYear, setActiveYear] = useState<(typeof YEARS)[number]>("2024");
+  const [activePage, setActivePage] = useState(1);
+
+  const totalPages = Math.max(1, Math.ceil(TRANSACTIONS.length / PAGE_SIZE));
+  const visibleTransactions = useMemo(
+    () => TRANSACTIONS.slice((activePage - 1) * PAGE_SIZE, activePage * PAGE_SIZE),
+    [activePage],
+  );
+
   return (
     <div className="rounded-xl border border-[#CAD7E3] bg-white shadow-[0_1px_6px_rgba(0,0,0,0.25)]">
       <div className="rounded-t-xl bg-[#0F67AE] px-4 py-2.5">
@@ -35,12 +48,16 @@ export function AdminEarningsDashboard() {
       <div className="admin-panel-min-h px-4 pb-4 pt-4">
         <div className="rounded-lg border border-[#D4DFEA] bg-white p-3">
           <div className="mb-2 flex items-center justify-between">
-            <p className="text-[18px] font-semibold text-[#1E4B63]">User growth</p>
+            <div>
+              <p className="text-[18px] font-semibold text-[#1E4B63]">User growth</p>
+              <p className="text-[11px] text-[#607B90]">Year toggle and pagination are interactive.</p>
+            </div>
             <button
               type="button"
+              onClick={() => setActiveYear(YEARS[(YEARS.indexOf(activeYear) + 1) % YEARS.length])}
               className="inline-flex h-7 items-center gap-1 rounded bg-[#0F67AE] px-2 text-[10px] font-semibold text-white transition hover:bg-[#0A5792] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4BA3D9]"
             >
-              2024
+              {activeYear}
               <ChevronDown className="h-3 w-3" />
             </button>
           </div>
@@ -84,7 +101,7 @@ export function AdminEarningsDashboard() {
           </div>
         </div>
 
-        <h3 className="mt-5 text-[32px] font-semibold leading-none text-[#1E4B63]">Last Transections history</h3>
+        <h3 className="mt-5 text-[32px] font-semibold leading-none text-[#1E4B63]">Transaction History</h3>
 
         <div className="mt-3 overflow-hidden rounded-lg border border-[#CAD7E3]">
           <table className="w-full border-collapse">
@@ -99,13 +116,13 @@ export function AdminEarningsDashboard() {
               </tr>
             </thead>
             <tbody>
-              {TRANSACTIONS.map(transaction => (
+              {visibleTransactions.map(transaction => (
                 <tr key={transaction.trId} className="border-b border-[#DFE7EF] text-[14px] text-[#2E4F66]">
                   <td className="px-3 py-2.5">{transaction.id}</td>
                   <td className="px-3 py-2.5">
                     <div className="flex items-center gap-2.5">
                       <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-[#DFEAF4] text-[10px] font-semibold text-[#0F67AE]">
-                        RF
+                        {transaction.name.slice(0, 2).toUpperCase()}
                       </span>
                       {transaction.name}
                     </div>
@@ -120,18 +137,46 @@ export function AdminEarningsDashboard() {
           </table>
 
           <div className="flex items-center justify-between px-3 py-2 text-[11px] font-medium text-[#0F67AE]">
-            <p>SHOWING 1-8 OF 250</p>
+            <p>
+              SHOWING
+              {" "}
+              {(activePage - 1) * PAGE_SIZE + 1}
+              -
+              {Math.min(activePage * PAGE_SIZE, TRANSACTIONS.length)}
+              {" OF "}
+              {TRANSACTIONS.length}
+            </p>
             <div className="flex items-center gap-2 text-[#607B90]">
-              <button type="button" className="inline-flex h-6 w-6 items-center justify-center rounded hover:bg-[#EDF5FC]">
+              <button
+                type="button"
+                disabled={activePage === 1}
+                onClick={() => setActivePage(prev => Math.max(1, prev - 1))}
+                className="inline-flex h-6 w-6 items-center justify-center rounded transition enabled:hover:bg-[#EDF5FC] disabled:cursor-not-allowed disabled:opacity-50"
+              >
                 <ChevronLeft className="h-3.5 w-3.5" />
               </button>
-              <button type="button" className="inline-flex h-6 min-w-6 items-center justify-center rounded bg-[#0F67AE] px-1 text-white">1</button>
-              <button type="button" className="inline-flex h-6 min-w-6 items-center justify-center rounded px-1 hover:bg-[#EDF5FC]">2</button>
-              <button type="button" className="inline-flex h-6 min-w-6 items-center justify-center rounded px-1 hover:bg-[#EDF5FC]">3</button>
-              <span>4....30</span>
-              <button type="button" className="inline-flex h-6 min-w-6 items-center justify-center rounded px-1 hover:bg-[#EDF5FC]">60</button>
-              <button type="button" className="inline-flex h-6 min-w-6 items-center justify-center rounded px-1 hover:bg-[#EDF5FC]">120</button>
-              <button type="button" className="inline-flex h-6 w-6 items-center justify-center rounded hover:bg-[#EDF5FC]">
+              {Array.from({ length: totalPages }).map((_, index) => {
+                const pageNumber = index + 1;
+                return (
+                  <button
+                    key={pageNumber}
+                    type="button"
+                    onClick={() => setActivePage(pageNumber)}
+                    className={pageNumber === activePage
+                      ? "inline-flex h-6 min-w-6 items-center justify-center rounded bg-[#0F67AE] px-1 text-white"
+                      : "inline-flex h-6 min-w-6 items-center justify-center rounded px-1 transition hover:bg-[#EDF5FC]"
+                    }
+                  >
+                    {pageNumber}
+                  </button>
+                );
+              })}
+              <button
+                type="button"
+                disabled={activePage >= totalPages}
+                onClick={() => setActivePage(prev => Math.min(totalPages, prev + 1))}
+                className="inline-flex h-6 w-6 items-center justify-center rounded transition enabled:hover:bg-[#EDF5FC] disabled:cursor-not-allowed disabled:opacity-50"
+              >
                 <ChevronRight className="h-3.5 w-3.5" />
               </button>
             </div>

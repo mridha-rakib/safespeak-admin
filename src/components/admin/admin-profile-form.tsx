@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Camera, Pencil } from "lucide-react";
+import { useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 
 type AdminProfileValues = {
@@ -10,6 +11,10 @@ type AdminProfileValues = {
 };
 
 export function AdminProfileForm() {
+  const [isEditing, setIsEditing] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [avatarLabel, setAvatarLabel] = useState("MA");
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const {
     register,
     handleSubmit,
@@ -22,7 +27,10 @@ export function AdminProfileForm() {
     },
   });
 
-  const onSubmit = (_values: AdminProfileValues) => {};
+  const onSubmit = (values: AdminProfileValues) => {
+    setStatusMessage(`Profile updated for ${values.userName}.`);
+    setIsEditing(false);
+  };
 
   return (
     <div className="rounded-xl border border-[#CAD7E3] bg-white shadow-[0_1px_6px_rgba(0,0,0,0.2)]">
@@ -32,12 +40,28 @@ export function AdminProfileForm() {
 
       <div className="p-4 sm:p-6">
         <div className="mx-auto flex w-full max-w-[680px] flex-col items-center border-b border-[#E2EAF2] pb-5">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            className="hidden"
+            onChange={(event) => {
+              const fileName = event.target.files?.[0]?.name;
+              if (!fileName) {
+                return;
+              }
+
+              setAvatarLabel(fileName.slice(0, 2).toUpperCase());
+              setStatusMessage(`Profile image ready: ${fileName}`);
+            }}
+          />
           <div className="relative">
             <div className="flex h-[98px] w-[98px] items-center justify-center rounded-full bg-gradient-to-br from-[#2D3E4F] to-[#8897A5] text-[30px] font-semibold text-white">
-              MA
+              {avatarLabel}
             </div>
             <button
               type="button"
+              onClick={() => fileInputRef.current?.click()}
               className="absolute bottom-0 right-0 inline-flex h-7 w-7 items-center justify-center rounded-full bg-[#D3D8DE] text-[#5D6975] transition hover:bg-[#C7CED6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F67AE]"
               aria-label="Update profile picture"
             >
@@ -48,11 +72,18 @@ export function AdminProfileForm() {
           <h3 className="mt-3 text-[30px] font-semibold leading-none text-[#34475A] sm:text-[36px] lg:text-[44px]">Mr. Admin</h3>
           <button
             type="button"
+            onClick={() => {
+              setIsEditing(true);
+              setStatusMessage("Editing enabled. Update the fields and save when ready.");
+            }}
             className="mt-3 inline-flex items-center gap-1 text-[18px] font-semibold text-[#0F67AE] underline underline-offset-2 transition hover:text-[#0A5792] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F67AE]"
           >
             <Pencil className="h-4 w-4" />
             Edit Profile
           </button>
+          {statusMessage
+            ? <p className="mt-3 text-center text-[13px] font-medium text-[#0F67AE]">{statusMessage}</p>
+            : null}
         </div>
 
         <form className="mx-auto mt-4 w-full max-w-[680px] space-y-3" onSubmit={handleSubmit(onSubmit)}>
@@ -62,6 +93,7 @@ export function AdminProfileForm() {
             </label>
             <Input
               id="profile-user-name"
+              disabled={!isEditing}
               className="h-[44px] rounded-md border border-[#AEBCC9] bg-white text-[20px] text-[#1E293B] placeholder:text-[#93A5B7] focus-visible:ring-[#0F67AE]"
               {...register("userName", { required: "User name is required" })}
             />
@@ -77,6 +109,7 @@ export function AdminProfileForm() {
             <Input
               id="profile-email"
               type="email"
+              disabled={!isEditing}
               className="h-[44px] rounded-md border border-[#AEBCC9] bg-white text-[20px] text-[#1E293B] placeholder:text-[#93A5B7] focus-visible:ring-[#0F67AE]"
               {...register("email", {
                 required: "Email is required",
@@ -97,6 +130,7 @@ export function AdminProfileForm() {
             </label>
             <Input
               id="profile-contact-no"
+              disabled={!isEditing}
               className="h-[44px] rounded-md border border-[#AEBCC9] bg-white text-[20px] text-[#1E293B] placeholder:text-[#93A5B7] focus-visible:ring-[#0F67AE]"
               {...register("contactNo", { required: "Contact number is required" })}
             />
@@ -107,6 +141,7 @@ export function AdminProfileForm() {
 
           <Button
             type="submit"
+            disabled={!isEditing}
             className="mt-2 h-[44px] w-full rounded-md bg-[#0F67AE] text-[22px] font-semibold text-white hover:bg-[#0A5792]"
           >
             Update Profile

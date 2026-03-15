@@ -1,5 +1,5 @@
 import { Building2, Info, MapPin, MoreVertical, Phone, Plus, Search, Upload } from "lucide-react";
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 type MicroCard = {
   title: string;
@@ -73,8 +73,23 @@ export function AdminContentManagementDashboard() {
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
+  const [cardSearch, setCardSearch] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const maxUploadSize = 5 * 1024 * 1024;
+
+  const filteredMicroCards = useMemo(() => {
+    const normalizedSearch = cardSearch.trim().toLowerCase();
+
+    return microCards.filter((card) => {
+      if (!normalizedSearch) {
+        return true;
+      }
+
+      return card.title.toLowerCase().includes(normalizedSearch)
+        || card.description.toLowerCase().includes(normalizedSearch)
+        || card.tag.toLowerCase().includes(normalizedSearch);
+    });
+  }, [cardSearch, microCards]);
 
   const parseCsvLine = (line: string): string[] => {
     const values: string[] = [];
@@ -239,6 +254,8 @@ export function AdminContentManagementDashboard() {
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#94A3B8]" />
                 <input
                   type="search"
+                  value={cardSearch}
+                  onChange={event => setCardSearch(event.target.value)}
                   placeholder="Search cards..."
                   className="h-9 w-full rounded-full border border-[#D5DEE7] bg-white pl-9 pr-3 text-sm text-[#0F172A] outline-none transition focus:border-[#4BA3D9] sm:w-[220px]"
                 />
@@ -253,6 +270,19 @@ export function AdminContentManagementDashboard() {
               </button>
               <button
                 type="button"
+                onClick={() => {
+                  setMicroCards(prevCards => [
+                    {
+                      title: "New Community Safety Card",
+                      description: "Fresh draft card created from the admin dashboard.",
+                      tag: "Draft",
+                      views: 0,
+                      updated: "Updated just now",
+                    },
+                    ...prevCards,
+                  ]);
+                  setUploadSuccess("New micro-card draft created.");
+                }}
                 className="inline-flex h-9 items-center gap-1.5 rounded-full bg-[#0F67AE] px-3 text-sm font-medium text-white transition hover:bg-[#0B578F]"
               >
                 <Plus className="h-4 w-4" />
@@ -262,7 +292,7 @@ export function AdminContentManagementDashboard() {
           </div>
 
           <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {microCards.map(card => (
+            {filteredMicroCards.map(card => (
               <article key={card.title} className="overflow-hidden rounded-[10px] border border-[#D5DEE7] bg-[#FCFDFE]">
                 <div className="h-24 bg-gradient-to-r from-[#184A70] via-[#2A6A95] to-[#1B344C]" />
                 <div className="space-y-2 p-3">
@@ -281,6 +311,13 @@ export function AdminContentManagementDashboard() {
                 </div>
               </article>
             ))}
+            {filteredMicroCards.length === 0
+              ? (
+                  <div className="rounded-[10px] border border-dashed border-[#D5DEE7] bg-[#FCFDFE] px-4 py-10 text-center text-sm text-[#64748B]">
+                    No micro-cards matched your search.
+                  </div>
+                )
+              : null}
           </div>
         </section>
 
@@ -292,6 +329,7 @@ export function AdminContentManagementDashboard() {
             </div>
             <button
               type="button"
+              onClick={() => setUploadSuccess("Resource directory draft opened for a new partner listing.")}
               className="inline-flex h-9 items-center gap-1.5 rounded-full border border-[#D5DEE7] bg-white px-3 text-sm font-medium text-[#1E3A5F] transition hover:bg-[#F3F7FB]"
             >
               <Plus className="h-4 w-4" />
@@ -341,6 +379,7 @@ export function AdminContentManagementDashboard() {
                     <td className="px-4 py-3">
                       <button
                         type="button"
+                        onClick={() => setUploadSuccess(`Action menu opened for ${resource.name}.`)}
                         className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[#4A6780] transition hover:bg-[#EEF3F8]"
                         aria-label={`More actions for ${resource.name}`}
                       >

@@ -17,6 +17,7 @@ export function AdminCreateAdminForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [selectedImageName, setSelectedImageName] = useState("");
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   const {
     register,
@@ -36,7 +37,9 @@ export function AdminCreateAdminForm() {
   const passwordValue = watch("password");
   const { ref: profileImageRef, ...profileImageField } = register("profileImage");
 
-  const onSubmit = (_values: CreateAdminFormValues) => {};
+  const onSubmit = (values: CreateAdminFormValues) => {
+    setStatusMessage(`Admin account created for ${values.name}.`);
+  };
 
   return (
     <div className="rounded-xl border border-[#CAD7E3] bg-white shadow-[0_1px_6px_rgba(0,0,0,0.2)]">
@@ -45,6 +48,9 @@ export function AdminCreateAdminForm() {
       </div>
 
       <form className="space-y-3 p-4 sm:p-6" onSubmit={handleSubmit(onSubmit)}>
+        {statusMessage
+          ? <p className="rounded-md bg-[#EEF6FF] px-3 py-2 text-[13px] font-medium text-[#0F67AE]">{statusMessage}</p>
+          : null}
         <div className="space-y-1.5">
           <label htmlFor="create-admin-name" className="text-[22px] font-medium text-[#1E293B]">
             Name

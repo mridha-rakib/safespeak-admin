@@ -24,13 +24,16 @@ const USERS: AdminUser[] = [
 ];
 
 type UsersTab = "all" | "blocked";
+const PAGE_SIZE = 4;
 
 export function AdminUsersList() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
   const [blockTarget, setBlockTarget] = useState<AdminUser | null>(null);
-  const [blockedUserIds, setBlockedUserIds] = useState<string[]>(USERS.map(user => user.id));
+  const [blockedUserIds, setBlockedUserIds] = useState<string[]>(["02", "05"]);
+  const [isNewestFirst, setIsNewestFirst] = useState(true);
+  const [activePage, setActivePage] = useState(1);
 
   const activeTab: UsersTab = searchParams.get("tab") === "blocked" ? "blocked" : "all";
   const isBlockedTab = activeTab === "blocked";
@@ -46,6 +49,7 @@ export function AdminUsersList() {
     }
 
     setSearchParams(params, { replace: true });
+    setActivePage(1);
   };
 
   const filteredUsers = useMemo(() => {
@@ -59,10 +63,19 @@ export function AdminUsersList() {
       return sourceUsers;
     }
 
-    return sourceUsers.filter(user =>
+    const searchedUsers = sourceUsers.filter(user =>
       `${user.name} ${user.email}`.toLowerCase().includes(query),
     );
-  }, [activeTab, blockedUserIds, searchTerm]);
+
+    return [...searchedUsers].sort((left, right) => {
+      return isNewestFirst
+        ? right.joinedDate.localeCompare(left.joinedDate)
+        : left.joinedDate.localeCompare(right.joinedDate);
+    });
+  }, [activeTab, blockedUserIds, isNewestFirst, searchTerm]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / PAGE_SIZE));
+  const visibleUsers = filteredUsers.slice((activePage - 1) * PAGE_SIZE, activePage * PAGE_SIZE);
 
   const onConfirmBlock = () => {
     if (!blockTarget) {
@@ -71,6 +84,7 @@ export function AdminUsersList() {
 
     setBlockedUserIds(prev => (prev.includes(blockTarget.id) ? prev : [...prev, blockTarget.id]));
     setBlockTarget(null);
+    setActivePage(1);
   };
 
   return (
@@ -88,7 +102,10 @@ export function AdminUsersList() {
               />
               <Input
                 value={searchTerm}
-                onChange={event => setSearchTerm(event.target.value)}
+                onChange={(event) => {
+                  setSearchTerm(event.target.value);
+                  setActivePage(1);
+                }}
                 placeholder="Search User"
                 className="h-8 w-full rounded-md border border-transparent bg-white pl-8 text-xs text-[#1E293B] shadow-none focus-visible:ring-[#4BA3D9] sm:w-[190px]"
               />
@@ -119,9 +136,10 @@ export function AdminUsersList() {
           <div className="mb-2 flex justify-end">
             <button
               type="button"
+              onClick={() => setIsNewestFirst(prev => !prev)}
               className="inline-flex h-7 items-center gap-1 rounded border border-[#C9D8E5] bg-white px-2 text-[11px] font-medium text-[#1E293B] transition hover:bg-[#F6FAFE]"
             >
-              Date
+              {isNewestFirst ? "Newest First" : "Oldest First"}
               <ChevronDown className="h-3 w-3" />
             </button>
           </div>
@@ -139,7 +157,7 @@ export function AdminUsersList() {
                 </tr>
               </thead>
               <tbody>
-                {filteredUsers.map((user) => {
+                {visibleUsers.map((user) => {
                   const isBlocked = blockedUserIds.includes(user.id);
 
                   return (
@@ -167,6 +185,7 @@ export function AdminUsersList() {
                                   type="button"
                                   onClick={() => {
                                     setBlockedUserIds(prev => prev.filter(id => id !== user.id));
+                                    setActivePage(1);
                                     if (blockedUserIds.length === 1) {
                                       setActiveTab("all");
                                     }
@@ -200,7 +219,7 @@ export function AdminUsersList() {
                     </tr>
                   );
                 })}
-                {filteredUsers.length === 0
+                {visibleUsers.length === 0
                   ? (
                       <tr>
                         <td
@@ -221,30 +240,45 @@ export function AdminUsersList() {
           <div className="mt-3 flex flex-col gap-2 border-t border-[#D8E3EE] pt-2 text-[10px] font-medium text-[#607B90] sm:flex-row sm:items-center sm:justify-between">
             <p>
               SHOWING 1-
-              {filteredUsers.length}
+              {filteredUsers.length === 0 ? 0 : (activePage - 1) * PAGE_SIZE + 1}
+              -
+              {Math.min(activePage * PAGE_SIZE, filteredUsers.length)}
               {" "}
               OF
               {" "}
-              {activeTab === "blocked" ? blockedUserIds.length : 250}
+              {filteredUsers.length}
             </p>
             <div className="flex flex-wrap items-center gap-1.5 sm:justify-end">
-              <button type="button" className="rounded px-1.5 py-0.5 hover:bg-[#EEF5FC]">
+              <button
+                type="button"
+                disabled={activePage === 1}
+                onClick={() => setActivePage(prev => Math.max(1, prev - 1))}
+                className="rounded px-1.5 py-0.5 transition enabled:hover:bg-[#EEF5FC] disabled:cursor-not-allowed disabled:opacity-50"
+              >
                 {"<"}
               </button>
-              <button type="button" className="rounded bg-[#0F67AE] px-1.5 py-0.5 text-white">
-                1
-              </button>
-              <button type="button" className="rounded px-1.5 py-0.5 hover:bg-[#EEF5FC]">
-                2
-              </button>
-              <span>...</span>
-              <button type="button" className="rounded px-1.5 py-0.5 hover:bg-[#EEF5FC]">
-                60
-              </button>
-              <button type="button" className="rounded px-1.5 py-0.5 hover:bg-[#EEF5FC]">
-                120
-              </button>
-              <button type="button" className="rounded px-1.5 py-0.5 hover:bg-[#EEF5FC]">
+              {Array.from({ length: totalPages }).map((_, index) => {
+                const pageNumber = index + 1;
+                return (
+                  <button
+                    key={pageNumber}
+                    type="button"
+                    onClick={() => setActivePage(pageNumber)}
+                    className={pageNumber === activePage
+                      ? "rounded bg-[#0F67AE] px-1.5 py-0.5 text-white"
+                      : "rounded px-1.5 py-0.5 transition hover:bg-[#EEF5FC]"
+                    }
+                  >
+                    {pageNumber}
+                  </button>
+                );
+              })}
+              <button
+                type="button"
+                disabled={activePage >= totalPages}
+                onClick={() => setActivePage(prev => Math.min(totalPages, prev + 1))}
+                className="rounded px-1.5 py-0.5 transition enabled:hover:bg-[#EEF5FC] disabled:cursor-not-allowed disabled:opacity-50"
+              >
                 {">"}
               </button>
             </div>
@@ -309,6 +343,7 @@ export function AdminUsersList() {
                     onClick={() => {
                       if (isBlockedTab) {
                         setBlockedUserIds(prev => prev.filter(id => id !== selectedUser.id));
+                        setActivePage(1);
                         if (blockedUserIds.length === 1) {
                           setActiveTab("all");
                         }

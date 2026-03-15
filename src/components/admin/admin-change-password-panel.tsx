@@ -17,6 +17,7 @@ export function AdminChangePasswordPanel() {
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmNewPassword, setShowConfirmNewPassword] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   const {
     register,
@@ -34,7 +35,9 @@ export function AdminChangePasswordPanel() {
 
   const newPasswordValue = watch("newPassword");
 
-  const onSubmit = (_values: ChangePasswordValues) => {};
+  const onSubmit = () => {
+    setStatusMessage("Password updated successfully.");
+  };
 
   return (
     <div className="rounded-xl border border-[#CAD7E3] bg-white shadow-[0_1px_6px_rgba(0,0,0,0.25)]">
@@ -52,6 +55,9 @@ export function AdminChangePasswordPanel() {
 
       <form className="admin-panel-min-h px-4 pb-8 pt-6 sm:px-6" onSubmit={handleSubmit(onSubmit)}>
         <div className="mx-auto w-full max-w-[760px] space-y-2">
+          {statusMessage
+            ? <p className="rounded-md bg-[#EEF6FF] px-3 py-2 text-[13px] font-medium text-[#0F67AE]">{statusMessage}</p>
+            : null}
           <div className="space-y-1">
             <label htmlFor="current-password" className="text-[22px] font-medium text-[#1E3A4F]">
               Current Password
