@@ -1,8 +1,20 @@
 import { APP_ROUTE_PATHS } from "@/routes/paths";
+import type { LucideIcon } from "lucide-react";
+import {
+  BadgeAlert,
+  BrainCircuit,
+  ChartColumnBig,
+  LayoutDashboard,
+  LogOut,
+  ShieldCheck,
+  SquareLibrary,
+  UsersRound,
+} from "lucide-react";
 
 export type AdminSidebarItem = {
   label: string;
   to: string;
+  icon?: LucideIcon;
   exact?: boolean;
   showChevron?: boolean;
   tone?: "default" | "danger";
@@ -16,11 +28,13 @@ export const ADMIN_SIDEBAR_ITEMS: AdminSidebarItem[] = [
   {
     label: "Dashboard",
     to: APP_ROUTE_PATHS.adminDashboard,
+    icon: LayoutDashboard,
     exact: true,
   },
   {
     label: "Security & Compliance Center",
     to: APP_ROUTE_PATHS.adminSecurityCompliance,
+    icon: ShieldCheck,
     showChevron: true,
     children: [
       {
@@ -48,6 +62,7 @@ export const ADMIN_SIDEBAR_ITEMS: AdminSidebarItem[] = [
   {
     label: "Platform Intelligence Engine",
     to: APP_ROUTE_PATHS.adminPlatformIntelligence,
+    icon: BrainCircuit,
     showChevron: true,
     children: [
       {
@@ -79,6 +94,7 @@ export const ADMIN_SIDEBAR_ITEMS: AdminSidebarItem[] = [
   {
     label: "Analytics & Intelligence Center",
     to: APP_ROUTE_PATHS.adminInsights,
+    icon: ChartColumnBig,
     showChevron: true,
     children: [
       {
@@ -102,6 +118,7 @@ export const ADMIN_SIDEBAR_ITEMS: AdminSidebarItem[] = [
   {
     label: "Crisis & Safety Management",
     to: APP_ROUTE_PATHS.adminCrisisSafety,
+    icon: BadgeAlert,
     showChevron: true,
     children: [
       {
@@ -117,6 +134,7 @@ export const ADMIN_SIDEBAR_ITEMS: AdminSidebarItem[] = [
   {
     label: "Content & Education Management",
     to: APP_ROUTE_PATHS.adminContentManagement,
+    icon: SquareLibrary,
     showChevron: true,
     children: [
       {
@@ -148,6 +166,7 @@ export const ADMIN_SIDEBAR_ITEMS: AdminSidebarItem[] = [
   {
     label: "User & Operations Management",
     to: APP_ROUTE_PATHS.adminUsers,
+    icon: UsersRound,
     showChevron: true,
     children: [
       {
@@ -196,5 +215,6 @@ export const ADMIN_SIDEBAR_ITEMS: AdminSidebarItem[] = [
 export const ADMIN_LOGOUT_ITEM: AdminSidebarItem = {
   label: "Logout",
   to: APP_ROUTE_PATHS.login,
+  icon: LogOut,
   tone: "danger",
 };

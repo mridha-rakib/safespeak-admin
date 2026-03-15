@@ -203,8 +203,8 @@ export function AdminDashboardOverview({
 
       <section className="grid gap-4 xl:grid-cols-[1.35fr_0.95fr]">
         <article className="rounded-xl border border-[#CAD7E3] bg-white p-5 shadow-[0_1px_6px_rgba(0,0,0,0.08)]">
-          <div className="flex items-start justify-between gap-3">
-            <div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0 flex-1">
               <h3 className="text-[22px] font-semibold leading-none text-[#1E293B]">Missing Components From Scope</h3>
               <p className="mt-2 text-[13px] leading-6 text-[#607B90]">
                 These routes close the biggest operational gaps between the original dashboard and the requirements you provided.
@@ -212,7 +212,7 @@ export function AdminDashboardOverview({
             </div>
             <Link
               to={APP_ROUTE_PATHS.adminTaxonomiesManagement}
-              className="inline-flex h-10 items-center justify-center rounded-md bg-[#0F67AE] px-4 text-[13px] font-semibold text-white transition hover:bg-[#0B578F]"
+              className="inline-flex h-10 shrink-0 items-center justify-center self-start whitespace-nowrap rounded-md bg-[#0F67AE] px-4 text-[13px] font-semibold text-white transition hover:bg-[#0B578F]"
             >
               Open Intelligence Core
             </Link>

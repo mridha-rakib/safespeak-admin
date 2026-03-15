@@ -54,95 +54,98 @@ export function AdminChangePasswordPanel() {
       </div>
 
       <form className="admin-panel-min-h px-4 pb-8 pt-6 sm:px-6" onSubmit={handleSubmit(onSubmit)}>
-        <div className="mx-auto w-full max-w-[760px] space-y-2">
+        <div className="w-full space-y-4">
           {statusMessage
             ? <p className="rounded-md bg-[#EEF6FF] px-3 py-2 text-[13px] font-medium text-[#0F67AE]">{statusMessage}</p>
             : null}
-          <div className="space-y-1">
-            <label htmlFor="current-password" className="text-[22px] font-medium text-[#1E3A4F]">
-              Current Password
-            </label>
-            <div className="relative">
-              <Input
-                id="current-password"
-                type={showCurrentPassword ? "text" : "password"}
-                placeholder="********"
-                className="h-[46px] rounded-md border border-[#AEBCC9] bg-white pr-11 text-[20px] text-[#1E293B] placeholder:text-[#93A5B7] focus-visible:ring-[#0F67AE]"
-                {...register("currentPassword", { required: "Current password is required" })}
-              />
-              <button
-                type="button"
-                onClick={() => setShowCurrentPassword(prev => !prev)}
-                aria-label={showCurrentPassword ? "Hide current password" : "Show current password"}
-                className="absolute right-2.5 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-[#5B6C7C] transition hover:bg-[#F0F5FA] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F67AE]"
-              >
-                {showCurrentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </button>
-            </div>
-            {errors.currentPassword
-              ? <p className="text-[12px] font-medium text-[#E73908]">{errors.currentPassword.message}</p>
-              : null}
-          </div>
 
-          <div className="space-y-1">
-            <label htmlFor="new-password" className="text-[22px] font-medium text-[#1E3A4F]">
-              New Password
-            </label>
-            <div className="relative">
-              <Input
-                id="new-password"
-                type={showNewPassword ? "text" : "password"}
-                placeholder="********"
-                className="h-[46px] rounded-md border border-[#AEBCC9] bg-white pr-11 text-[20px] text-[#1E293B] placeholder:text-[#93A5B7] focus-visible:ring-[#0F67AE]"
-                {...register("newPassword", {
-                  required: "New password is required",
-                  minLength: {
-                    value: 8,
-                    message: "Password must be at least 8 characters",
-                  },
-                })}
-              />
-              <button
-                type="button"
-                onClick={() => setShowNewPassword(prev => !prev)}
-                aria-label={showNewPassword ? "Hide new password" : "Show new password"}
-                className="absolute right-2.5 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-[#5B6C7C] transition hover:bg-[#F0F5FA] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F67AE]"
-              >
-                {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </button>
+          <div className="grid gap-4 xl:grid-cols-2">
+            <div className="space-y-1">
+              <label htmlFor="current-password" className="text-[22px] font-medium text-[#1E3A4F]">
+                Current Password
+              </label>
+              <div className="relative">
+                <Input
+                  id="current-password"
+                  type={showCurrentPassword ? "text" : "password"}
+                  placeholder="********"
+                  className="h-[46px] rounded-md border border-[#AEBCC9] bg-white pr-11 text-[20px] text-[#1E293B] placeholder:text-[#93A5B7] focus-visible:ring-[#0F67AE]"
+                  {...register("currentPassword", { required: "Current password is required" })}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowCurrentPassword(prev => !prev)}
+                  aria-label={showCurrentPassword ? "Hide current password" : "Show current password"}
+                  className="absolute right-2.5 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-[#5B6C7C] transition hover:bg-[#F0F5FA] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F67AE]"
+                >
+                  {showCurrentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+              {errors.currentPassword
+                ? <p className="text-[12px] font-medium text-[#E73908]">{errors.currentPassword.message}</p>
+                : null}
             </div>
-            {errors.newPassword
-              ? <p className="text-[12px] font-medium text-[#E73908]">{errors.newPassword.message}</p>
-              : null}
-          </div>
 
-          <div className="space-y-1">
-            <label htmlFor="confirm-new-password" className="text-[22px] font-medium text-[#1E3A4F]">
-              Confirm New Password
-            </label>
-            <div className="relative">
-              <Input
-                id="confirm-new-password"
-                type={showConfirmNewPassword ? "text" : "password"}
-                placeholder="********"
-                className="h-[46px] rounded-md border border-[#AEBCC9] bg-white pr-11 text-[20px] text-[#1E293B] placeholder:text-[#93A5B7] focus-visible:ring-[#0F67AE]"
-                {...register("confirmNewPassword", {
-                  required: "Confirm new password is required",
-                  validate: value => value === newPasswordValue || "Passwords do not match",
-                })}
-              />
-              <button
-                type="button"
-                onClick={() => setShowConfirmNewPassword(prev => !prev)}
-                aria-label={showConfirmNewPassword ? "Hide confirm password" : "Show confirm password"}
-                className="absolute right-2.5 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-[#5B6C7C] transition hover:bg-[#F0F5FA] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F67AE]"
-              >
-                {showConfirmNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </button>
+            <div className="space-y-1">
+              <label htmlFor="new-password" className="text-[22px] font-medium text-[#1E3A4F]">
+                New Password
+              </label>
+              <div className="relative">
+                <Input
+                  id="new-password"
+                  type={showNewPassword ? "text" : "password"}
+                  placeholder="********"
+                  className="h-[46px] rounded-md border border-[#AEBCC9] bg-white pr-11 text-[20px] text-[#1E293B] placeholder:text-[#93A5B7] focus-visible:ring-[#0F67AE]"
+                  {...register("newPassword", {
+                    required: "New password is required",
+                    minLength: {
+                      value: 8,
+                      message: "Password must be at least 8 characters",
+                    },
+                  })}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowNewPassword(prev => !prev)}
+                  aria-label={showNewPassword ? "Hide new password" : "Show new password"}
+                  className="absolute right-2.5 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-[#5B6C7C] transition hover:bg-[#F0F5FA] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F67AE]"
+                >
+                  {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+              {errors.newPassword
+                ? <p className="text-[12px] font-medium text-[#E73908]">{errors.newPassword.message}</p>
+                : null}
             </div>
-            {errors.confirmNewPassword
-              ? <p className="text-[12px] font-medium text-[#E73908]">{errors.confirmNewPassword.message}</p>
-              : null}
+
+            <div className="space-y-1 xl:col-span-2">
+              <label htmlFor="confirm-new-password" className="text-[22px] font-medium text-[#1E3A4F]">
+                Confirm New Password
+              </label>
+              <div className="relative">
+                <Input
+                  id="confirm-new-password"
+                  type={showConfirmNewPassword ? "text" : "password"}
+                  placeholder="********"
+                  className="h-[46px] rounded-md border border-[#AEBCC9] bg-white pr-11 text-[20px] text-[#1E293B] placeholder:text-[#93A5B7] focus-visible:ring-[#0F67AE]"
+                  {...register("confirmNewPassword", {
+                    required: "Confirm new password is required",
+                    validate: value => value === newPasswordValue || "Passwords do not match",
+                  })}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmNewPassword(prev => !prev)}
+                  aria-label={showConfirmNewPassword ? "Hide confirm password" : "Show confirm password"}
+                  className="absolute right-2.5 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-[#5B6C7C] transition hover:bg-[#F0F5FA] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F67AE]"
+                >
+                  {showConfirmNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+              {errors.confirmNewPassword
+                ? <p className="text-[12px] font-medium text-[#E73908]">{errors.confirmNewPassword.message}</p>
+                : null}
+            </div>
           </div>
 
           <div className="flex justify-end">

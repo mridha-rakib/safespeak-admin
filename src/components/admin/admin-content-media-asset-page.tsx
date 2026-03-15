@@ -48,7 +48,7 @@ export function AdminContentMediaAssetPage() {
 
   return (
     <AdminContentManagementShell>
-      <section className="space-y-4 rounded-[12px] border border-[#D9E2EC] bg-white p-4">
+      <section className="w-full min-w-0 space-y-4 rounded-[12px] border border-[#D9E2EC] bg-white p-4">
         <div className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="inline-flex items-center gap-2 text-[12px] font-semibold text-[#1E293B]">

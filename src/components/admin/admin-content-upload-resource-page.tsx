@@ -73,7 +73,7 @@ export function AdminContentUploadResourcePage() {
 
   return (
     <AdminContentManagementShell>
-      <section className="space-y-4 rounded-[12px] border border-[#D9E2EC] bg-white p-4">
+      <section className="w-full min-w-0 space-y-4 rounded-[12px] border border-[#D9E2EC] bg-white p-4">
         <div>
           <h3 className="text-sm font-semibold text-[#1E293B]">Upload New Resource</h3>
           <p className="text-[10px] uppercase tracking-wide text-[#94A3B8]">Add to production library</p>

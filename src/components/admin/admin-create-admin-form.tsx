@@ -42,14 +42,14 @@ export function AdminCreateAdminForm() {
   };
 
   return (
-    <div className="rounded-xl border border-[#CAD7E3] bg-white shadow-[0_1px_6px_rgba(0,0,0,0.2)]">
+    <div className="w-full min-w-0 rounded-xl border border-[#CAD7E3] bg-white shadow-[0_1px_6px_rgba(0,0,0,0.2)]">
       <div className="rounded-t-xl bg-[#0F67AE] px-4 py-2.5">
         <h2 className="admin-panel-title font-semibold leading-none text-white">Create Admin</h2>
       </div>
 
-      <form className="space-y-3 p-4 sm:p-6" onSubmit={handleSubmit(onSubmit)}>
+      <form className="grid gap-4 p-4 sm:p-6 xl:grid-cols-2" onSubmit={handleSubmit(onSubmit)}>
         {statusMessage
-          ? <p className="rounded-md bg-[#EEF6FF] px-3 py-2 text-[13px] font-medium text-[#0F67AE]">{statusMessage}</p>
+          ? <p className="rounded-md bg-[#EEF6FF] px-3 py-2 text-[13px] font-medium text-[#0F67AE] xl:col-span-2">{statusMessage}</p>
           : null}
         <div className="space-y-1.5">
           <label htmlFor="create-admin-name" className="text-[22px] font-medium text-[#1E293B]">
@@ -88,7 +88,7 @@ export function AdminCreateAdminForm() {
             : null}
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-2 xl:col-span-2">
           <div className="space-y-1.5">
             <label htmlFor="create-admin-password" className="text-[22px] font-medium text-[#1E293B]">
               New Password
@@ -151,7 +151,7 @@ export function AdminCreateAdminForm() {
           </div>
         </div>
 
-        <div className="space-y-1.5">
+        <div className="space-y-1.5 xl:col-span-2">
           <label htmlFor="create-admin-profile-image" className="text-[22px] font-medium text-[#1E293B]">
             Profile Image
           </label>
@@ -184,7 +184,7 @@ export function AdminCreateAdminForm() {
 
         <Button
           type="submit"
-          className="mx-auto mt-2 flex h-[44px] w-full max-w-[640px] rounded-md bg-[#0F67AE] text-[22px] font-semibold text-white hover:bg-[#0A5792]"
+          className="mt-2 flex h-[44px] w-full rounded-md bg-[#0F67AE] text-[22px] font-semibold text-white hover:bg-[#0A5792] xl:col-span-2"
         >
           Create Admin
         </Button>

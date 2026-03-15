@@ -105,7 +105,7 @@ export function AdminFeedbackManagement() {
 
   return (
     <>
-      <div className="rounded-xl border border-[#CAD7E3] bg-white shadow-[0_1px_6px_rgba(0,0,0,0.25)]">
+      <div className="w-full min-w-0 rounded-xl border border-[#CAD7E3] bg-white shadow-[0_1px_6px_rgba(0,0,0,0.25)]">
         <div className="rounded-t-xl bg-[#0F67AE] px-4 py-2.5">
           <h2 className="admin-panel-title font-semibold leading-none text-white">Report Management</h2>
         </div>
@@ -124,7 +124,7 @@ export function AdminFeedbackManagement() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] border-collapse">
+            <table className="w-full min-w-full lg:min-w-[760px] border-collapse">
               <thead>
                 <tr className="border-b border-[#8EAFCC] text-left text-[12px] font-medium text-[#3A5E77]">
                   <th className="px-3 py-2">S.ID</th>

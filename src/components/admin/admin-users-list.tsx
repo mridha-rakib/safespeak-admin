@@ -89,7 +89,7 @@ export function AdminUsersList() {
 
   return (
     <>
-      <div className="rounded-xl border border-[#CAD7E3] bg-white p-3 shadow-[0_1px_6px_rgba(0,0,0,0.24)]">
+      <div className="w-full min-w-0 rounded-xl border border-[#CAD7E3] bg-white p-3 shadow-[0_1px_6px_rgba(0,0,0,0.24)]">
         <div className="flex flex-col gap-3 rounded-md bg-[#0F67AE] px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-[20px] font-semibold text-white">
             {isBlockedTab ? "Blocked List" : "User List"}
@@ -145,7 +145,7 @@ export function AdminUsersList() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] border-separate border-spacing-y-1.5">
+            <table className="w-full min-w-full lg:min-w-[760px] border-separate border-spacing-y-1.5">
               <thead>
                 <tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-[#607B90]">
                   <th className="px-2 py-1">S.ID</th>

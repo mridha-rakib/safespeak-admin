@@ -38,7 +38,7 @@ export function AdminSubscriptionsDashboard() {
   const visibleSubscriptions = filteredSubscriptions.slice((activePage - 1) * PAGE_SIZE, activePage * PAGE_SIZE);
 
   return (
-    <div className="rounded-xl border border-[#CAD7E3] bg-white shadow-[0_1px_6px_rgba(0,0,0,0.25)]">
+    <div className="w-full min-w-0 rounded-xl border border-[#CAD7E3] bg-white shadow-[0_1px_6px_rgba(0,0,0,0.25)]">
       <div className="flex flex-col gap-3 rounded-t-xl bg-[#0F67AE] px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="admin-panel-title font-semibold leading-none text-white">Subscriptions</h2>
@@ -75,7 +75,7 @@ export function AdminSubscriptionsDashboard() {
 
       <div className="admin-panel-min-h px-3 pb-3 pt-1">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[820px] border-collapse">
+          <table className="w-full min-w-full lg:min-w-[820px] border-collapse">
             <thead>
               <tr className="border-b border-[#AFC4D8] text-left text-[12px] font-medium text-[#3A5E77]">
                 <th className="px-3 py-2">S.ID</th>

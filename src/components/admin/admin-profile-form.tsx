@@ -39,7 +39,7 @@ export function AdminProfileForm() {
       </div>
 
       <div className="p-4 sm:p-6">
-        <div className="mx-auto flex w-full max-w-[680px] flex-col items-center border-b border-[#E2EAF2] pb-5">
+        <div className="flex w-full flex-col gap-5 border-b border-[#E2EAF2] pb-5 lg:flex-row lg:items-center lg:justify-between">
           <input
             ref={fileInputRef}
             type="file"
@@ -55,38 +55,47 @@ export function AdminProfileForm() {
               setStatusMessage(`Profile image ready: ${fileName}`);
             }}
           />
-          <div className="relative">
-            <div className="flex h-[98px] w-[98px] items-center justify-center rounded-full bg-gradient-to-br from-[#2D3E4F] to-[#8897A5] text-[30px] font-semibold text-white">
-              {avatarLabel}
+
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center lg:flex-1">
+            <div className="relative w-fit">
+              <div className="flex h-[98px] w-[98px] items-center justify-center rounded-full bg-gradient-to-br from-[#2D3E4F] to-[#8897A5] text-[30px] font-semibold text-white">
+                {avatarLabel}
+              </div>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="absolute bottom-0 right-0 inline-flex h-7 w-7 items-center justify-center rounded-full bg-[#D3D8DE] text-[#5D6975] transition hover:bg-[#C7CED6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F67AE]"
+                aria-label="Update profile picture"
+              >
+                <Camera className="h-3.5 w-3.5" />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="absolute bottom-0 right-0 inline-flex h-7 w-7 items-center justify-center rounded-full bg-[#D3D8DE] text-[#5D6975] transition hover:bg-[#C7CED6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F67AE]"
-              aria-label="Update profile picture"
-            >
-              <Camera className="h-3.5 w-3.5" />
-            </button>
+
+            <div className="min-w-0 flex-1">
+              <h3 className="text-[30px] font-semibold leading-none text-[#34475A] sm:text-[36px] lg:text-[44px]">Mr. Admin</h3>
+              <p className="mt-2 text-[15px] text-[#607B90]">
+                Manage the core account details used across the SafeSpeak admin workspace.
+              </p>
+              {statusMessage
+                ? <p className="mt-3 text-[13px] font-medium text-[#0F67AE]">{statusMessage}</p>
+                : null}
+            </div>
           </div>
 
-          <h3 className="mt-3 text-[30px] font-semibold leading-none text-[#34475A] sm:text-[36px] lg:text-[44px]">Mr. Admin</h3>
           <button
             type="button"
             onClick={() => {
               setIsEditing(true);
               setStatusMessage("Editing enabled. Update the fields and save when ready.");
             }}
-            className="mt-3 inline-flex items-center gap-1 text-[18px] font-semibold text-[#0F67AE] underline underline-offset-2 transition hover:text-[#0A5792] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F67AE]"
+            className="inline-flex w-full items-center justify-center gap-1 rounded-md border border-[#D8E3EE] bg-[#F7FAFE] px-4 py-3 text-[18px] font-semibold text-[#0F67AE] transition hover:bg-[#EEF6FF] hover:text-[#0A5792] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F67AE] sm:w-auto"
           >
             <Pencil className="h-4 w-4" />
             Edit Profile
           </button>
-          {statusMessage
-            ? <p className="mt-3 text-center text-[13px] font-medium text-[#0F67AE]">{statusMessage}</p>
-            : null}
         </div>
 
-        <form className="mx-auto mt-4 w-full max-w-[680px] space-y-3" onSubmit={handleSubmit(onSubmit)}>
+        <form className="mt-6 grid gap-4 xl:grid-cols-2" onSubmit={handleSubmit(onSubmit)}>
           <div className="space-y-1.5">
             <label htmlFor="profile-user-name" className="text-[22px] font-medium text-[#1E293B]">
               User Name
@@ -124,7 +133,7 @@ export function AdminProfileForm() {
               : null}
           </div>
 
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 xl:col-span-2">
             <label htmlFor="profile-contact-no" className="text-[22px] font-medium text-[#1E293B]">
               Contact No
             </label>
@@ -142,7 +151,7 @@ export function AdminProfileForm() {
           <Button
             type="submit"
             disabled={!isEditing}
-            className="mt-2 h-[44px] w-full rounded-md bg-[#0F67AE] text-[22px] font-semibold text-white hover:bg-[#0A5792]"
+            className="mt-2 h-[44px] w-full rounded-md bg-[#0F67AE] text-[22px] font-semibold text-white hover:bg-[#0A5792] xl:col-span-2"
           >
             Update Profile
           </Button>

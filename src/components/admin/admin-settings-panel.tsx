@@ -16,7 +16,7 @@ const SETTINGS_ITEMS: SettingsItem[] = [
 
 export function AdminSettingsPanel() {
   return (
-    <div className="rounded-xl border border-[#CAD7E3] bg-white shadow-[0_1px_6px_rgba(0,0,0,0.25)]">
+    <div className="w-full min-w-0 rounded-xl border border-[#CAD7E3] bg-white shadow-[0_1px_6px_rgba(0,0,0,0.25)]">
       <div className="rounded-t-xl bg-[#0F67AE] px-4 py-2.5">
         <h2 className="admin-panel-title font-semibold leading-none text-white">Settings</h2>
       </div>

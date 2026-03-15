@@ -18,7 +18,7 @@ function ContentField({ label, value }: { label: string; value: string }) {
 export function AdminContentLandingPage() {
   return (
     <AdminContentManagementShell>
-      <section className="rounded-[12px] border border-[#D9E2EC] bg-white">
+      <section className="w-full min-w-0 rounded-[12px] border border-[#D9E2EC] bg-white">
         <div className="flex items-center justify-between border-b border-[#E2EAF2] px-4 py-3">
           <div>
             <h3 className="text-[18px] font-semibold text-[#0F172A] sm:text-[20px]">Landing Page</h3>

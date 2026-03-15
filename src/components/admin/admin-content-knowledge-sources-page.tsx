@@ -80,7 +80,7 @@ export function AdminContentKnowledgeSourcesPage() {
 
   return (
     <AdminContentManagementShell>
-      <section className="space-y-4 rounded-[12px] border border-[#D9E2EC] bg-white p-4">
+      <section className="w-full min-w-0 space-y-4 rounded-[12px] border border-[#D9E2EC] bg-white p-4">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-[12px] font-semibold text-[#1E293B]">Recent Knowledge Sources</p>
@@ -119,7 +119,7 @@ export function AdminContentKnowledgeSourcesPage() {
         </div>
 
         <div className="overflow-x-auto rounded-[10px] border border-[#D5DEE7]">
-          <table className="w-full min-w-[680px] border-collapse text-left">
+          <table className="w-full min-w-full lg:min-w-[680px] border-collapse text-left">
             <thead className="bg-[#F8FBFF]">
               <tr className="text-[10px] uppercase tracking-wide text-[#607B90]">
                 <th className="px-3 py-2 font-semibold">Source Name</th>
