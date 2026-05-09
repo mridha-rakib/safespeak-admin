@@ -1,10 +1,12 @@
 import { AdminAboutPanel } from "@/components/admin/admin-about-panel";
 import { ADMIN_OPERATIONS_CONFIGS } from "@/components/admin/admin-operations-config";
 import { AdminOperationsSectionPage } from "@/components/admin/admin-operations-section-page";
+import { RequireAdminAuth } from "@/components/auth/require-admin-auth";
 import { AdminLayout } from "@/layouts/admin-layout";
 import { AuthLayout } from "@/layouts/auth-layout";
 import { AdminChangePasswordPage } from "@/pages/admin/change-password-page";
 import { AdminContentKnowledgeSourcesRoutePage } from "@/pages/admin/content-knowledge-sources-page";
+import { AdminContentEducationalContentRoutePage } from "@/pages/admin/content-educational-content-page";
 import { AdminContentLandingRoutePage } from "@/pages/admin/content-landing-page";
 import { AdminContentManagementPage } from "@/pages/admin/content-management-page";
 import { AdminContentMediaAssetRoutePage } from "@/pages/admin/content-media-asset-page";
@@ -60,7 +62,11 @@ export const appRouter = createBrowserRouter([
   },
   {
     path: APP_ROUTE_SEGMENTS.admin,
-    element: <AdminLayout />,
+    element: (
+      <RequireAdminAuth>
+        <AdminLayout />
+      </RequireAdminAuth>
+    ),
     children: [
       {
         index: true,
@@ -172,7 +178,7 @@ export const appRouter = createBrowserRouter([
       },
       {
         path: `${APP_ROUTE_SEGMENTS.contentManagement}/${APP_ROUTE_SEGMENTS.contentEducationalContent}`,
-        element: <AdminOperationsSectionPage config={ADMIN_OPERATIONS_CONFIGS.educationalContent} />,
+        element: <AdminContentEducationalContentRoutePage />,
       },
       {
         path: `${APP_ROUTE_SEGMENTS.contentManagement}/${APP_ROUTE_SEGMENTS.microEducationCards}`,

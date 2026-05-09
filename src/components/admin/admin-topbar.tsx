@@ -1,3 +1,4 @@
+import { getAdminAuthSession } from "@/lib/admin-auth";
 import { APP_ROUTE_PATHS } from "@/routes/paths";
 import { Bell, Menu, UserRound } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -9,6 +10,7 @@ type AdminTopBarProps = {
 
 export function AdminTopBar({ onMenuClick, showMenuButton = true }: AdminTopBarProps) {
   const navigate = useNavigate();
+  const adminName = getAdminAuthSession()?.user.fullName ?? "Admin";
 
   return (
     <div className="flex min-h-[72px] flex-wrap items-center justify-between gap-3 rounded-lg border border-[#CAD6E2] bg-[#FDFDFD] px-3 py-3 sm:min-h-[84px] sm:flex-nowrap sm:px-4">
@@ -27,7 +29,11 @@ export function AdminTopBar({ onMenuClick, showMenuButton = true }: AdminTopBarP
           : null}
 
         <div className="min-w-0 leading-tight">
-          <p className="truncate text-[22px] font-semibold text-[#154760] sm:text-[24px] lg:text-[28px]">Welcome,James</p>
+          <p className="truncate text-[22px] font-semibold text-[#154760] sm:text-[24px] lg:text-[28px]">
+            Welcome,
+            {" "}
+            {adminName}
+          </p>
           <p className="text-[12px] text-[#4D6778] sm:text-[14px]">Have a nice day!</p>
         </div>
       </div>

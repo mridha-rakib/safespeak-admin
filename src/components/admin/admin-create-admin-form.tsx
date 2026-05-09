@@ -1,32 +1,31 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Eye, EyeOff, ImagePlus } from "lucide-react";
-import { useRef, useState } from "react";
+import { createAdminUser } from "@/lib/admin-auth";
+import { Eye, EyeOff } from "lucide-react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 
 type CreateAdminFormValues = {
-  name: string;
   email: string;
   password: string;
   confirmPassword: string;
-  profileImage?: FileList;
 };
 
 export function AdminCreateAdminForm() {
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [selectedImageName, setSelectedImageName] = useState("");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const {
     register,
     watch,
+    reset,
     handleSubmit,
     formState: { errors },
   } = useForm<CreateAdminFormValues>({
     defaultValues: {
-      name: "",
       email: "",
       password: "",
       confirmPassword: "",
@@ -35,10 +34,27 @@ export function AdminCreateAdminForm() {
   });
 
   const passwordValue = watch("password");
-  const { ref: profileImageRef, ...profileImageField } = register("profileImage");
 
-  const onSubmit = (values: CreateAdminFormValues) => {
-    setStatusMessage(`Admin account created for ${values.name}.`);
+  const onSubmit = async (values: CreateAdminFormValues) => {
+    setStatusMessage(null);
+    setSubmitError(null);
+    setIsSubmitting(true);
+
+    try {
+      const user = await createAdminUser({
+        email: values.email.trim(),
+        password: values.password,
+      });
+
+      setStatusMessage(`Admin account created for ${user.email}.`);
+      reset();
+    }
+    catch (error) {
+      setSubmitError(error instanceof Error ? error.message : "Could not create admin account.");
+    }
+    finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -51,20 +67,9 @@ export function AdminCreateAdminForm() {
         {statusMessage
           ? <p className="rounded-md bg-[#EEF6FF] px-3 py-2 text-[13px] font-medium text-[#0F67AE] xl:col-span-2">{statusMessage}</p>
           : null}
-        <div className="space-y-1.5">
-          <label htmlFor="create-admin-name" className="text-[22px] font-medium text-[#1E293B]">
-            Name
-          </label>
-          <Input
-            id="create-admin-name"
-            placeholder="john doe"
-            className="h-[44px] rounded-md border border-[#AEBCC9] bg-white text-[20px] text-[#1E293B] placeholder:text-[#93A5B7] focus-visible:ring-[#0F67AE]"
-            {...register("name", { required: "Name is required" })}
-          />
-          {errors.name
-            ? <p className="text-[12px] font-medium text-[#E73908]">{errors.name.message}</p>
-            : null}
-        </div>
+        {submitError
+          ? <p className="rounded-md bg-[#FEE2E2] px-3 py-2 text-[13px] font-medium text-[#991B1B] xl:col-span-2">{submitError}</p>
+          : null}
 
         <div className="space-y-1.5">
           <label htmlFor="create-admin-email" className="text-[22px] font-medium text-[#1E293B]">
@@ -102,8 +107,8 @@ export function AdminCreateAdminForm() {
                 {...register("password", {
                   required: "Password is required",
                   minLength: {
-                    value: 8,
-                    message: "Password must be at least 8 characters",
+                    value: 12,
+                    message: "Password must be at least 12 characters",
                   },
                 })}
               />
@@ -151,42 +156,12 @@ export function AdminCreateAdminForm() {
           </div>
         </div>
 
-        <div className="space-y-1.5 xl:col-span-2">
-          <label htmlFor="create-admin-profile-image" className="text-[22px] font-medium text-[#1E293B]">
-            Profile Image
-          </label>
-          <input
-            id="create-admin-profile-image"
-            type="file"
-            accept="image/*"
-            className="hidden"
-            {...profileImageField}
-            ref={(element) => {
-              profileImageRef(element);
-              fileInputRef.current = element;
-            }}
-            onChange={(event) => {
-              profileImageField.onChange(event);
-              setSelectedImageName(event.target.files?.[0]?.name ?? "");
-            }}
-          />
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="flex h-[118px] w-full flex-col items-center justify-center gap-1 rounded-md border border-[#D7E2ED] bg-[#F5F8FC] text-[#7B8694] transition hover:bg-[#EEF4FA] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F67AE]"
-          >
-            <ImagePlus className="h-5 w-5" />
-            <span className="text-[20px]">
-              {selectedImageName || "Upload Image"}
-            </span>
-          </button>
-        </div>
-
         <Button
           type="submit"
+          disabled={isSubmitting}
           className="mt-2 flex h-[44px] w-full rounded-md bg-[#0F67AE] text-[22px] font-semibold text-white hover:bg-[#0A5792] xl:col-span-2"
         >
-          Create Admin
+          {isSubmitting ? "Creating..." : "Create Admin"}
         </Button>
       </form>
     </div>

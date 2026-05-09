@@ -5,9 +5,11 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ensureValidAdminSession, loginAdmin } from "@/lib/admin-auth";
 import { APP_ROUTE_PATHS } from "@/routes/paths";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 
 type LoginFormValues = {
   email: string;
@@ -16,6 +18,11 @@ type LoginFormValues = {
 };
 
 export function LoginForm() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const { register, handleSubmit, setValue, watch } = useForm<LoginFormValues>({
     defaultValues: {
       email: "",
@@ -26,8 +33,60 @@ export function LoginForm() {
 
   const rememberPassword = watch("rememberPassword");
 
-  const onSubmit = (values: LoginFormValues) => {
-    console.warn("Login form submitted", values);
+  useEffect(() => {
+    let isMounted = true;
+
+    const redirectIfSignedIn = async () => {
+      try {
+        const session = await ensureValidAdminSession();
+
+        if (isMounted && session) {
+          navigate(APP_ROUTE_PATHS.adminDashboard, { replace: true });
+        }
+      }
+      catch {
+        // Stay on the login page when a stored session cannot be refreshed.
+      }
+    };
+
+    void redirectIfSignedIn();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [navigate]);
+
+  const onSubmit = async (values: LoginFormValues) => {
+    setSubmitError(null);
+    setStatusMessage(null);
+    setIsSubmitting(true);
+
+    try {
+      await loginAdmin(
+        {
+          email: values.email.trim(),
+          password: values.password,
+        },
+        {
+          persistSession: values.rememberPassword,
+        },
+      );
+      setStatusMessage("Signed in successfully.");
+      const redirectTo = typeof location.state === "object"
+        && location.state !== null
+        && "from" in location.state
+        && typeof location.state.from === "string"
+        ? location.state.from
+        : APP_ROUTE_PATHS.adminDashboard;
+
+      navigate(redirectTo, { replace: true });
+    }
+    catch (error) {
+      setSubmitError(error instanceof Error ? error.message : "Admin login failed.");
+    }
+    finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -61,6 +120,13 @@ export function LoginForm() {
             />
           </div>
 
+          {submitError
+            ? <p className="rounded-md bg-[#FEE2E2] px-3 py-2 text-sm font-medium text-[#991B1B]">{submitError}</p>
+            : null}
+          {statusMessage
+            ? <p className="rounded-md bg-[#DCFCE7] px-3 py-2 text-sm font-medium text-[#166534]">{statusMessage}</p>
+            : null}
+
           <div className="flex items-center justify-between text-xs text-white">
             <label className="flex items-center gap-2">
               <Checkbox
@@ -77,8 +143,12 @@ export function LoginForm() {
             </Link>
           </div>
 
-          <Button type="submit" className="h-10 w-full bg-[#FF8F00] font-semibold hover:bg-[#F57C00]">
-            Sign in
+          <Button
+            type="submit"
+            disabled={isSubmitting}
+            className="h-10 w-full bg-[#FF8F00] font-semibold hover:bg-[#F57C00]"
+          >
+            {isSubmitting ? "Signing in..." : "Sign in"}
           </Button>
         </form>
       </CardContent>

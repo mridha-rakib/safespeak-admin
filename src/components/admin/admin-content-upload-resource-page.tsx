@@ -1,8 +1,13 @@
 import { AdminContentManagementShell } from "@/components/admin/admin-content-management-shell";
+import {
+  createContentResource,
+  getAdminContentResource,
+  updateContentResource,
+} from "@/lib/content-resources";
 import { APP_ROUTE_PATHS } from "@/routes/paths";
 import { CalendarDays, ChevronDown, CloudUpload } from "lucide-react";
-import { useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 const LANGUAGE_OPTIONS = ["English", "Arabic", "Mandarin", "Vietnamese"] as const;
 const CATEGORY_OPTIONS = ["Legal Awareness", "Online Abuse", "Family Safety", "Youth Support"] as const;
@@ -60,16 +65,126 @@ function SelectBlock({
   );
 }
 
+function formatReviewDateForInput(value?: string) {
+  if (!value) {
+    return "";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "2-digit",
+    day: "2-digit",
+    year: "numeric",
+  }).format(date);
+}
+
 export function AdminContentUploadResourcePage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const resourceId = searchParams.get("resourceId");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [resourceName, setResourceName] = useState("Legal Support Framework 2024");
   const [language, setLanguage] = useState<string>("English");
   const [category, setCategory] = useState<string>("Legal Awareness");
   const [jurisdiction, setJurisdiction] = useState<string>("Federal");
   const [reviewDate, setReviewDate] = useState("06/30/2026");
-  const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [existingFileName, setExistingFileName] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const isEditing = Boolean(resourceId);
+  const selectedFileName = selectedFile?.name ?? existingFileName;
+
+  useEffect(() => {
+    if (!resourceId) {
+      return;
+    }
+
+    let isMounted = true;
+
+    const loadResource = async () => {
+      try {
+        const resource = await getAdminContentResource(resourceId);
+
+        if (!isMounted) {
+          return;
+        }
+
+        setResourceName(resource.name);
+        setLanguage(resource.language);
+        setCategory(resource.category);
+        setJurisdiction(resource.jurisdiction);
+        setReviewDate(formatReviewDateForInput(resource.reviewDate));
+        setExistingFileName(resource.originalFileName);
+        setStatusMessage(`Editing ${resource.name}.`);
+      }
+      catch (error) {
+        if (isMounted) {
+          setStatusMessage(error instanceof Error ? error.message : "Could not load resource.");
+        }
+      }
+    };
+
+    void loadResource();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [resourceId]);
+
+  const handleSelectedFile = (file?: File) => {
+    setSelectedFile(file ?? null);
+    setStatusMessage(file ? `Ready to publish ${file.name}` : null);
+  };
+
+  const handleSubmit = async () => {
+    const trimmedName = resourceName.trim();
+
+    if (!trimmedName) {
+      setStatusMessage("Resource name is required.");
+      return;
+    }
+
+    if (!selectedFile && !isEditing) {
+      setStatusMessage("Please choose a PDF, MP3, or MP4 file before publishing.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    setStatusMessage(isEditing ? "Updating resource..." : "Uploading resource...");
+
+    try {
+      const payload = {
+        name: trimmedName,
+        language,
+        category,
+        jurisdiction,
+        reviewDate: reviewDate.trim() || undefined,
+        status: "published" as const,
+        file: selectedFile,
+      };
+      const resource = resourceId
+        ? await updateContentResource(resourceId, payload)
+        : await createContentResource(payload);
+
+      navigate(APP_ROUTE_PATHS.adminContentResourceLibrary, {
+        state: {
+          statusMessage: `${isEditing ? "Updated" : "Published"} ${resource.name}.`,
+        },
+      });
+    }
+    catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Resource upload failed.");
+    }
+    finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <AdminContentManagementShell>
@@ -105,21 +220,24 @@ export function AdminContentUploadResourcePage() {
             accept=".pdf,.mp3,.mp4"
             className="hidden"
             onChange={(event) => {
-              const fileName = event.target.files?.[0]?.name;
-              setSelectedFile(fileName ?? null);
-              setStatusMessage(fileName ? `Ready to publish ${fileName}` : null);
+              handleSelectedFile(event.target.files?.[0]);
             }}
           />
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={(event) => {
+              event.preventDefault();
+              handleSelectedFile(event.dataTransfer.files?.[0]);
+            }}
             className="flex min-h-[120px] w-full flex-col items-center justify-center rounded-md border border-dashed border-[#D8E3EE] bg-[#FAFCFF] text-[#94A3B8] transition hover:border-[#0F67AE] hover:bg-[#F4F9FF]"
           >
             <CloudUpload className="mb-1 h-4 w-4" />
             <p className="text-xs">Click to upload or drag and drop</p>
             <p className="text-[10px]">PDF, MP4, or MP3 (max 50MB)</p>
-            {selectedFile
-              ? <p className="mt-3 rounded bg-[#EEF6FF] px-3 py-1 text-[11px] font-semibold text-[#0F67AE]">{selectedFile}</p>
+            {selectedFileName
+              ? <p className="mt-3 rounded bg-[#EEF6FF] px-3 py-1 text-[11px] font-semibold text-[#0F67AE]">{selectedFileName}</p>
               : null}
           </button>
         </div>
@@ -148,12 +266,18 @@ export function AdminContentUploadResourcePage() {
           <button
             type="button"
             onClick={() => {
+              if (isEditing) {
+                navigate(APP_ROUTE_PATHS.adminContentResourceLibrary);
+                return;
+              }
+
               setResourceName("");
               setLanguage(LANGUAGE_OPTIONS[0]);
               setCategory(CATEGORY_OPTIONS[0]);
               setJurisdiction(JURISDICTION_OPTIONS[0]);
               setReviewDate("");
               setSelectedFile(null);
+              setExistingFileName(null);
               setStatusMessage("Draft cleared.");
             }}
             className="h-8 rounded-md px-3 text-xs font-semibold text-[#64748B] transition hover:bg-[#F3F7FB]"
@@ -162,13 +286,11 @@ export function AdminContentUploadResourcePage() {
           </button>
           <button
             type="button"
-            onClick={() => {
-              setStatusMessage(`Published ${resourceName || "resource"} for ${jurisdiction}.`);
-              navigate(APP_ROUTE_PATHS.adminContentResourceLibrary);
-            }}
+            disabled={isSubmitting}
+            onClick={() => void handleSubmit()}
             className="h-8 rounded-md bg-[#F59E0B] px-4 text-xs font-semibold text-white transition hover:bg-[#D88B07]"
           >
-            Upload & Publish
+            {isSubmitting ? "Publishing..." : "Upload & Publish"}
           </button>
         </div>
       </section>

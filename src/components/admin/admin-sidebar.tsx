@@ -19,6 +19,7 @@ import {
   SidebarSeparator,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { clearAdminAuthSession } from "@/lib/admin-auth";
 import { cn } from "@/lib/utils";
 import { ChevronDown, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -376,7 +377,13 @@ export function AdminSidebar({ items = ADMIN_SIDEBAR_ITEMS, className, onNavigat
                 isCollapsed ? "min-h-[56px] justify-center rounded-[18px] px-0 sm:px-0" : "",
               )}
             >
-              <NavLink to={ADMIN_LOGOUT_ITEM.to} onClick={onNavigate}>
+              <NavLink
+                to={ADMIN_LOGOUT_ITEM.to}
+                onClick={() => {
+                  clearAdminAuthSession();
+                  onNavigate?.();
+                }}
+              >
                 {LogoutIcon ? <LogoutIcon className="h-4 w-4" aria-hidden="true" /> : null}
                 <span className={cn(isCollapsed ? "sr-only" : "")}>{ADMIN_LOGOUT_ITEM.label}</span>
               </NavLink>

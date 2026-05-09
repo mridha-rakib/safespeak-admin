@@ -1,45 +1,16 @@
 import { AdminContentManagementShell } from "@/components/admin/admin-content-management-shell";
+import {
+  deleteContentResource,
+  getContentResourceDownloadUrl,
+  listAdminContentResources,
+  type ContentResourceItem,
+} from "@/lib/content-resources";
 import { APP_ROUTE_PATHS } from "@/routes/paths";
-import { MoreVertical, Plus, Search, Upload } from "lucide-react";
-import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Download, MoreVertical, Pencil, Plus, Search, Trash2, Upload } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 
-const RESOURCE_ROWS = [
-  {
-    name: "Legal Rights Guide 2024 Update",
-    size: "1.4MB",
-    language: "English",
-    category: "Legal Awareness",
-    jurisdiction: "NSW",
-    status: "Expiring Soon",
-  },
-  {
-    name: "Coping with Online Abuse",
-    size: "4.2MB",
-    language: "Arabic",
-    category: "Online Abuse",
-    jurisdiction: "Federal",
-    status: "Active",
-  },
-  {
-    name: "Reporting School Bullying",
-    size: "1.9MB",
-    language: "Spanish",
-    category: "School Safety",
-    jurisdiction: "VIC",
-    status: "Outdated",
-  },
-  {
-    name: "Identifying Phishing Scams",
-    size: "2.1MB",
-    language: "English",
-    category: "Scams",
-    jurisdiction: "Federal",
-    status: "Active",
-  },
-] as const;
-
-const FILTERS = ["All Resources", "Banks", "Legal Aid", "Counseling"] as const;
+const FILTERS = ["All Resources", "Legal Awareness", "Online Abuse", "Family Safety", "Youth Support"] as const;
 
 function categoryClass(category: string) {
   if (category === "Legal Awareness") {
@@ -58,6 +29,9 @@ function statusClass(status: string) {
   if (status === "Expiring Soon") {
     return "text-[#D97706]";
   }
+  if (status === "Draft" || status === "Archived") {
+    return "text-[#64748B]";
+  }
   if (status === "Outdated") {
     return "text-[#B45309]";
   }
@@ -66,31 +40,91 @@ function statusClass(status: string) {
 
 const PAGE_SIZE = 2;
 
+function formatBytes(bytes: number) {
+  if (bytes < 1024) {
+    return `${bytes}B`;
+  }
+
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)}KB`;
+  }
+
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+}
+
+function statusLabel(status: ContentResourceItem["displayStatus"]) {
+  return status.toUpperCase();
+}
+
 export function AdminContentResourceLibraryPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchValue, setSearchValue] = useState("");
   const [activeFilter, setActiveFilter] = useState<(typeof FILTERS)[number]>("All Resources");
   const [activePage, setActivePage] = useState(1);
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [resources, setResources] = useState<ContentResourceItem[]>([]);
+  const [openActionId, setOpenActionId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [statusMessage, setStatusMessage] = useState<string | null>(() => {
+    const state = location.state as { statusMessage?: string } | null;
+    return state?.statusMessage ?? null;
+  });
+
+  const loadResources = useCallback(async () => {
+    setIsLoading(true);
+
+    try {
+      const items = await listAdminContentResources();
+      setResources(items);
+    }
+    catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Could not load resources.");
+    }
+    finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadResources();
+  }, [loadResources]);
 
   const filteredRows = useMemo(() => {
     const normalizedSearch = searchValue.trim().toLowerCase();
 
-    return RESOURCE_ROWS.filter((item) => {
+    return resources.filter((item) => {
       const matchesSearch = normalizedSearch.length === 0
         || item.name.toLowerCase().includes(normalizedSearch)
         || item.language.toLowerCase().includes(normalizedSearch)
-        || item.category.toLowerCase().includes(normalizedSearch);
+        || item.category.toLowerCase().includes(normalizedSearch)
+        || item.originalFileName.toLowerCase().includes(normalizedSearch);
 
       const matchesFilter = activeFilter === "All Resources"
-        || item.category.includes(activeFilter.replace(" Aid", ""));
+        || item.category === activeFilter;
 
       return matchesSearch && matchesFilter;
     });
-  }, [activeFilter, searchValue]);
+  }, [activeFilter, resources, searchValue]);
 
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
   const paginatedRows = filteredRows.slice((activePage - 1) * PAGE_SIZE, activePage * PAGE_SIZE);
+  const handleDelete = async (item: ContentResourceItem) => {
+    const confirmed = window.confirm(`Delete ${item.name}?`);
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await deleteContentResource(item.id);
+      setResources(currentResources => currentResources.filter(resource => resource.id !== item.id));
+      setStatusMessage(`Deleted ${item.name}.`);
+      setOpenActionId(null);
+    }
+    catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Could not delete resource.");
+    }
+  };
 
   return (
     <AdminContentManagementShell>
@@ -170,33 +204,79 @@ export function AdminContentResourceLibraryPage() {
               </tr>
             </thead>
             <tbody>
+              {isLoading
+                ? (
+                    <tr>
+                      <td colSpan={7} className="px-3 py-8 text-center text-[12px] text-[#607B90]">
+                        Loading resources...
+                      </td>
+                    </tr>
+                  )
+                : null}
               {paginatedRows.map(item => (
-                <tr key={item.name} className="border-t border-[#E4EAF1] text-[12px] text-[#1E293B]">
+                <tr key={item.id} className="border-t border-[#E4EAF1] text-[12px] text-[#1E293B]">
                   <td className="px-3 py-2.5"><input type="checkbox" readOnly /></td>
                   <td className="px-3 py-2.5">
                     <p className="font-medium">{item.name}</p>
-                    <p className="text-[10px] text-[#94A3B8]">{item.size}</p>
+                    <p className="text-[10px] text-[#94A3B8]">
+                      {formatBytes(item.fileSizeBytes)}
+                      {" | "}
+                      {item.originalFileName}
+                    </p>
                   </td>
                   <td className="px-3 py-2.5 text-[#475569]">{item.language}</td>
                   <td className="px-3 py-2.5">
                     <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${categoryClass(item.category)}`}>{item.category}</span>
                   </td>
                   <td className="px-3 py-2.5 text-[#475569]">{item.jurisdiction}</td>
-                  <td className={`px-3 py-2.5 text-[11px] font-semibold ${statusClass(item.status)}`}>
-                    {item.status === "Expiring Soon" ? "EXPIRING SOON" : item.status === "Outdated" ? "OUTDATED" : "ACTIVE"}
+                  <td className={`px-3 py-2.5 text-[11px] font-semibold ${statusClass(item.displayStatus)}`}>
+                    {statusLabel(item.displayStatus)}
                   </td>
                   <td className="px-3 py-2.5">
-                    <button
-                      type="button"
-                      onClick={() => setStatusMessage(`Action menu opened for ${item.name}.`)}
-                      className="inline-flex h-6 w-6 items-center justify-center rounded text-[#607B90] transition hover:bg-[#EEF3F8]"
-                    >
-                      <MoreVertical className="h-4 w-4" />
-                    </button>
+                    <div className="relative inline-flex">
+                      <button
+                        type="button"
+                        onClick={() => setOpenActionId(currentId => currentId === item.id ? null : item.id)}
+                        className="inline-flex h-6 w-6 items-center justify-center rounded text-[#607B90] transition hover:bg-[#EEF3F8]"
+                      >
+                        <MoreVertical className="h-4 w-4" />
+                      </button>
+                      {openActionId === item.id
+                        ? (
+                            <div className="absolute right-0 top-7 z-20 w-32 overflow-hidden rounded-md border border-[#D8E3EE] bg-white text-[11px] shadow-[0_12px_28px_rgba(15,23,42,0.14)]">
+                              <button
+                                type="button"
+                                onClick={() => navigate(`${APP_ROUTE_PATHS.adminContentUploadResource}?resourceId=${item.id}`)}
+                                className="flex w-full items-center gap-2 px-3 py-2 text-left text-[#334155] transition hover:bg-[#F8FBFF]"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                                Edit
+                              </button>
+                              <a
+                                href={getContentResourceDownloadUrl(item)}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="flex w-full items-center gap-2 px-3 py-2 text-left text-[#334155] transition hover:bg-[#F8FBFF]"
+                              >
+                                <Download className="h-3.5 w-3.5" />
+                                Download
+                              </a>
+                              <button
+                                type="button"
+                                onClick={() => void handleDelete(item)}
+                                className="flex w-full items-center gap-2 px-3 py-2 text-left text-[#B42318] transition hover:bg-[#FFF5F5]"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                                Delete
+                              </button>
+                            </div>
+                          )
+                        : null}
+                    </div>
                   </td>
                 </tr>
               ))}
-              {paginatedRows.length === 0
+              {!isLoading && paginatedRows.length === 0
                 ? (
                     <tr>
                       <td colSpan={7} className="px-3 py-8 text-center text-[12px] text-[#607B90]">

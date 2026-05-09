@@ -1,6 +1,12 @@
 import { AdminContentManagementShell } from "@/components/admin/admin-content-management-shell";
+import {
+  createMediaAsset,
+  listAdminMediaAssets,
+  updateMediaAsset,
+  type MediaAssetItem,
+} from "@/lib/media-assets";
 import { ChevronDown, FileImage, ImageUp } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const CATEGORY_OPTIONS = ["Cybersecurity", "Racism Reporting", "Online Abuse", "Emergency Help"] as const;
 
@@ -39,12 +45,109 @@ function CardInput({
 
 export function AdminContentMediaAssetPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [currentAsset, setCurrentAsset] = useState<MediaAssetItem | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [assetName, setAssetName] = useState<string | null>(null);
   const [category, setCategory] = useState<string>("Cybersecurity");
   const [cardTitle, setCardTitle] = useState("Recognizing Phishing Attempts");
   const [subtitle, setSubtitle] = useState("Learn the signs of a suspicious email.");
   const [bodyText, setBodyText] = useState("Phishing emails often create a sense of urgency. Look for generic greetings like 'Dear Customer,' misspelled words, or strange sender addresses. If an email asks for sensitive information immediately, verify it through another channel.");
-  const [statusMessage, setStatusMessage] = useState<string | null>("Media asset controls are active.");
+  const [statusMessage, setStatusMessage] = useState<string | null>("Loading media asset controls...");
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    void listAdminMediaAssets().then((assets) => {
+      if (!isMounted) {
+        return;
+      }
+
+      const latestAsset = assets[0];
+
+      if (latestAsset) {
+        setCurrentAsset(latestAsset);
+        setAssetName(latestAsset.originalFileName);
+        setCategory(latestAsset.category);
+        setCardTitle(latestAsset.title);
+        setSubtitle(latestAsset.subtitle);
+        setBodyText(latestAsset.bodyText);
+        setStatusMessage("Media asset controls are active.");
+        return;
+      }
+
+      setStatusMessage("No media assets found. Upload an image to create one.");
+    }).catch((error: unknown) => {
+      if (!isMounted) {
+        return;
+      }
+
+      setStatusMessage(error instanceof Error ? error.message : "Could not load media assets.");
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const resetDraft = () => {
+    setSelectedFile(null);
+    setAssetName(currentAsset?.originalFileName ?? null);
+    setCategory(currentAsset?.category ?? "Cybersecurity");
+    setCardTitle(currentAsset?.title ?? "Recognizing Phishing Attempts");
+    setSubtitle(currentAsset?.subtitle ?? "Learn the signs of a suspicious email.");
+    setBodyText(currentAsset?.bodyText ?? "Phishing emails often create a sense of urgency. Look for generic greetings like 'Dear Customer,' misspelled words, or strange sender addresses. If an email asks for sensitive information immediately, verify it through another channel.");
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+
+    setStatusMessage("Media draft reset.");
+  };
+
+  const saveAsset = async () => {
+    if (!cardTitle.trim() || !subtitle.trim() || !bodyText.trim()) {
+      setStatusMessage("Card title, subtitle, and body text are required.");
+      return;
+    }
+
+    if (!currentAsset && !selectedFile) {
+      setStatusMessage("Upload an image before saving a new media asset.");
+      return;
+    }
+
+    setIsSaving(true);
+
+    try {
+      const input = {
+        title: cardTitle.trim(),
+        subtitle: subtitle.trim(),
+        bodyText: bodyText.trim(),
+        category,
+        status: "published" as const,
+        file: selectedFile,
+      };
+      const savedAsset = currentAsset
+        ? await updateMediaAsset(currentAsset.id, input)
+        : await createMediaAsset(input);
+
+      setCurrentAsset(savedAsset);
+      setSelectedFile(null);
+      setAssetName(savedAsset.originalFileName);
+
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+
+      setStatusMessage(`Saved media card "${savedAsset.title}" in ${savedAsset.category}.`);
+    }
+    catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Could not save media asset.");
+    }
+    finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
     <AdminContentManagementShell>
@@ -65,9 +168,18 @@ export function AdminContentMediaAssetPage() {
             accept="image/png,image/jpeg"
             className="hidden"
             onChange={(event) => {
-              const fileName = event.target.files?.[0]?.name;
-              setAssetName(fileName ?? null);
-              setStatusMessage(fileName ? `Selected asset ${fileName}.` : null);
+              const file = event.target.files?.[0] ?? null;
+
+              if (file && file.size > 2 * 1024 * 1024) {
+                setSelectedFile(null);
+                setAssetName(currentAsset?.originalFileName ?? null);
+                setStatusMessage("Image must be 2MB or smaller.");
+                return;
+              }
+
+              setSelectedFile(file);
+              setAssetName(file?.name ?? currentAsset?.originalFileName ?? null);
+              setStatusMessage(file ? `Selected asset ${file.name}.` : null);
             }}
           />
           <div className="space-y-2">
@@ -141,20 +253,19 @@ export function AdminContentMediaAssetPage() {
         <div className="flex justify-end gap-2 border-t border-[#E4EAF1] pt-3">
           <button
             type="button"
-            onClick={() => {
-              setAssetName(null);
-              setStatusMessage("Media draft reset.");
-            }}
+            onClick={resetDraft}
+            disabled={isSaving}
             className="h-8 rounded-md px-3 text-xs font-semibold text-[#64748B] transition hover:bg-[#F3F7FB]"
           >
             Reset
           </button>
           <button
             type="button"
-            onClick={() => setStatusMessage(`Saved media card "${cardTitle}" in ${category}.`)}
-            className="h-8 rounded-md bg-[#0F67AE] px-4 text-xs font-semibold text-white transition hover:bg-[#0B578F]"
+            onClick={() => void saveAsset()}
+            disabled={isSaving}
+            className="h-8 rounded-md bg-[#0F67AE] px-4 text-xs font-semibold text-white transition hover:bg-[#0B578F] disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Save Asset
+            {isSaving ? "Saving..." : "Save Asset"}
           </button>
         </div>
       </section>
