@@ -106,7 +106,7 @@ export const appRouter = createBrowserRouter([
       },
       {
         path: `${APP_ROUTE_SEGMENTS.securityCompliance}/${APP_ROUTE_SEGMENTS.privacyControls}`,
-        element: <AdminOperationsSectionPage config={ADMIN_OPERATIONS_CONFIGS.privacyControls} />,
+        element: <AdminOperationsSectionPage config={ADMIN_OPERATIONS_CONFIGS.privacyControls} sectionKey="privacyRequests" />,
       },
       {
         path: `${APP_ROUTE_SEGMENTS.securityCompliance}/${APP_ROUTE_SEGMENTS.legalCompliance}`,
@@ -118,11 +118,11 @@ export const appRouter = createBrowserRouter([
       },
       {
         path: `${APP_ROUTE_SEGMENTS.platformIntelligence}/${APP_ROUTE_SEGMENTS.taxonomiesManagement}`,
-        element: <AdminOperationsSectionPage config={ADMIN_OPERATIONS_CONFIGS.taxonomiesManagement} />,
+        element: <AdminOperationsSectionPage config={ADMIN_OPERATIONS_CONFIGS.taxonomiesManagement} sectionKey="taxonomies" />,
       },
       {
         path: `${APP_ROUTE_SEGMENTS.platformIntelligence}/${APP_ROUTE_SEGMENTS.serviceDestinations}`,
-        element: <AdminOperationsSectionPage config={ADMIN_OPERATIONS_CONFIGS.serviceDestinations} />,
+        element: <AdminOperationsSectionPage config={ADMIN_OPERATIONS_CONFIGS.serviceDestinations} sectionKey="destinations" />,
       },
       {
         path: `${APP_ROUTE_SEGMENTS.platformIntelligence}/${APP_ROUTE_SEGMENTS.integrationManagement}`,
@@ -194,7 +194,7 @@ export const appRouter = createBrowserRouter([
       },
       {
         path: `${APP_ROUTE_SEGMENTS.insights}/${APP_ROUTE_SEGMENTS.intelligenceCenter}`,
-        element: <AdminOperationsSectionPage config={ADMIN_OPERATIONS_CONFIGS.intelligenceCenter} />,
+        element: <AdminOperationsSectionPage config={ADMIN_OPERATIONS_CONFIGS.intelligenceCenter} sectionKey="analytics" />,
       },
       {
         path: `${APP_ROUTE_SEGMENTS.insights}/${APP_ROUTE_SEGMENTS.patterns}`,

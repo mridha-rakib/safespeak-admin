@@ -1,6 +1,8 @@
 import { APP_ROUTE_PATHS } from "@/routes/paths";
 import { cn } from "@/lib/utils";
+import { getAdminAnalyticsOverview, getAdminDashboardSummary } from "@/lib/admin-operations";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
 
 type DashboardRangeKey = "24h" | "7d" | "30d" | "90d";
 
@@ -117,11 +119,88 @@ export function AdminDashboardOverview({
 }: AdminDashboardOverviewProps) {
   const [searchParams] = useSearchParams();
   const location = useLocation();
+  const [dashboardSummary, setDashboardSummary] = useState<{
+    users: number;
+    reports: number;
+    knowledgeSources: number;
+    openPrivacyRequests: number;
+  } | null>(null);
+  const [analyticsOverview, setAnalyticsOverview] = useState<{
+    totalReports?: number;
+    byStatus?: Array<{ _id: string; count: number }>;
+    bySeverity?: Array<{ _id: string; count: number }>;
+  } | null>(null);
 
   const searchRange = searchParams.get("range");
   const activeRange: DashboardRangeKey = RANGE_TABS.some(tab => tab.key === searchRange)
     ? (searchRange as DashboardRangeKey)
     : "7d";
+
+  useEffect(() => {
+    let isMounted = true;
+
+    void Promise.all([
+      getAdminDashboardSummary(),
+      getAdminAnalyticsOverview(),
+    ])
+      .then(([dashboard, overview]) => {
+        if (!isMounted) {
+          return;
+        }
+
+        setDashboardSummary(dashboard);
+        setAnalyticsOverview(overview);
+      })
+      .catch(() => {
+        if (!isMounted) {
+          return;
+        }
+
+        setDashboardSummary(null);
+        setAnalyticsOverview(null);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const kpiCards = useMemo(() => {
+    if (!dashboardSummary || !analyticsOverview) {
+      return KPI_CARDS;
+    }
+
+    const openOrHighRisk = analyticsOverview.bySeverity?.reduce((count, row) => {
+      if ((row._id ?? "").toLowerCase() === "high") {
+        return count + row.count;
+      }
+
+      return count;
+    }, 0) ?? 0;
+
+    return [
+      {
+        label: "HIGH-RISK ESCALATIONS",
+        value: String(openOrHighRisk || dashboardSummary.openPrivacyRequests),
+        detail: "High-severity anonymised reports currently visible in analytics-safe aggregation.",
+      },
+      {
+        label: "TOTAL REPORTS",
+        value: String(analyticsOverview.totalReports ?? dashboardSummary.reports),
+        detail: "Current report volume available to admin and analytics review.",
+      },
+      {
+        label: "KNOWLEDGE SOURCES",
+        value: String(dashboardSummary.knowledgeSources),
+        detail: "Approved and pending knowledge-source records connected to SafeSpeak operations.",
+      },
+      {
+        label: "OPEN PRIVACY REQUESTS",
+        value: String(dashboardSummary.openPrivacyRequests),
+        detail: `${dashboardSummary.users} total platform users are currently visible to the admin dashboard.`,
+      },
+    ] as const;
+  }, [analyticsOverview, dashboardSummary]);
 
   const buildRangeHref = (range: DashboardRangeKey) => {
     const nextParams = new URLSearchParams(searchParams);
@@ -165,7 +244,7 @@ export function AdminDashboardOverview({
         </div>
 
         <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          {KPI_CARDS.map(card => (
+          {kpiCards.map(card => (
             <article
               key={card.label}
               className="rounded-xl border border-[#D8E3EE] bg-[#FBFDFF] px-4 py-3"

@@ -1,42 +1,115 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { listAdminUsers, updateAdminUser, type AdminManagedUser } from "@/lib/admin-operations";
 import { Ban, ChevronDown, Eye, RotateCcw, Search } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
-type AdminUser = {
+type UsersTab = "all" | "blocked";
+const PAGE_SIZE = 4;
+
+type AdminUserRecord = {
   id: string;
   name: string;
   email: string;
   joinedDate: string;
   phone: string;
+  role: string;
+  status: AdminManagedUser["status"];
 };
 
-const USERS: AdminUser[] = [
-  { id: "01", name: "Robert Fox", email: "fox@email.com", joinedDate: "02-24-2024", phone: "+123124" },
-  { id: "02", name: "Robert Fox", email: "fox@email.com", joinedDate: "02-24-2024", phone: "+123124" },
-  { id: "03", name: "Robert Fox", email: "fox@email.com", joinedDate: "02-24-2024", phone: "+123124" },
-  { id: "04", name: "Robert Fox", email: "fox@email.com", joinedDate: "02-24-2024", phone: "+123124" },
-  { id: "05", name: "Robert Fox", email: "fox@email.com", joinedDate: "02-24-2024", phone: "+123124" },
-  { id: "06", name: "Robert Fox", email: "fox@email.com", joinedDate: "02-24-2024", phone: "+123124" },
-  { id: "07", name: "Robert Fox", email: "fox@email.com", joinedDate: "02-24-2024", phone: "+123124" },
-  { id: "08", name: "Robert Fox", email: "fox@email.com", joinedDate: "02-24-2024", phone: "+123124" },
-];
+function formatDate(value?: string) {
+  if (!value) {
+    return "Not available";
+  }
 
-type UsersTab = "all" | "blocked";
-const PAGE_SIZE = 4;
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleDateString("en-AU", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+}
+
+function toAdminUserRecord(user: AdminManagedUser): AdminUserRecord {
+  const rawId = user._id ?? user.id ?? user.email;
+
+  return {
+    id: rawId,
+    name: user.fullName,
+    email: user.email,
+    joinedDate: formatDate(user.createdAt),
+    phone: user.role.replace(/_/g, " "),
+    role: user.role,
+    status: user.status,
+  };
+}
+
+function initialsFromName(name: string) {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(part => part[0]?.toUpperCase() ?? "")
+    .join("");
+}
 
 export function AdminUsersList() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
-  const [blockTarget, setBlockTarget] = useState<AdminUser | null>(null);
-  const [blockedUserIds, setBlockedUserIds] = useState<string[]>(["02", "05"]);
+  const [users, setUsers] = useState<AdminUserRecord[]>([]);
+  const [selectedUser, setSelectedUser] = useState<AdminUserRecord | null>(null);
+  const [blockTarget, setBlockTarget] = useState<AdminUserRecord | null>(null);
   const [isNewestFirst, setIsNewestFirst] = useState(true);
   const [activePage, setActivePage] = useState(1);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
 
   const activeTab: UsersTab = searchParams.get("tab") === "blocked" ? "blocked" : "all";
   const isBlockedTab = activeTab === "blocked";
+
+  useEffect(() => {
+    let isMounted = true;
+
+    setIsLoading(true);
+    setError(null);
+
+    void listAdminUsers({
+      limit: 100,
+      search: searchTerm || undefined,
+      status: isBlockedTab ? "suspended" : undefined,
+    })
+      .then((records) => {
+        if (!isMounted) {
+          return;
+        }
+
+        setUsers(records.map(toAdminUserRecord));
+      })
+      .catch((loadError: unknown) => {
+        if (!isMounted) {
+          return;
+        }
+
+        setError(loadError instanceof Error ? loadError.message : "Unable to load admin users.");
+        setUsers([]);
+      })
+      .finally(() => {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isBlockedTab, searchTerm]);
 
   const setActiveTab = (tab: UsersTab) => {
     const params = new URLSearchParams(searchParams);
@@ -53,38 +126,44 @@ export function AdminUsersList() {
   };
 
   const filteredUsers = useMemo(() => {
-    const sourceUsers = activeTab === "blocked"
-      ? USERS.filter(user => blockedUserIds.includes(user.id))
-      : USERS;
+    const sourceUsers = [...users];
 
-    const query = searchTerm.toLowerCase().trim();
-
-    if (!query) {
-      return sourceUsers;
-    }
-
-    const searchedUsers = sourceUsers.filter(user =>
-      `${user.name} ${user.email}`.toLowerCase().includes(query),
-    );
-
-    return [...searchedUsers].sort((left, right) => {
+    return sourceUsers.sort((left, right) => {
       return isNewestFirst
         ? right.joinedDate.localeCompare(left.joinedDate)
         : left.joinedDate.localeCompare(right.joinedDate);
     });
-  }, [activeTab, blockedUserIds, isNewestFirst, searchTerm]);
+  }, [isNewestFirst, users]);
 
   const totalPages = Math.max(1, Math.ceil(filteredUsers.length / PAGE_SIZE));
   const visibleUsers = filteredUsers.slice((activePage - 1) * PAGE_SIZE, activePage * PAGE_SIZE);
 
-  const onConfirmBlock = () => {
-    if (!blockTarget) {
+  const updateUserStatus = async (user: AdminUserRecord, status: AdminManagedUser["status"]) => {
+    setIsUpdatingStatus(true);
+
+    try {
+      const updatedUser = await updateAdminUser(user.id, { status });
+      const nextRecord = toAdminUserRecord(updatedUser);
+
+      setUsers(prev => prev.map(item => (item.id === user.id ? nextRecord : item)));
+      setBlockTarget(null);
+      setSelectedUser(null);
+      setActivePage(1);
+    }
+    catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : "Unable to update user status.");
+    }
+    finally {
+      setIsUpdatingStatus(false);
+    }
+  };
+
+  const onConfirmBlock = async () => {
+    if (!blockTarget || isUpdatingStatus) {
       return;
     }
 
-    setBlockedUserIds(prev => (prev.includes(blockTarget.id) ? prev : [...prev, blockTarget.id]));
-    setBlockTarget(null);
-    setActivePage(1);
+    await updateUserStatus(blockTarget, "suspended");
   };
 
   return (
@@ -133,6 +212,13 @@ export function AdminUsersList() {
         </div>
 
         <div className="px-2 pb-1 pt-3">
+          {error
+            ? (
+                <div className="mb-3 rounded-md border border-[#F4C7C3] bg-[#FFF7F6] px-3 py-2 text-xs text-[#B42318]">
+                  {error}
+                </div>
+              )
+            : null}
           <div className="mb-2 flex justify-end">
             <button
               type="button"
@@ -157,8 +243,20 @@ export function AdminUsersList() {
                 </tr>
               </thead>
               <tbody>
+                {isLoading
+                  ? (
+                      <tr>
+                        <td
+                          colSpan={isBlockedTab ? 6 : 5}
+                          className="rounded-md bg-white px-3 py-8 text-center text-sm text-[#607B90]"
+                        >
+                          Loading users...
+                        </td>
+                      </tr>
+                    )
+                  : null}
                 {visibleUsers.map((user) => {
-                  const isBlocked = blockedUserIds.includes(user.id);
+                  const isBlocked = user.status === "suspended" || user.status === "inactive";
 
                   return (
                     <tr
@@ -169,7 +267,7 @@ export function AdminUsersList() {
                       <td className="bg-white px-2 py-2">
                         <div className="flex items-center gap-2.5">
                           <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#EAF1F7] text-[10px] font-semibold text-[#0F67AE]">
-                            RF
+                            {initialsFromName(user.name)}
                           </span>
                           {user.name}
                         </div>
@@ -184,11 +282,11 @@ export function AdminUsersList() {
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    setBlockedUserIds(prev => prev.filter(id => id !== user.id));
-                                    setActivePage(1);
-                                    if (blockedUserIds.length === 1) {
-                                      setActiveTab("all");
-                                    }
+                                    void updateUserStatus(user, "active").then(() => {
+                                      if (visibleUsers.length === 1) {
+                                        setActiveTab("all");
+                                      }
+                                    });
                                   }}
                                   className="inline-flex h-6 w-6 items-center justify-center rounded-full text-[#0F67AE] transition hover:bg-[#EDF6FF]"
                                   aria-label={`Unblock ${user.name}`}
@@ -220,6 +318,7 @@ export function AdminUsersList() {
                   );
                 })}
                 {visibleUsers.length === 0
+                  && !isLoading
                   ? (
                       <tr>
                         <td
@@ -300,7 +399,7 @@ export function AdminUsersList() {
 
                 <div className="mt-4 flex items-center gap-2 border-b border-[#E2EBF4] pb-3">
                   <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#EAF1F7] text-[11px] font-semibold text-[#0F67AE]">
-                    JD
+                    {initialsFromName(selectedUser.name)}
                   </span>
                   <p className="font-semibold text-[#1E293B]">{selectedUser.name}</p>
                 </div>
@@ -342,11 +441,11 @@ export function AdminUsersList() {
                     type="button"
                     onClick={() => {
                       if (isBlockedTab) {
-                        setBlockedUserIds(prev => prev.filter(id => id !== selectedUser.id));
-                        setActivePage(1);
-                        if (blockedUserIds.length === 1) {
-                          setActiveTab("all");
-                        }
+                        void updateUserStatus(selectedUser, "active").then(() => {
+                          if (visibleUsers.length === 1) {
+                            setActiveTab("all");
+                          }
+                        });
                       }
                       else {
                         setBlockTarget(selectedUser);
@@ -381,9 +480,10 @@ export function AdminUsersList() {
                   <button
                     type="button"
                     onClick={onConfirmBlock}
+                    disabled={isUpdatingStatus}
                     className="h-7 rounded-sm bg-[#E73908] text-[11px] font-semibold text-white transition hover:bg-[#D53306]"
                   >
-                    Yes, Confirm
+                    {isUpdatingStatus ? "Updating..." : "Yes, Confirm"}
                   </button>
                 </div>
               </div>
