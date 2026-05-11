@@ -37,3 +37,10 @@ If you add API keys/secrets later, set them in:
 - Vercel Project -> Settings -> Environment Variables
 
 Then redeploy.
+
+## SafeSpeak admin integration notes
+
+- The admin sidebar is aligned to the SafeSpeak scope groups: dashboard, security/compliance, platform intelligence, analytics/intelligence, crisis/safety, content/education, user/operations, and basic content management.
+- Live backend-connected admin surfaces currently include dashboard summary, users, create admin, taxonomies, service destinations, privacy requests, analytics, knowledge sources, resource/content/media management where supported by the backend.
+- Several admin routes remain intentional placeholders when the backend does not yet expose a matching endpoint. These modules should not be treated as production-complete.
+- `npm run build` passes. `npm run lint` currently fails because of a large pre-existing repo-wide lint backlog outside this task’s changes.

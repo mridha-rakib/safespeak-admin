@@ -50,7 +50,7 @@ const CAPABILITY_GROUPS = [
     title: "Platform Intelligence Engine",
     summary: "Taxonomies, destinations, integrations, AI operations, and cultural response controls.",
     links: [
-      { label: "Taxonomies Management", to: APP_ROUTE_PATHS.adminTaxonomiesManagement },
+      { label: "Taxonomies", to: APP_ROUTE_PATHS.adminTaxonomiesManagement },
       { label: "Service Destinations", to: APP_ROUTE_PATHS.adminServiceDestinations },
       { label: "AI Engine Control", to: APP_ROUTE_PATHS.adminAiEngineControl },
     ],
@@ -68,7 +68,7 @@ const CAPABILITY_GROUPS = [
 
 const PRIORITY_ROUTES = [
   {
-    title: "Taxonomies Management",
+    title: "Taxonomies",
     description: "The platform's classification DNA for incidents, evidence, destinations, severity, culture, and language.",
     to: APP_ROUTE_PATHS.adminTaxonomiesManagement,
   },
@@ -104,7 +104,7 @@ const CURRENT_SECTION_LINKS = [
   { label: "Feedback", to: APP_ROUTE_PATHS.adminFeedback },
   { label: "Educational Content", to: APP_ROUTE_PATHS.adminContentEducationalContent },
   { label: "Micro-Education Cards", to: APP_ROUTE_PATHS.adminContentMicroEducationCards },
-  { label: "Incident Insights & Trends", to: APP_ROUTE_PATHS.adminInsightsIncidentTrends },
+  { label: "Incident Insights", to: APP_ROUTE_PATHS.adminIncidentInsights },
   { label: "Settings", to: APP_ROUTE_PATHS.adminSettings },
 ] as const;
 
@@ -284,7 +284,7 @@ export function AdminDashboardOverview({
         <article className="rounded-xl border border-[#CAD7E3] bg-white p-5 shadow-[0_1px_6px_rgba(0,0,0,0.08)]">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0 flex-1">
-              <h3 className="text-[22px] font-semibold leading-none text-[#1E293B]">Missing Components From Scope</h3>
+              <h3 className="text-[22px] font-semibold leading-none text-[#1E293B]">Priority Scope Areas</h3>
               <p className="mt-2 text-[13px] leading-6 text-[#607B90]">
                 These routes close the biggest operational gaps between the original dashboard and the requirements you provided.
               </p>

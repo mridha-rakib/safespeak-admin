@@ -66,7 +66,7 @@ export const ADMIN_SIDEBAR_ITEMS: AdminSidebarItem[] = [
     showChevron: true,
     children: [
       {
-        label: "Taxonomies Management",
+        label: "Taxonomies",
         to: APP_ROUTE_PATHS.adminTaxonomiesManagement,
       },
       {
@@ -98,16 +98,16 @@ export const ADMIN_SIDEBAR_ITEMS: AdminSidebarItem[] = [
     showChevron: true,
     children: [
       {
-        label: "Incident Insights & Trends",
-        to: APP_ROUTE_PATHS.adminInsightsIncidentTrends,
+        label: "Incident Insights",
+        to: APP_ROUTE_PATHS.adminIncidentInsights,
       },
       {
-        label: "Intelligence Center",
-        to: APP_ROUTE_PATHS.adminIntelligenceCenter,
+        label: "Heatmaps",
+        to: APP_ROUTE_PATHS.adminInsightsHeatmaps,
       },
       {
-        label: "Patterns",
-        to: APP_ROUTE_PATHS.adminInsightsPatterns,
+        label: "Trends",
+        to: APP_ROUTE_PATHS.adminInsightsTrends,
       },
       {
         label: "Platform Health",
@@ -199,14 +199,6 @@ export const ADMIN_SIDEBAR_ITEMS: AdminSidebarItem[] = [
       {
         label: "Settings",
         to: APP_ROUTE_PATHS.adminSettings,
-      },
-      {
-        label: "Earnings",
-        to: APP_ROUTE_PATHS.adminEarnings,
-      },
-      {
-        label: "Subscriptions",
-        to: APP_ROUTE_PATHS.adminSubscriptions,
       },
     ],
   },

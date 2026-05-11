@@ -13,6 +13,9 @@ export function AdminPanelPlaceholder({ title, description }: AdminPanelPlacehol
         <p className="text-sm text-[#607B90]">{description}</p>
       </CardHeader>
       <CardContent className="space-y-4 p-6 pt-0">
+        <p className="text-sm text-[#607B90]">
+          This module is planned in the full SafeSpeak scope and is not fully implemented yet.
+        </p>
         <div className="h-24 rounded-lg border border-dashed border-[#C7D3DF] bg-[#F8FBFF]" />
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           <div className="h-20 rounded-lg border border-[#D5DEE7] bg-[#FAFCFF]" />

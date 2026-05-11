@@ -186,7 +186,19 @@ export const appRouter = createBrowserRouter([
       },
       {
         path: APP_ROUTE_SEGMENTS.insights,
-        element: <Navigate to={APP_ROUTE_PATHS.adminInsightsIncidentTrends} replace />,
+        element: <Navigate to={APP_ROUTE_PATHS.adminIncidentInsights} replace />,
+      },
+      {
+        path: `${APP_ROUTE_SEGMENTS.insights}/${APP_ROUTE_SEGMENTS.incidentInsights}`,
+        element: <AdminOperationsSectionPage config={ADMIN_OPERATIONS_CONFIGS.intelligenceCenter} sectionKey="analytics" />,
+      },
+      {
+        path: `${APP_ROUTE_SEGMENTS.insights}/${APP_ROUTE_SEGMENTS.heatmaps}`,
+        element: <AdminOperationsSectionPage config={ADMIN_OPERATIONS_CONFIGS.intelligenceCenter} sectionKey="analytics" />,
+      },
+      {
+        path: `${APP_ROUTE_SEGMENTS.insights}/${APP_ROUTE_SEGMENTS.trends}`,
+        element: <AdminOperationsSectionPage config={ADMIN_OPERATIONS_CONFIGS.intelligenceCenter} sectionKey="analytics" />,
       },
       {
         path: `${APP_ROUTE_SEGMENTS.insights}/${APP_ROUTE_SEGMENTS.incidentTrends}`,
