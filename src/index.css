@@ -33,6 +33,18 @@
     min-height: 32rem;
   }
 
+  .admin-sidebar-scroll {
+    overscroll-behavior: contain;
+    scroll-behavior: smooth;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .admin-sidebar-scroll::-webkit-scrollbar {
+    display: none;
+  }
+
   @media (min-width: 64rem) {
     .admin-panel-min-h {
       min-height: 56.4375rem;

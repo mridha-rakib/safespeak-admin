@@ -88,6 +88,14 @@ type LivePanelState = {
   analyticsLanguages: AdminAnalyticsBucket[];
 };
 
+type SubmissionTemplateDraft = Omit<
+  AdminSubmissionTemplateRecord,
+  "_id" | "fieldMappings" | "staticPayload" | "isActive" | "metadata"
+> & {
+  fieldMappings: string;
+  staticPayload: string;
+};
+
 function parseCommaSeparatedValues(value: string) {
   return value
     .split(",")
@@ -162,7 +170,7 @@ export function AdminOperationsSectionPage({
     consentRequired: true,
     supportsAcknowledgement: false,
   });
-  const [submissionTemplateDraft, setSubmissionTemplateDraft] = useState({
+  const [submissionTemplateDraft, setSubmissionTemplateDraft] = useState<SubmissionTemplateDraft>({
     key: "",
     name: "",
     destinationType: "police" as AdminDestinationRecord["type"],

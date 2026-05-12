@@ -1,6 +1,10 @@
+import frameIcon from "@/assets/Frame.svg";
+import { ChevronDown, ChevronsLeft, ChevronsRight } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { NavLink, useLocation } from "react-router-dom";
+
 import type { AdminSidebarItem } from "@/components/admin/admin-nav-config";
 
-import frameIcon from "@/assets/Frame.svg";
 import { ADMIN_LOGOUT_ITEM, ADMIN_SIDEBAR_ITEMS } from "@/components/admin/admin-nav-config";
 import {
   Sidebar,
@@ -21,9 +25,6 @@ import {
 } from "@/components/ui/sidebar";
 import { clearAdminAuthSession } from "@/lib/admin-auth";
 import { cn } from "@/lib/utils";
-import { ChevronDown, ChevronsLeft, ChevronsRight } from "lucide-react";
-import { useEffect, useState } from "react";
-import { NavLink, useLocation } from "react-router-dom";
 
 type AdminSidebarProps = {
   items?: AdminSidebarItem[];
@@ -247,6 +248,7 @@ function SidebarExpandableLink({
 export function AdminSidebar({ items = ADMIN_SIDEBAR_ITEMS, className, onNavigate }: AdminSidebarProps) {
   const location = useLocation();
   const { isMobile, open, toggleSidebar } = useSidebar();
+  const scrollAreaRef = useRef<HTMLDivElement | null>(null);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() =>
     items.reduce<Record<string, boolean>>((acc, item) => {
       if (item.children?.length) {
@@ -281,10 +283,37 @@ export function AdminSidebar({ items = ADMIN_SIDEBAR_ITEMS, className, onNavigat
 
   const LogoutIcon = ADMIN_LOGOUT_ITEM.icon;
   const isCollapsed = !isMobile && !open;
+  const scrollSidebar = (deltaY: number, deltaMode: number) => {
+    const scrollArea = scrollAreaRef.current;
+
+    if (!scrollArea) {
+      return;
+    }
+
+    const deltaMultiplier = deltaMode === 1
+      ? 16
+      : deltaMode === 2
+        ? scrollArea.clientHeight
+        : 1;
+
+    scrollArea.scrollBy({
+      top: deltaY * deltaMultiplier,
+      behavior: "smooth",
+    });
+  };
 
   return (
     <Sidebar
       collapsible="none"
+      onWheel={(event) => {
+        if (event.ctrlKey) {
+          return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+        scrollSidebar(event.deltaY, event.deltaMode);
+      }}
       className={cn(
         "h-full w-full overflow-hidden rounded-[12px] border border-[#D5DEE7] bg-white text-[#111827] shadow-[0_1px_6px_rgba(0,0,0,0.06)]",
         className,
@@ -316,7 +345,7 @@ export function AdminSidebar({ items = ADMIN_SIDEBAR_ITEMS, className, onNavigat
 
       <SidebarSeparator className={cn("mx-4 bg-[#E1E8F0] sm:mx-6", isCollapsed ? "mx-3 sm:mx-3" : "")} />
 
-      <SidebarContent className="pb-2">
+      <SidebarContent ref={scrollAreaRef} className="admin-sidebar-scroll pb-2">
         <SidebarGroup className={cn("px-4 pb-4 pt-3 sm:px-6", isCollapsed ? "px-3 sm:px-3" : "")}>
           {!isCollapsed
             ? (
