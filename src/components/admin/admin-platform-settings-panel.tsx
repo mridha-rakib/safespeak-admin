@@ -1,13 +1,16 @@
-import {
-  getAdminPlatformSettings,
-  publishPlatformSettingsDraft,
-  updatePlatformSettingsDraft,
-  type PlatformSettingsPayload,
-} from "@/lib/platform-settings";
-import { APP_ROUTE_PATHS } from "@/routes/paths";
 import { ArrowLeft } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+
+import type { PlatformSettingsPayload } from "@/lib/platform-settings";
+
+import {
+  getAdminPlatformSettings,
+
+  publishPlatformSettingsDraft,
+  updatePlatformSettingsDraft,
+} from "@/lib/platform-settings";
+import { APP_ROUTE_PATHS } from "@/routes/paths";
 
 type FieldConfig = {
   section: keyof PlatformSettingsPayload;
@@ -84,6 +87,29 @@ const AI_FIELDS: FieldConfig[] = [
     label: "Human review reminder",
     rows: 2,
   },
+  {
+    section: "ai",
+    key: "triageSystemPrompt",
+    label: "Triage system prompt",
+    rows: 5,
+  },
+  {
+    section: "ai",
+    key: "triageResponseTemplate",
+    label: "Triage response schema/template",
+    rows: 5,
+  },
+  {
+    section: "ai",
+    key: "triageFallbackText",
+    label: "Triage fallback text",
+    rows: 3,
+  },
+  {
+    section: "ai",
+    key: "triageTemplateStatus",
+    label: "Triage template status",
+  },
 ];
 
 const FIELD_GROUPS = [
@@ -143,13 +169,15 @@ export function AdminPlatformSettingsPanel() {
       setPublishedAt(settings.publishedAt);
       setUpdatedAt(settings.updatedAt);
       setStatusMessage(null);
-    } catch (error) {
+    }
+    catch (error) {
       setStatusMessage(
         error instanceof Error
           ? error.message
           : "Could not load platform settings.",
       );
-    } finally {
+    }
+    finally {
       setIsLoading(false);
     }
   }, []);
@@ -173,13 +201,15 @@ export function AdminPlatformSettingsPanel() {
       setPublishedAt(settings.publishedAt);
       setUpdatedAt(settings.updatedAt);
       setStatusMessage("Draft settings saved.");
-    } catch (error) {
+    }
+    catch (error) {
       setStatusMessage(
         error instanceof Error
           ? error.message
           : "Could not save draft settings.",
       );
-    } finally {
+    }
+    finally {
       setIsSaving(false);
     }
   };
@@ -195,13 +225,15 @@ export function AdminPlatformSettingsPanel() {
       setPublishedAt(settings.publishedAt);
       setUpdatedAt(settings.updatedAt);
       setStatusMessage("Platform settings published.");
-    } catch (error) {
+    }
+    catch (error) {
       setStatusMessage(
         error instanceof Error
           ? error.message
           : "Could not publish platform settings.",
       );
-    } finally {
+    }
+    finally {
       setIsPublishing(false);
     }
   };
@@ -232,9 +264,13 @@ export function AdminPlatformSettingsPanel() {
               {version === null ? "Loading..." : `Version ${version}`}
             </p>
             <p className="mt-1 text-[12px] text-[#607B90]">
-              Published: {formatDate(publishedAt)}
+              Published:
+              {" "}
+              {formatDate(publishedAt)}
               {" | "}
-              Updated: {formatDate(updatedAt)}
+              Updated:
+              {" "}
+              {formatDate(updatedAt)}
             </p>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">
@@ -257,78 +293,104 @@ export function AdminPlatformSettingsPanel() {
           </div>
         </div>
 
-        {statusMessage ? (
-          <p className="mt-4 rounded-md bg-[#EEF6FF] px-3 py-2 text-[13px] font-medium text-[#0F67AE]">
-            {statusMessage}
-          </p>
-        ) : null}
+        {statusMessage
+          ? (
+              <p className="mt-4 rounded-md bg-[#EEF6FF] px-3 py-2 text-[13px] font-medium text-[#0F67AE]">
+                {statusMessage}
+              </p>
+            )
+          : null}
 
-        {isLoading ? (
-          <p className="mt-6 text-[13px] text-[#607B90]">
-            Loading platform settings...
-          </p>
-        ) : null}
+        {isLoading
+          ? (
+              <p className="mt-6 text-[13px] text-[#607B90]">
+                Loading platform settings...
+              </p>
+            )
+          : null}
 
-        {draft ? (
-          <div className="mt-5 space-y-6">
-            {FIELD_GROUPS.map((group) => (
-              <section key={group.title} className="space-y-3">
-                <h3 className="text-[20px] font-semibold text-[#1E3A4F]">
-                  {group.title}
-                </h3>
-                <div className="grid gap-3 xl:grid-cols-2">
-                  {group.fields.map((field) => (
-                    <label
-                      key={`${field.section}.${field.key}`}
-                      className={
-                        field.rows ? "space-y-1 xl:col-span-2" : "space-y-1"
-                      }
-                    >
-                      <span className="text-[13px] font-semibold text-[#334155]">
-                        {field.label}
-                      </span>
-                      {field.rows ? (
-                        <textarea
-                          value={getFieldValue(draft, field)}
-                          onChange={(event) =>
-                            setDraft((current) =>
-                              current
-                                ? setFieldValue(
-                                    current,
-                                    field,
-                                    event.target.value,
-                                  )
-                                : current,
-                            )
+        {draft
+          ? (
+              <div className="mt-5 space-y-6">
+                {FIELD_GROUPS.map(group => (
+                  <section key={group.title} className="space-y-3">
+                    <h3 className="text-[20px] font-semibold text-[#1E3A4F]">
+                      {group.title}
+                    </h3>
+                    <div className="grid gap-3 xl:grid-cols-2">
+                      {group.fields.map(field => (
+                        <label
+                          key={`${field.section}.${field.key}`}
+                          className={
+                            field.rows ? "space-y-1 xl:col-span-2" : "space-y-1"
                           }
-                          rows={field.rows}
-                          className="w-full resize-y rounded-md border border-[#AEBCC9] bg-white px-3 py-2 text-[14px] leading-5 text-[#1E293B] outline-none transition focus:border-[#0F67AE] focus:ring-2 focus:ring-[#BFE0F7]"
-                        />
-                      ) : (
-                        <input
-                          type="text"
-                          value={getFieldValue(draft, field)}
-                          onChange={(event) =>
-                            setDraft((current) =>
-                              current
-                                ? setFieldValue(
-                                    current,
-                                    field,
-                                    event.target.value,
-                                  )
-                                : current,
-                            )
-                          }
-                          className="h-10 w-full rounded-md border border-[#AEBCC9] bg-white px-3 text-[14px] text-[#1E293B] outline-none transition focus:border-[#0F67AE] focus:ring-2 focus:ring-[#BFE0F7]"
-                        />
-                      )}
-                    </label>
-                  ))}
-                </div>
-              </section>
-            ))}
-          </div>
-        ) : null}
+                        >
+                          <span className="text-[13px] font-semibold text-[#334155]">
+                            {field.label}
+                          </span>
+                          {field.key === "triageTemplateStatus"
+                            ? (
+                                <select
+                                  value={getFieldValue(draft, field)}
+                                  onChange={event =>
+                                    setDraft(current =>
+                                      current
+                                        ? setFieldValue(
+                                            current,
+                                            field,
+                                            event.target.value,
+                                          )
+                                        : current,
+                                    )}
+                                  className="h-10 w-full rounded-md border border-[#AEBCC9] bg-white px-3 text-[14px] text-[#1E293B] outline-none transition focus:border-[#0F67AE] focus:ring-2 focus:ring-[#BFE0F7]"
+                                >
+                                  <option value="draft">Draft</option>
+                                  <option value="approved">Approved</option>
+                                </select>
+                              )
+                            : field.rows
+                              ? (
+                                  <textarea
+                                    value={getFieldValue(draft, field)}
+                                    onChange={event =>
+                                      setDraft(current =>
+                                        current
+                                          ? setFieldValue(
+                                              current,
+                                              field,
+                                              event.target.value,
+                                            )
+                                          : current,
+                                      )}
+                                    rows={field.rows}
+                                    className="w-full resize-y rounded-md border border-[#AEBCC9] bg-white px-3 py-2 text-[14px] leading-5 text-[#1E293B] outline-none transition focus:border-[#0F67AE] focus:ring-2 focus:ring-[#BFE0F7]"
+                                  />
+                                )
+                              : (
+                                  <input
+                                    type="text"
+                                    value={getFieldValue(draft, field)}
+                                    onChange={event =>
+                                      setDraft(current =>
+                                        current
+                                          ? setFieldValue(
+                                              current,
+                                              field,
+                                              event.target.value,
+                                            )
+                                          : current,
+                                      )}
+                                    className="h-10 w-full rounded-md border border-[#AEBCC9] bg-white px-3 text-[14px] text-[#1E293B] outline-none transition focus:border-[#0F67AE] focus:ring-2 focus:ring-[#BFE0F7]"
+                                  />
+                                )}
+                        </label>
+                      ))}
+                    </div>
+                  </section>
+                ))}
+              </div>
+            )
+          : null}
       </div>
     </div>
   );
