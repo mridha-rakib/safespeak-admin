@@ -31,11 +31,44 @@ export type AdminTaxonomyRecord = {
 
 export type AdminDestinationRecord = {
   _id: string;
-  type: "agency" | "support_service" | "webhook";
+  type:
+    | "police"
+    | "anti_discrimination_agency"
+    | "esafety"
+    | "legal_aid"
+    | "community_legal_centre"
+    | "education_provider"
+    | "workplace_channel"
+    | "scamwatch"
+    | "reportcyber"
+    | "community_support_org";
+  key: string;
   name: string;
+  channel:
+    | "api_oauth"
+    | "api_mtls"
+    | "secure_email_pgp"
+    | "secure_email"
+    | "manual_export_pdf"
+    | "manual_export_json"
+    | "booking_link";
+  jurisdiction: string;
+  languages: string[];
   endpoint?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  minimumRequiredInfo: string[];
+  anonymityOptions: string[];
+  expectedNextSteps: string[];
+  consentRequired: boolean;
+  supportsAcknowledgement: boolean;
   isActive: boolean;
-  metadata?: Record<string, unknown>;
+  metadata?: {
+    requiredConsentFlags?: string[];
+    incidentTypes?: string[];
+    submissionTitleTemplate?: string;
+    submissionSummaryTemplate?: string;
+  };
 };
 
 export type AdminPrivacyRequestRecord = {
@@ -47,6 +80,28 @@ export type AdminPrivacyRequestRecord = {
   reviewedAt?: string;
   reviewedBy?: string;
   requesterEmail?: string;
+};
+
+export type AdminSubmissionTemplateRecord = {
+  _id: string;
+  key: string;
+  name: string;
+  destinationType: AdminDestinationRecord["type"];
+  channel: AdminDestinationRecord["channel"];
+  jurisdiction: string;
+  titleTemplate: string;
+  summaryTemplate: string;
+  fieldMappings: Array<{
+    source: string;
+    target: string;
+    required: boolean;
+    transform?: string;
+  }>;
+  staticPayload?: Record<string, unknown>;
+  acknowledgementMode: "manual" | "sync_reference" | "async_webhook";
+  attachmentMode: "metadata_only" | "include_hashes" | "include_manifest";
+  isActive: boolean;
+  metadata?: Record<string, unknown>;
 };
 
 export type AdminAnalyticsOverview = {
@@ -152,6 +207,8 @@ export async function patchAdminTaxonomy(
 
 export async function listAdminDestinations(query: {
   type?: AdminDestinationRecord["type"];
+  channel?: AdminDestinationRecord["channel"];
+  jurisdiction?: string;
   isActive?: boolean;
 } = {}): Promise<AdminDestinationRecord[]> {
   const response = await adminApiRequest<{ destinations: AdminDestinationRecord[] }>(
@@ -185,6 +242,48 @@ export async function patchAdminDestination(
   );
 
   return response.data.destination;
+}
+
+export async function listAdminSubmissionTemplates(query: {
+  destinationType?: AdminDestinationRecord["type"];
+  channel?: AdminDestinationRecord["channel"];
+  jurisdiction?: string;
+  isActive?: boolean;
+} = {}): Promise<AdminSubmissionTemplateRecord[]> {
+  const response = await adminApiRequest<{ templates: AdminSubmissionTemplateRecord[] }>(
+    `/admin/submission-templates${toQueryString(query)}`,
+  );
+
+  return response.data.templates;
+}
+
+export async function createAdminSubmissionTemplate(
+  input: Omit<AdminSubmissionTemplateRecord, "_id">,
+): Promise<AdminSubmissionTemplateRecord> {
+  const response = await adminApiRequest<{ template: AdminSubmissionTemplateRecord }>(
+    "/admin/submission-templates",
+    {
+      method: "POST",
+      body: input,
+    },
+  );
+
+  return response.data.template;
+}
+
+export async function patchAdminSubmissionTemplate(
+  id: string,
+  input: Partial<Omit<AdminSubmissionTemplateRecord, "_id">>,
+): Promise<AdminSubmissionTemplateRecord> {
+  const response = await adminApiRequest<{ template: AdminSubmissionTemplateRecord }>(
+    `/admin/submission-templates/${id}`,
+    {
+      method: "PATCH",
+      body: input,
+    },
+  );
+
+  return response.data.template;
 }
 
 export async function listAdminPrivacyRequests(query: {

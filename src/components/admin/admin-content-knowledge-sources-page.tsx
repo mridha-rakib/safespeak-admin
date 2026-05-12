@@ -1,18 +1,27 @@
+import { FileUp, Plus, RefreshCcw, RotateCcw, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+
+import type {
+  KnowledgeSourceItem,
+  KnowledgeSourceJurisdiction,
+  KnowledgeSourceMetadata,
+  KnowledgeSourceTopic,
+  KnowledgeSourceType,
+} from "@/lib/knowledge-sources";
+
 import { AdminContentManagementShell } from "@/components/admin/admin-content-management-shell";
+import { getAdminAuthSession } from "@/lib/admin-auth";
 import {
   approveKnowledgeSource,
   createKnowledgeSource,
   deleteKnowledgeSource,
   getKnowledgeSourceId,
+  ingestKnowledgeSource,
   listKnowledgeSources,
+  reindexKnowledgeSource,
   rejectKnowledgeSource,
   updateKnowledgeSource,
-  type KnowledgeSourceItem,
-  type KnowledgeSourceMetadata,
 } from "@/lib/knowledge-sources";
-import { getAdminAuthSession } from "@/lib/admin-auth";
-import { Plus, RefreshCcw, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
 
 const TEMPLATE_TABS = [
   {
@@ -42,6 +51,15 @@ type CreateSourceFormState = {
   description: string;
   publisher: string;
   url: string;
+  jurisdiction: KnowledgeSourceJurisdiction;
+  topic: KnowledgeSourceTopic;
+  sourceType: KnowledgeSourceType;
+  legalReviewed: boolean;
+  ingestImmediately: boolean;
+  rawContent: string;
+  localFilePath: string;
+  constitutionalBasis: string;
+  legislationTags: string;
 };
 
 const DEFAULT_CREATE_FORM: CreateSourceFormState = {
@@ -50,6 +68,15 @@ const DEFAULT_CREATE_FORM: CreateSourceFormState = {
   description: "",
   publisher: "SafeSpeak Content Team",
   url: "",
+  jurisdiction: "AU",
+  topic: "online_safety",
+  sourceType: "Policy",
+  legalReviewed: false,
+  ingestImmediately: true,
+  rawContent: "",
+  localFilePath: "",
+  constitutionalBasis: "",
+  legislationTags: "",
 };
 
 function getFriendlyError(error: unknown, fallback: string) {
@@ -116,8 +143,16 @@ function displayStatus(source: KnowledgeSourceItem) {
     archived: "Archived",
   };
 
+  if (source.ingestionStatus === "failed") {
+    return "Ingestion Failed";
+  }
+
   if (source.status === "approved" && !source.ingestedAt && !getMetadata(source).chunkCount) {
     return "Approved (Not Ingested)";
+  }
+
+  if (source.ingestionStatus === "embedded" || getMetadata(source).chunkCount) {
+    return "Approved";
   }
 
   return labels[source.status];
@@ -158,6 +193,22 @@ function formatSourceAge(source: KnowledgeSourceItem) {
     day: "numeric",
     year: "numeric",
   }).format(new Date(time));
+}
+
+function parseCommaSeparatedValues(value: string): string[] {
+  return value
+    .split(",")
+    .map(item => item.trim())
+    .filter(Boolean);
+}
+
+function buildSourceMetadata(form: CreateSourceFormState): KnowledgeSourceMetadata {
+  return {
+    adminCategory: form.adminCategory,
+    constitutionalBasis: form.constitutionalBasis.trim() || undefined,
+    legislationTags: parseCommaSeparatedValues(form.legislationTags),
+    templates: Object.fromEntries(TEMPLATE_TABS.map(tab => [tab.id, tab.value])),
+  };
 }
 
 function getTemplateValue(source: KnowledgeSourceItem | undefined, tabId: TemplateTabId) {
@@ -253,6 +304,10 @@ export function AdminContentKnowledgeSourcesPage() {
     () => sources.find(source => getKnowledgeSourceId(source) === selectedSourceId) ?? sources[0],
     [selectedSourceId, sources],
   );
+  const selectedSourceMetadata = useMemo(
+    () => getMetadata(selectedSource),
+    [selectedSource],
+  );
 
   useEffect(() => {
     setTemplateDraft(getTemplateValue(selectedSource, activeTemplateTab));
@@ -322,37 +377,139 @@ export function AdminContentKnowledgeSourcesPage() {
     try {
       const isScamPattern = createForm.adminCategory === "Scam Pattern";
       const isRegulation = createForm.adminCategory === "Regulation";
+      const metadata = buildSourceMetadata(createForm);
       const created = await createKnowledgeSource({
         title,
         description: createForm.description.trim() || "Admin-created source awaiting review.",
         sourceCategory: isScamPattern ? "admin_content" : "official_legal_source",
-        jurisdiction: isScamPattern ? "Global" : "AU",
-        topic: isScamPattern ? "scam" : isRegulation ? "privacy" : "online_safety",
-        sourceType: isScamPattern ? "Report" : isRegulation ? "Regulation" : "Policy",
+        jurisdiction: isScamPattern ? "Global" : createForm.jurisdiction,
+        topic: isScamPattern ? "scam" : createForm.topic,
+        sourceType: isScamPattern ? "Report" : isRegulation ? "Regulation" : createForm.sourceType,
         language: "en",
         url: createForm.url.trim() || undefined,
         publisher: createForm.publisher.trim() || "SafeSpeak Content Team",
         licenseStatus: "Internal use",
-        legalReviewed: false,
+        legalReviewed: createForm.legalReviewed,
         status: "pending_review",
         version: 1,
-        metadata: {
-          adminCategory: createForm.adminCategory,
-          templates: Object.fromEntries(TEMPLATE_TABS.map(tab => [tab.id, tab.value])),
-        },
+        metadata,
       });
 
-      setSources(currentSources => upsertSource(currentSources, created));
-      setSelectedSourceId(getKnowledgeSourceId(created));
+      let finalSource = created;
+      const createdId = getKnowledgeSourceId(created);
+
+      if (createForm.ingestImmediately && createdId && (createForm.rawContent.trim() || createForm.localFilePath.trim())) {
+        const ingestResult = await ingestKnowledgeSource(createdId, {
+          content: createForm.rawContent.trim() || undefined,
+          localFilePath: createForm.localFilePath.trim() || undefined,
+          metadata,
+        });
+        finalSource = ingestResult.source ?? created;
+      }
+
+      setSources(currentSources => upsertSource(currentSources, finalSource));
+      setSelectedSourceId(getKnowledgeSourceId(finalSource));
       setIsCreateOpen(false);
       setCreateForm(DEFAULT_CREATE_FORM);
-      setStatusMessage("New source added to the review queue.");
+      setStatusMessage(
+        createForm.ingestImmediately
+          ? "New source added and ingestion started."
+          : "New source added to the review queue.",
+      );
     }
     catch (error) {
       setStatusMessage(getFriendlyError(error, "Could not add source."));
     }
     finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleFileUpload = async (file: File | null) => {
+    if (!file) {
+      return;
+    }
+
+    try {
+      const text = await file.text();
+      setCreateForm(current => ({
+        ...current,
+        rawContent: text,
+      }));
+      setStatusMessage(`Loaded ${file.name} into the ingestion editor.`);
+    }
+    catch {
+      setStatusMessage("Could not read the selected file.");
+    }
+  };
+
+  const handleIngestSource = async (source: KnowledgeSourceItem) => {
+    const sourceId = getKnowledgeSourceId(source);
+
+    if (!sourceId) {
+      return;
+    }
+
+    if (!source.rawText && !source.localFilePath) {
+      setStatusMessage("This source has no stored raw text or file path to ingest.");
+      return;
+    }
+
+    try {
+      const result = await ingestKnowledgeSource(sourceId, {
+        content: source.rawText,
+        localFilePath: source.localFilePath,
+        metadata: source.metadata,
+      });
+      const nextSource = result.source ?? source;
+      setSources(currentSources => upsertSource(currentSources, nextSource));
+      setStatusMessage(
+        `${nextSource.title} ingested with ${result.chunkCount ?? 0} chunk${result.chunkCount === 1 ? "" : "s"}.`,
+      );
+    }
+    catch (error) {
+      setStatusMessage(getFriendlyError(error, "Could not ingest source."));
+    }
+  };
+
+  const handleReindexSource = async (source: KnowledgeSourceItem) => {
+    const sourceId = getKnowledgeSourceId(source);
+
+    if (!sourceId) {
+      return;
+    }
+
+    try {
+      const result = await reindexKnowledgeSource(sourceId);
+      const nextSource = result.source ?? source;
+      setSources(currentSources => upsertSource(currentSources, nextSource));
+      setStatusMessage(
+        `${nextSource.title} reindexed with ${result.chunkCount ?? 0} chunk${result.chunkCount === 1 ? "" : "s"}.`,
+      );
+    }
+    catch (error) {
+      setStatusMessage(getFriendlyError(error, "Could not reindex source."));
+    }
+  };
+
+  const toggleLegalReview = async (source: KnowledgeSourceItem) => {
+    const sourceId = getKnowledgeSourceId(source);
+
+    if (!sourceId) {
+      return;
+    }
+
+    try {
+      const updated = await updateKnowledgeSource(sourceId, {
+        legalReviewed: !source.legalReviewed,
+      });
+      setSources(currentSources => upsertSource(currentSources, updated));
+      setStatusMessage(
+        `${updated.title} legal review ${updated.legalReviewed ? "enabled" : "removed"}.`,
+      );
+    }
+    catch (error) {
+      setStatusMessage(getFriendlyError(error, "Could not update legal-review flag."));
     }
   };
 
@@ -376,7 +533,7 @@ export function AdminContentKnowledgeSourcesPage() {
   const handleDeleteSource = async (source: KnowledgeSourceItem) => {
     const sourceId = getKnowledgeSourceId(source);
 
-    if (!sourceId || !window.confirm(`Delete ${source.title}?`)) {
+    if (!sourceId) {
       return;
     }
 
@@ -470,6 +627,51 @@ export function AdminContentKnowledgeSourcesPage() {
                       />
                     </label>
                     <label className="space-y-1">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">Jurisdiction</p>
+                      <select
+                        value={createForm.jurisdiction}
+                        onChange={event => setCreateForm(current => ({
+                          ...current,
+                          jurisdiction: event.target.value as KnowledgeSourceJurisdiction,
+                        }))}
+                        className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
+                      >
+                        {["Cth", "NSW", "VIC", "QLD", "SA", "WA", "TAS", "NT", "ACT", "AU", "Global", "Internal"].map(option => (
+                          <option key={option} value={option}>{option}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="space-y-1">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">Topic</p>
+                      <select
+                        value={createForm.topic}
+                        onChange={event => setCreateForm(current => ({
+                          ...current,
+                          topic: event.target.value as KnowledgeSourceTopic,
+                        }))}
+                        className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
+                      >
+                        {["discrimination", "racial_hatred", "online_safety", "scam", "privacy", "workplace", "dv", "evidence", "support", "safespeak_policy", "consent", "crisis", "education", "other"].map(option => (
+                          <option key={option} value={option}>{option}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="space-y-1">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">Source Type</p>
+                      <select
+                        value={createForm.sourceType}
+                        onChange={event => setCreateForm(current => ({
+                          ...current,
+                          sourceType: event.target.value as KnowledgeSourceType,
+                        }))}
+                        className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
+                      >
+                        {["Act", "Regulation", "Guideline", "Form", "Decision", "Report", "Policy", "ProductRequirement", "SupportResource", "FAQ", "WebPage"].map(option => (
+                          <option key={option} value={option}>{option}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="space-y-1">
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">Source URL</p>
                       <input
                         type="url"
@@ -491,6 +693,88 @@ export function AdminContentKnowledgeSourcesPage() {
                       className="w-full resize-none rounded-md border border-[#D8E3EE] bg-white px-3 py-2 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
                     />
                   </label>
+
+                  <div className="grid gap-3 lg:grid-cols-2">
+                    <label className="space-y-1">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">Constitutional / Legal Basis</p>
+                      <input
+                        type="text"
+                        value={createForm.constitutionalBasis}
+                        onChange={event => setCreateForm(current => ({ ...current, constitutionalBasis: event.target.value }))}
+                        placeholder="Australian Constitution, Anti-Discrimination Act"
+                        className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
+                      />
+                    </label>
+                    <label className="space-y-1">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">Legislation Tags</p>
+                      <input
+                        type="text"
+                        value={createForm.legislationTags}
+                        onChange={event => setCreateForm(current => ({ ...current, legislationTags: event.target.value }))}
+                        placeholder="racial hatred, vilification, discrimination"
+                        className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
+                      />
+                    </label>
+                  </div>
+
+                  <label className="space-y-1">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">Resource Text For AI Ingestion</p>
+                    <textarea
+                      rows={8}
+                      value={createForm.rawContent}
+                      onChange={event => setCreateForm(current => ({ ...current, rawContent: event.target.value }))}
+                      placeholder="Paste legislation, policy, guidance, or support content here."
+                      className="w-full resize-none rounded-md border border-[#D8E3EE] bg-white px-3 py-2 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
+                    />
+                  </label>
+
+                  <div className="grid gap-3 lg:grid-cols-2">
+                    <label className="space-y-1">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">Local File Path</p>
+                      <input
+                        type="text"
+                        value={createForm.localFilePath}
+                        onChange={event => setCreateForm(current => ({ ...current, localFilePath: event.target.value }))}
+                        placeholder="D:\\docs\\policy.txt"
+                        className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
+                      />
+                    </label>
+                    <label className="space-y-1">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">Upload File</p>
+                      <label className="inline-flex h-9 w-full cursor-pointer items-center justify-center gap-2 rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] transition hover:bg-[#F8FBFF]">
+                        <FileUp className="h-4 w-4" />
+                        Load File Into Text
+                        <input
+                          type="file"
+                          accept=".txt,.md,.html,.csv,.json"
+                          className="hidden"
+                          onChange={(event) => {
+                            const file = event.target.files?.[0] ?? null;
+                            void handleFileUpload(file);
+                          }}
+                        />
+                      </label>
+                    </label>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-4">
+                    <label className="inline-flex items-center gap-2 text-[12px] text-[#334155]">
+                      <input
+                        type="checkbox"
+                        checked={createForm.legalReviewed}
+                        onChange={event => setCreateForm(current => ({ ...current, legalReviewed: event.target.checked }))}
+                      />
+                      Mark as legally reviewed
+                    </label>
+                    <label className="inline-flex items-center gap-2 text-[12px] text-[#334155]">
+                      <input
+                        type="checkbox"
+                        checked={createForm.ingestImmediately}
+                        onChange={event => setCreateForm(current => ({ ...current, ingestImmediately: event.target.checked }))}
+                      />
+                      Ingest immediately after create
+                    </label>
+                  </div>
 
                   <div className="flex items-center justify-end gap-2">
                     <button
@@ -548,12 +832,11 @@ export function AdminContentKnowledgeSourcesPage() {
                     </tr>
                   )
                 : null}
-              {sources.map(row => {
+              {sources.map((row) => {
                 const sourceId = getKnowledgeSourceId(row);
                 const category = displayCategory(row);
                 const status = displayStatus(row);
                 const cannotApproveOwnSource = row.status !== "approved" && isOwnSource(row);
-
                 return (
                   <tr
                     key={sourceId}
@@ -573,6 +856,37 @@ export function AdminContentKnowledgeSourcesPage() {
                     </td>
                     <td className="px-3 py-2.5">
                       <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void handleIngestSource(row);
+                          }}
+                          className="rounded border border-[#D8E3EE] px-2 py-1 text-[10px] font-semibold text-[#0F67AE] transition hover:bg-[#EEF6FF]"
+                        >
+                          Ingest
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void handleReindexSource(row);
+                          }}
+                          className="inline-flex items-center gap-1 rounded border border-[#D8E3EE] px-2 py-1 text-[10px] font-semibold text-[#0F67AE] transition hover:bg-[#EEF6FF]"
+                        >
+                          <RotateCcw className="h-3 w-3" />
+                          Reindex
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void toggleLegalReview(row);
+                          }}
+                          className="rounded border border-[#D8E3EE] px-2 py-1 text-[10px] font-semibold text-[#0F67AE] transition hover:bg-[#EEF6FF]"
+                        >
+                          {row.legalReviewed ? "Legal OK" : "Mark Legal"}
+                        </button>
                         {row.status !== "approved"
                           ? (
                               <button
@@ -648,8 +962,7 @@ export function AdminContentKnowledgeSourcesPage() {
                   onClick={() => setActiveTemplateTab(tab.id)}
                   className={tab.id === activeTemplateTab
                     ? "rounded border border-[#0F67AE] bg-[#EEF6FF] px-2 py-0.5 font-medium text-[#0F67AE]"
-                    : "rounded border border-[#D8E3EE] px-2 py-0.5 text-[#607B90] transition hover:bg-[#F8FBFF]"
-                  }
+                    : "rounded border border-[#D8E3EE] px-2 py-0.5 text-[#607B90] transition hover:bg-[#F8FBFF]"}
                 >
                   {tab.label}
                 </button>
@@ -672,6 +985,70 @@ export function AdminContentKnowledgeSourcesPage() {
             className="w-full resize-none rounded-b-[10px] bg-white px-3 py-3 text-sm leading-6 text-[#334155] outline-none disabled:text-[#94A3B8]"
           />
         </section>
+
+        {selectedSource
+          ? (
+              <section className="rounded-[10px] border border-[#D8E3EE] bg-[#FAFCFF] p-3">
+                <h3 className="text-sm font-semibold text-[#1E293B]">Detected Legal Metadata</h3>
+                <div className="mt-2 grid gap-2 text-[12px] text-[#475569] lg:grid-cols-2">
+                  <p>
+                    <span className="font-semibold text-[#1E293B]">Legal reviewed:</span>
+                    {" "}
+                    {selectedSource.legalReviewed ? "Yes" : "No"}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-[#1E293B]">Ingestion:</span>
+                    {" "}
+                    {selectedSource.ingestionStatus ?? "metadata_only"}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-[#1E293B]">Detected type:</span>
+                    {" "}
+                    {typeof selectedSourceMetadata.detectedLegalType === "string"
+                      ? selectedSourceMetadata.detectedLegalType
+                      : "Not detected"}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-[#1E293B]">Chunk count:</span>
+                    {" "}
+                    {typeof selectedSourceMetadata.chunkCount === "number"
+                      ? selectedSourceMetadata.chunkCount
+                      : 0}
+                  </p>
+                  <p className="lg:col-span-2">
+                    <span className="font-semibold text-[#1E293B]">Acts / instruments:</span>
+                    {" "}
+                    {Array.isArray(selectedSourceMetadata.detectedActNames) && selectedSourceMetadata.detectedActNames.length
+                      ? selectedSourceMetadata.detectedActNames.join(", ")
+                      : "None detected"}
+                  </p>
+                  <p className="lg:col-span-2">
+                    <span className="font-semibold text-[#1E293B]">Sections / articles:</span>
+                    {" "}
+                    {Array.isArray(selectedSourceMetadata.detectedSectionRefs) && selectedSourceMetadata.detectedSectionRefs.length
+                      ? selectedSourceMetadata.detectedSectionRefs.join(", ")
+                      : "None detected"}
+                  </p>
+                  <p className="lg:col-span-2">
+                    <span className="font-semibold text-[#1E293B]">Constitutional mentions:</span>
+                    {" "}
+                    {Array.isArray(selectedSourceMetadata.detectedConstitutionalMentions) && selectedSourceMetadata.detectedConstitutionalMentions.length
+                      ? selectedSourceMetadata.detectedConstitutionalMentions.join(", ")
+                      : "None detected"}
+                  </p>
+                  {selectedSource.ingestionError
+                    ? (
+                        <p className="lg:col-span-2 text-[#B42318]">
+                          <span className="font-semibold">Ingestion error:</span>
+                          {" "}
+                          {selectedSource.ingestionError}
+                        </p>
+                      )
+                    : null}
+                </div>
+              </section>
+            )
+          : null}
 
         <div className="flex flex-col gap-2 text-[11px] sm:flex-row sm:items-center sm:justify-between">
           <p className="text-[#94A3B8]">

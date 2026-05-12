@@ -60,6 +60,14 @@ export type KnowledgeSourceType =
 export type KnowledgeSourceMetadata = {
   adminCategory?: string;
   templates?: Record<string, string>;
+  chunkCount?: number;
+  detectedLegalType?: string;
+  detectedActNames?: string[];
+  detectedSectionRefs?: string[];
+  detectedConstitutionalMentions?: string[];
+  detectedCourts?: string[];
+  constitutionalBasis?: string;
+  legislationTags?: string[];
   [key: string]: unknown;
 };
 
@@ -88,6 +96,8 @@ export type KnowledgeSourceItem = {
   nextReviewAt?: string;
   legalReviewed: boolean;
   status: KnowledgeSourceStatus;
+  ingestionStatus?: "metadata_only" | "fetched" | "chunked" | "embedded" | "failed";
+  ingestionError?: string;
   sha256Hash?: string;
   version: number;
   rawText?: string;
@@ -120,6 +130,13 @@ export type KnowledgeSourceInput = {
   legalReviewed?: boolean;
   status?: KnowledgeSourceStatus;
   version?: number;
+  metadata?: KnowledgeSourceMetadata;
+};
+
+export type KnowledgeSourceIngestInput = {
+  content?: string;
+  localFilePath?: string;
+  expectedSha256?: string;
   metadata?: KnowledgeSourceMetadata;
 };
 
@@ -175,4 +192,44 @@ export async function rejectKnowledgeSource(id: string, reason: string): Promise
   });
 
   return response.data.source;
+}
+
+export async function ingestKnowledgeSource(
+  id: string,
+  input: KnowledgeSourceIngestInput,
+): Promise<{
+    source?: KnowledgeSourceItem;
+    chunkCount?: number;
+    sha256Hash?: string;
+    extractedLegalMetadata?: Record<string, unknown>;
+  }> {
+  const response = await adminApiRequest<{
+    result: {
+      source?: KnowledgeSourceItem;
+      chunkCount?: number;
+      sha256Hash?: string;
+      extractedLegalMetadata?: Record<string, unknown>;
+    };
+  }>(`/rag/knowledge-sources/${id}/ingest`, {
+    method: "POST",
+    body: input,
+  });
+
+  return response.data.result;
+}
+
+export async function reindexKnowledgeSource(id: string): Promise<{
+  source?: KnowledgeSourceItem;
+  chunkCount?: number;
+}> {
+  const response = await adminApiRequest<{
+    result: {
+      source?: KnowledgeSourceItem;
+      chunkCount?: number;
+    };
+  }>(`/rag/knowledge-sources/${id}/reindex`, {
+    method: "POST",
+  });
+
+  return response.data.result;
 }

@@ -1,7 +1,20 @@
 import type { ReactNode } from "react";
 
+import { useEffect, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+
+import type {
+  AdminAnalyticsBucket,
+  AdminAnalyticsOverview,
+  AdminDestinationRecord,
+  AdminPrivacyRequestRecord,
+  AdminSubmissionTemplateRecord,
+  AdminTaxonomyRecord,
+} from "@/lib/admin-operations";
+
 import {
   createAdminDestination,
+  createAdminSubmissionTemplate,
   createAdminTaxonomy,
   getAdminAnalyticsCategories,
   getAdminAnalyticsHeatmap,
@@ -10,19 +23,14 @@ import {
   getAdminAnalyticsTrends,
   listAdminDestinations,
   listAdminPrivacyRequests,
+  listAdminSubmissionTemplates,
   listAdminTaxonomies,
   patchAdminDestination,
   patchAdminPrivacyRequest,
+  patchAdminSubmissionTemplate,
   patchAdminTaxonomy,
-  type AdminAnalyticsBucket,
-  type AdminAnalyticsOverview,
-  type AdminDestinationRecord,
-  type AdminPrivacyRequestRecord,
-  type AdminTaxonomyRecord,
 } from "@/lib/admin-operations";
 import { cn } from "@/lib/utils";
-import { useEffect, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
 
 export type AdminOperationsQuickLink = {
   label: string;
@@ -71,6 +79,7 @@ type LivePanelState = {
   error: string | null;
   taxonomies: AdminTaxonomyRecord[];
   destinations: AdminDestinationRecord[];
+  submissionTemplates: AdminSubmissionTemplateRecord[];
   privacyRequests: AdminPrivacyRequestRecord[];
   analyticsOverview: AdminAnalyticsOverview | null;
   analyticsHeatmap: AdminAnalyticsBucket[];
@@ -79,11 +88,19 @@ type LivePanelState = {
   analyticsLanguages: AdminAnalyticsBucket[];
 };
 
+function parseCommaSeparatedValues(value: string) {
+  return value
+    .split(",")
+    .map(item => item.trim())
+    .filter(Boolean);
+}
+
 const defaultLivePanelState: LivePanelState = {
   isLoading: false,
   error: null,
   taxonomies: [],
   destinations: [],
+  submissionTemplates: [],
   privacyRequests: [],
   analyticsOverview: null,
   analyticsHeatmap: [],
@@ -126,9 +143,37 @@ export function AdminOperationsSectionPage({
     description: "",
   });
   const [destinationDraft, setDestinationDraft] = useState({
-    type: "agency" as AdminDestinationRecord["type"],
+    type: "police" as AdminDestinationRecord["type"],
+    key: "",
     name: "",
+    channel: "secure_email" as AdminDestinationRecord["channel"],
+    jurisdiction: "NSW",
+    languages: "en",
     endpoint: "",
+    contactEmail: "",
+    contactPhone: "",
+    minimumRequiredInfo: "",
+    anonymityOptions: "",
+    expectedNextSteps: "",
+    requiredConsentFlags: "share_with_agencies",
+    incidentTypes: "",
+    submissionTitleTemplate: "",
+    submissionSummaryTemplate: "",
+    consentRequired: true,
+    supportsAcknowledgement: false,
+  });
+  const [submissionTemplateDraft, setSubmissionTemplateDraft] = useState({
+    key: "",
+    name: "",
+    destinationType: "police" as AdminDestinationRecord["type"],
+    channel: "secure_email" as AdminDestinationRecord["channel"],
+    jurisdiction: "NSW",
+    titleTemplate: "SafeSpeak report {{refNo}}",
+    summaryTemplate: "{{summary}}",
+    fieldMappings: "refNo:referenceId, incidentType:category, summary:description",
+    staticPayload: "{}",
+    acknowledgementMode: "manual" as const,
+    attachmentMode: "metadata_only" as const,
   });
   const [isSubmittingLiveChange, setIsSubmittingLiveChange] = useState(false);
 
@@ -162,13 +207,17 @@ export function AdminOperationsSectionPage({
       }
 
       if (sectionKey === "destinations") {
-        const destinations = await listAdminDestinations();
+        const [destinations, submissionTemplates] = await Promise.all([
+          listAdminDestinations(),
+          listAdminSubmissionTemplates(),
+        ]);
 
         if (isMounted) {
           setLivePanel({
             ...defaultLivePanelState,
             isLoading: false,
             destinations,
+            submissionTemplates,
           });
         }
         return;
@@ -273,10 +322,26 @@ export function AdminOperationsSectionPage({
     try {
       const destination = await createAdminDestination({
         type: destinationDraft.type,
+        key: destinationDraft.key,
         name: destinationDraft.name,
+        channel: destinationDraft.channel,
+        jurisdiction: destinationDraft.jurisdiction,
+        languages: parseCommaSeparatedValues(destinationDraft.languages),
         endpoint: destinationDraft.endpoint || undefined,
+        contactEmail: destinationDraft.contactEmail || undefined,
+        contactPhone: destinationDraft.contactPhone || undefined,
+        minimumRequiredInfo: parseCommaSeparatedValues(destinationDraft.minimumRequiredInfo),
+        anonymityOptions: parseCommaSeparatedValues(destinationDraft.anonymityOptions),
+        expectedNextSteps: parseCommaSeparatedValues(destinationDraft.expectedNextSteps),
+        consentRequired: destinationDraft.consentRequired,
+        supportsAcknowledgement: destinationDraft.supportsAcknowledgement,
         isActive: true,
-        metadata: {},
+        metadata: {
+          requiredConsentFlags: parseCommaSeparatedValues(destinationDraft.requiredConsentFlags),
+          incidentTypes: parseCommaSeparatedValues(destinationDraft.incidentTypes),
+          submissionTitleTemplate: destinationDraft.submissionTitleTemplate || undefined,
+          submissionSummaryTemplate: destinationDraft.submissionSummaryTemplate || undefined,
+        },
       });
 
       setLivePanel(prev => ({
@@ -285,15 +350,88 @@ export function AdminOperationsSectionPage({
         error: null,
       }));
       setDestinationDraft({
-        type: "agency",
+        type: "police",
+        key: "",
         name: "",
+        channel: "secure_email",
+        jurisdiction: "NSW",
+        languages: "en",
         endpoint: "",
+        contactEmail: "",
+        contactPhone: "",
+        minimumRequiredInfo: "",
+        anonymityOptions: "",
+        expectedNextSteps: "",
+        requiredConsentFlags: "share_with_agencies",
+        incidentTypes: "",
+        submissionTitleTemplate: "",
+        submissionSummaryTemplate: "",
+        consentRequired: true,
+        supportsAcknowledgement: false,
       });
     }
     catch (error) {
       setLivePanel(prev => ({
         ...prev,
         error: error instanceof Error ? error.message : "Unable to create destination.",
+      }));
+    }
+    finally {
+      setIsSubmittingLiveChange(false);
+    }
+  };
+
+  const handleSubmissionTemplateCreate = async () => {
+    setIsSubmittingLiveChange(true);
+
+    try {
+      const template = await createAdminSubmissionTemplate({
+        key: submissionTemplateDraft.key,
+        name: submissionTemplateDraft.name,
+        destinationType: submissionTemplateDraft.destinationType,
+        channel: submissionTemplateDraft.channel,
+        jurisdiction: submissionTemplateDraft.jurisdiction,
+        titleTemplate: submissionTemplateDraft.titleTemplate,
+        summaryTemplate: submissionTemplateDraft.summaryTemplate,
+        fieldMappings: parseCommaSeparatedValues(submissionTemplateDraft.fieldMappings).map((item) => {
+          const [source, target] = item.split(":").map(part => part.trim());
+
+          return {
+            source,
+            target: target || source,
+            required: false,
+          };
+        }),
+        staticPayload: JSON.parse(submissionTemplateDraft.staticPayload || "{}") as Record<string, unknown>,
+        acknowledgementMode: submissionTemplateDraft.acknowledgementMode,
+        attachmentMode: submissionTemplateDraft.attachmentMode,
+        isActive: true,
+        metadata: {},
+      });
+
+      setLivePanel(prev => ({
+        ...prev,
+        submissionTemplates: [template, ...prev.submissionTemplates],
+        error: null,
+      }));
+      setSubmissionTemplateDraft({
+        key: "",
+        name: "",
+        destinationType: "police",
+        channel: "secure_email",
+        jurisdiction: "NSW",
+        titleTemplate: "SafeSpeak report {{refNo}}",
+        summaryTemplate: "{{summary}}",
+        fieldMappings: "refNo:referenceId, incidentType:category, summary:description",
+        staticPayload: "{}",
+        acknowledgementMode: "manual",
+        attachmentMode: "metadata_only",
+      });
+    }
+    catch (error) {
+      setLivePanel(prev => ({
+        ...prev,
+        error: error instanceof Error ? error.message : "Unable to create submission template.",
       }));
     }
     finally {
@@ -338,6 +476,28 @@ export function AdminOperationsSectionPage({
       setLivePanel(prev => ({
         ...prev,
         error: error instanceof Error ? error.message : "Unable to update destination.",
+      }));
+    }
+    finally {
+      setIsSubmittingLiveChange(false);
+    }
+  };
+
+  const toggleSubmissionTemplateActive = async (item: AdminSubmissionTemplateRecord) => {
+    setIsSubmittingLiveChange(true);
+
+    try {
+      const template = await patchAdminSubmissionTemplate(item._id, { isActive: !item.isActive });
+      setLivePanel(prev => ({
+        ...prev,
+        submissionTemplates: prev.submissionTemplates.map(row => (row._id === item._id ? template : row)),
+        error: null,
+      }));
+    }
+    catch (error) {
+      setLivePanel(prev => ({
+        ...prev,
+        error: error instanceof Error ? error.message : "Unable to update submission template.",
       }));
     }
     finally {
@@ -491,9 +651,12 @@ export function AdminOperationsSectionPage({
                     <div>
                       <h4 className="text-[16px] font-semibold text-[#1E293B]">Live Admin Data</h4>
                       <p className="mt-1 text-[12px] text-[#607B90]">
-                        {sectionKey === "taxonomies" ? "Manage active incident, support, language, and culture taxonomy records."
-                          : sectionKey === "destinations" ? "Review live destination routing records for agencies and services."
-                            : sectionKey === "privacyRequests" ? "Update privacy request review state from the live backend queue."
+                        {sectionKey === "taxonomies"
+                          ? "Manage active incident, support, language, and culture taxonomy records."
+                          : sectionKey === "destinations"
+                            ? "Review live destination routing records for agencies and services."
+                            : sectionKey === "privacyRequests"
+                              ? "Update privacy request review state from the live backend queue."
                               : "Review anonymised analytics aggregates returned by the backend analytics module."}
                       </p>
                     </div>
@@ -593,7 +756,7 @@ export function AdminOperationsSectionPage({
                   {sectionKey === "destinations"
                     ? (
                         <div className="mt-4 space-y-4">
-                          <div className="grid gap-3 md:grid-cols-3">
+                          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                             <label className="space-y-1 text-[12px] text-[#52667A]">
                               <span>Type</span>
                               <select
@@ -604,16 +767,67 @@ export function AdminOperationsSectionPage({
                                 }))}
                                 className="h-10 w-full rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
                               >
-                                <option value="agency">Agency</option>
-                                <option value="support_service">Support Service</option>
-                                <option value="webhook">Webhook</option>
+                                <option value="police">Police</option>
+                                <option value="anti_discrimination_agency">Anti-Discrimination Agency</option>
+                                <option value="esafety">eSafety</option>
+                                <option value="legal_aid">Legal Aid</option>
+                                <option value="community_legal_centre">Community Legal Centre</option>
+                                <option value="education_provider">Education Provider</option>
+                                <option value="workplace_channel">Workplace Channel</option>
+                                <option value="scamwatch">Scamwatch</option>
+                                <option value="reportcyber">ReportCyber</option>
+                                <option value="community_support_org">Community Support Org</option>
                               </select>
+                            </label>
+                            <label className="space-y-1 text-[12px] text-[#52667A]">
+                              <span>Key</span>
+                              <input
+                                value={destinationDraft.key}
+                                onChange={event => setDestinationDraft(prev => ({ ...prev, key: event.target.value }))}
+                                className="h-10 w-full rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
+                              />
                             </label>
                             <label className="space-y-1 text-[12px] text-[#52667A]">
                               <span>Name</span>
                               <input
                                 value={destinationDraft.name}
                                 onChange={event => setDestinationDraft(prev => ({ ...prev, name: event.target.value }))}
+                                className="h-10 w-full rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
+                              />
+                            </label>
+                            <label className="space-y-1 text-[12px] text-[#52667A]">
+                              <span>Channel</span>
+                              <select
+                                value={destinationDraft.channel}
+                                onChange={event => setDestinationDraft(prev => ({
+                                  ...prev,
+                                  channel: event.target.value as AdminDestinationRecord["channel"],
+                                }))}
+                                className="h-10 w-full rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
+                              >
+                                <option value="api_oauth">API OAuth</option>
+                                <option value="api_mtls">API mTLS</option>
+                                <option value="secure_email_pgp">Secure Email PGP</option>
+                                <option value="secure_email">Secure Email</option>
+                                <option value="manual_export_pdf">Manual Export PDF</option>
+                                <option value="manual_export_json">Manual Export JSON</option>
+                                <option value="booking_link">Booking Link</option>
+                              </select>
+                            </label>
+                            <label className="space-y-1 text-[12px] text-[#52667A]">
+                              <span>Jurisdiction</span>
+                              <input
+                                value={destinationDraft.jurisdiction}
+                                onChange={event => setDestinationDraft(prev => ({ ...prev, jurisdiction: event.target.value }))}
+                                className="h-10 w-full rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
+                              />
+                            </label>
+                            <label className="space-y-1 text-[12px] text-[#52667A]">
+                              <span>Languages</span>
+                              <input
+                                value={destinationDraft.languages}
+                                onChange={event => setDestinationDraft(prev => ({ ...prev, languages: event.target.value }))}
+                                placeholder="en, ar, zh"
                                 className="h-10 w-full rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
                               />
                             </label>
@@ -625,11 +839,114 @@ export function AdminOperationsSectionPage({
                                 className="h-10 w-full rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
                               />
                             </label>
+                            <label className="space-y-1 text-[12px] text-[#52667A]">
+                              <span>Contact Email</span>
+                              <input
+                                value={destinationDraft.contactEmail}
+                                onChange={event => setDestinationDraft(prev => ({ ...prev, contactEmail: event.target.value }))}
+                                className="h-10 w-full rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
+                              />
+                            </label>
+                            <label className="space-y-1 text-[12px] text-[#52667A]">
+                              <span>Contact Phone</span>
+                              <input
+                                value={destinationDraft.contactPhone}
+                                onChange={event => setDestinationDraft(prev => ({ ...prev, contactPhone: event.target.value }))}
+                                className="h-10 w-full rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
+                              />
+                            </label>
+                            <label className="space-y-1 text-[12px] text-[#52667A] md:col-span-2">
+                              <span>Minimum Required Info</span>
+                              <input
+                                value={destinationDraft.minimumRequiredInfo}
+                                onChange={event => setDestinationDraft(prev => ({ ...prev, minimumRequiredInfo: event.target.value }))}
+                                placeholder="who, what, when, where"
+                                className="h-10 w-full rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
+                              />
+                            </label>
+                            <label className="space-y-1 text-[12px] text-[#52667A] md:col-span-2">
+                              <span>Anonymity Options</span>
+                              <input
+                                value={destinationDraft.anonymityOptions}
+                                onChange={event => setDestinationDraft(prev => ({ ...prev, anonymityOptions: event.target.value }))}
+                                placeholder="anonymous, pseudonymous, identified"
+                                className="h-10 w-full rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
+                              />
+                            </label>
+                            <label className="space-y-1 text-[12px] text-[#52667A] md:col-span-2 xl:col-span-4">
+                              <span>Expected Next Steps</span>
+                              <input
+                                value={destinationDraft.expectedNextSteps}
+                                onChange={event => setDestinationDraft(prev => ({ ...prev, expectedNextSteps: event.target.value }))}
+                                placeholder="review intake, acknowledge receipt, contact reporter"
+                                className="h-10 w-full rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
+                              />
+                            </label>
+                            <label className="space-y-1 text-[12px] text-[#52667A] md:col-span-2">
+                              <span>Required Consent Flags</span>
+                              <input
+                                value={destinationDraft.requiredConsentFlags}
+                                onChange={event => setDestinationDraft(prev => ({ ...prev, requiredConsentFlags: event.target.value }))}
+                                placeholder="share_with_agencies"
+                                className="h-10 w-full rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
+                              />
+                            </label>
+                            <label className="space-y-1 text-[12px] text-[#52667A] md:col-span-2">
+                              <span>Incident Types</span>
+                              <input
+                                value={destinationDraft.incidentTypes}
+                                onChange={event => setDestinationDraft(prev => ({ ...prev, incidentTypes: event.target.value }))}
+                                placeholder="online_harassment, cyber_scam"
+                                className="h-10 w-full rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
+                              />
+                            </label>
+                            <label className="space-y-1 text-[12px] text-[#52667A] md:col-span-2">
+                              <span>Submission Title Template</span>
+                              <input
+                                value={destinationDraft.submissionTitleTemplate}
+                                onChange={event => setDestinationDraft(prev => ({ ...prev, submissionTitleTemplate: event.target.value }))}
+                                placeholder="SafeSpeak report {{refNo}}"
+                                className="h-10 w-full rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
+                              />
+                            </label>
+                            <label className="space-y-1 text-[12px] text-[#52667A] md:col-span-2">
+                              <span>Submission Summary Template</span>
+                              <input
+                                value={destinationDraft.submissionSummaryTemplate}
+                                onChange={event => setDestinationDraft(prev => ({ ...prev, submissionSummaryTemplate: event.target.value }))}
+                                placeholder="{{summary}}"
+                                className="h-10 w-full rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
+                              />
+                            </label>
+                            <label className="inline-flex items-center gap-2 text-[12px] text-[#52667A]">
+                              <input
+                                type="checkbox"
+                                checked={destinationDraft.consentRequired}
+                                onChange={event => setDestinationDraft(prev => ({ ...prev, consentRequired: event.target.checked }))}
+                              />
+                              Consent required
+                            </label>
+                            <label className="inline-flex items-center gap-2 text-[12px] text-[#52667A]">
+                              <input
+                                type="checkbox"
+                                checked={destinationDraft.supportsAcknowledgement}
+                                onChange={event => setDestinationDraft(prev => ({
+                                  ...prev,
+                                  supportsAcknowledgement: event.target.checked,
+                                }))}
+                              />
+                              Supports acknowledgement
+                            </label>
                           </div>
                           <button
                             type="button"
                             onClick={() => void handleDestinationCreate()}
-                            disabled={isSubmittingLiveChange || !destinationDraft.name.trim()}
+                            disabled={
+                              isSubmittingLiveChange
+                              || !destinationDraft.key.trim()
+                              || !destinationDraft.name.trim()
+                              || !destinationDraft.jurisdiction.trim()
+                            }
                             className="inline-flex h-10 items-center justify-center rounded-md bg-[#0F67AE] px-4 text-[13px] font-semibold text-white transition hover:bg-[#0B578F] disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             {isSubmittingLiveChange ? "Saving..." : "Create destination"}
@@ -642,8 +959,30 @@ export function AdminOperationsSectionPage({
                                     <p className="text-[14px] font-semibold text-[#1E293B]">{item.name}</p>
                                     <p className="mt-1 text-[12px] text-[#607B90]">
                                       {item.type}
+                                      {` • ${item.channel}`}
+                                      {` • ${item.jurisdiction}`}
                                       {item.endpoint ? ` • ${item.endpoint}` : ""}
                                     </p>
+                                    <p className="mt-1 text-[12px] text-[#607B90]">
+                                      {item.languages.join(", ")}
+                                      {item.minimumRequiredInfo.length
+                                        ? ` • Required: ${item.minimumRequiredInfo.join(", ")}`
+                                        : ""}
+                                    </p>
+                                    {item.metadata?.incidentTypes?.length || item.metadata?.requiredConsentFlags?.length
+                                      ? (
+                                          <p className="mt-1 text-[12px] text-[#607B90]">
+                                            {item.metadata?.incidentTypes?.length
+                                              ? `Incident types: ${item.metadata.incidentTypes.join(", ")}`
+                                              : ""}
+                                            {item.metadata?.requiredConsentFlags?.length
+                                              ? `${item.metadata?.incidentTypes?.length
+                                                ? " • "
+                                                : ""}Consent: ${item.metadata.requiredConsentFlags.join(", ")}`
+                                              : ""}
+                                          </p>
+                                        )
+                                      : null}
                                   </div>
                                   <button
                                     type="button"
@@ -655,6 +994,187 @@ export function AdminOperationsSectionPage({
                                 </div>
                               </div>
                             ))}
+                          </div>
+                          <div className="mt-6 border-t border-[#E5ECF3] pt-4">
+                            <div className="flex flex-col gap-1">
+                              <h5 className="text-[15px] font-semibold text-[#1E293B]">Submission Templates</h5>
+                              <p className="text-[12px] text-[#607B90]">
+                                Define explicit payload mappings and acknowledgement modes for each delivery channel.
+                              </p>
+                            </div>
+                            <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                              <label className="space-y-1 text-[12px] text-[#52667A]">
+                                <span>Key</span>
+                                <input
+                                  value={submissionTemplateDraft.key}
+                                  onChange={event => setSubmissionTemplateDraft(prev => ({ ...prev, key: event.target.value }))}
+                                  className="h-10 w-full rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
+                                />
+                              </label>
+                              <label className="space-y-1 text-[12px] text-[#52667A]">
+                                <span>Name</span>
+                                <input
+                                  value={submissionTemplateDraft.name}
+                                  onChange={event => setSubmissionTemplateDraft(prev => ({ ...prev, name: event.target.value }))}
+                                  className="h-10 w-full rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
+                                />
+                              </label>
+                              <label className="space-y-1 text-[12px] text-[#52667A]">
+                                <span>Destination Type</span>
+                                <select
+                                  value={submissionTemplateDraft.destinationType}
+                                  onChange={event => setSubmissionTemplateDraft(prev => ({
+                                    ...prev,
+                                    destinationType: event.target.value as AdminDestinationRecord["type"],
+                                  }))}
+                                  className="h-10 w-full rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
+                                >
+                                  <option value="police">Police</option>
+                                  <option value="anti_discrimination_agency">Anti-Discrimination Agency</option>
+                                  <option value="esafety">eSafety</option>
+                                  <option value="legal_aid">Legal Aid</option>
+                                  <option value="community_legal_centre">Community Legal Centre</option>
+                                  <option value="education_provider">Education Provider</option>
+                                  <option value="workplace_channel">Workplace Channel</option>
+                                  <option value="scamwatch">Scamwatch</option>
+                                  <option value="reportcyber">ReportCyber</option>
+                                  <option value="community_support_org">Community Support Org</option>
+                                </select>
+                              </label>
+                              <label className="space-y-1 text-[12px] text-[#52667A]">
+                                <span>Channel</span>
+                                <select
+                                  value={submissionTemplateDraft.channel}
+                                  onChange={event => setSubmissionTemplateDraft(prev => ({
+                                    ...prev,
+                                    channel: event.target.value as AdminDestinationRecord["channel"],
+                                  }))}
+                                  className="h-10 w-full rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
+                                >
+                                  <option value="api_oauth">API OAuth</option>
+                                  <option value="api_mtls">API mTLS</option>
+                                  <option value="secure_email_pgp">Secure Email PGP</option>
+                                  <option value="secure_email">Secure Email</option>
+                                  <option value="manual_export_pdf">Manual Export PDF</option>
+                                  <option value="manual_export_json">Manual Export JSON</option>
+                                  <option value="booking_link">Booking Link</option>
+                                </select>
+                              </label>
+                              <label className="space-y-1 text-[12px] text-[#52667A]">
+                                <span>Jurisdiction</span>
+                                <input
+                                  value={submissionTemplateDraft.jurisdiction}
+                                  onChange={event => setSubmissionTemplateDraft(prev => ({ ...prev, jurisdiction: event.target.value }))}
+                                  className="h-10 w-full rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
+                                />
+                              </label>
+                              <label className="space-y-1 text-[12px] text-[#52667A] md:col-span-2 xl:col-span-4">
+                                <span>Title Template</span>
+                                <input
+                                  value={submissionTemplateDraft.titleTemplate}
+                                  onChange={event => setSubmissionTemplateDraft(prev => ({ ...prev, titleTemplate: event.target.value }))}
+                                  className="h-10 w-full rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
+                                />
+                              </label>
+                              <label className="space-y-1 text-[12px] text-[#52667A] md:col-span-2 xl:col-span-4">
+                                <span>Summary Template</span>
+                                <input
+                                  value={submissionTemplateDraft.summaryTemplate}
+                                  onChange={event => setSubmissionTemplateDraft(prev => ({ ...prev, summaryTemplate: event.target.value }))}
+                                  className="h-10 w-full rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
+                                />
+                              </label>
+                              <label className="space-y-1 text-[12px] text-[#52667A] md:col-span-2">
+                                <span>Field Mappings</span>
+                                <input
+                                  value={submissionTemplateDraft.fieldMappings}
+                                  onChange={event => setSubmissionTemplateDraft(prev => ({ ...prev, fieldMappings: event.target.value }))}
+                                  placeholder="refNo:referenceId, summary:description"
+                                  className="h-10 w-full rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
+                                />
+                              </label>
+                              <label className="space-y-1 text-[12px] text-[#52667A] md:col-span-2">
+                                <span>Static Payload JSON</span>
+                                <input
+                                  value={submissionTemplateDraft.staticPayload}
+                                  onChange={event => setSubmissionTemplateDraft(prev => ({ ...prev, staticPayload: event.target.value }))}
+                                  placeholder='{"source":"safespeak"}'
+                                  className="h-10 w-full rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
+                                />
+                              </label>
+                              <label className="space-y-1 text-[12px] text-[#52667A]">
+                                <span>Acknowledgement Mode</span>
+                                <select
+                                  value={submissionTemplateDraft.acknowledgementMode}
+                                  onChange={event => setSubmissionTemplateDraft(prev => ({
+                                    ...prev,
+                                    acknowledgementMode: event.target.value as "manual" | "sync_reference" | "async_webhook",
+                                  }))}
+                                  className="h-10 w-full rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
+                                >
+                                  <option value="manual">Manual</option>
+                                  <option value="sync_reference">Sync Reference</option>
+                                  <option value="async_webhook">Async Webhook</option>
+                                </select>
+                              </label>
+                              <label className="space-y-1 text-[12px] text-[#52667A]">
+                                <span>Attachment Mode</span>
+                                <select
+                                  value={submissionTemplateDraft.attachmentMode}
+                                  onChange={event => setSubmissionTemplateDraft(prev => ({
+                                    ...prev,
+                                    attachmentMode: event.target.value as "metadata_only" | "include_hashes" | "include_manifest",
+                                  }))}
+                                  className="h-10 w-full rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
+                                >
+                                  <option value="metadata_only">Metadata Only</option>
+                                  <option value="include_hashes">Include Hashes</option>
+                                  <option value="include_manifest">Include Manifest</option>
+                                </select>
+                              </label>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => void handleSubmissionTemplateCreate()}
+                              disabled={
+                                isSubmittingLiveChange
+                                || !submissionTemplateDraft.key.trim()
+                                || !submissionTemplateDraft.name.trim()
+                              }
+                              className="mt-3 inline-flex h-10 items-center justify-center rounded-md bg-[#0F67AE] px-4 text-[13px] font-semibold text-white transition hover:bg-[#0B578F] disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              {isSubmittingLiveChange ? "Saving..." : "Create template"}
+                            </button>
+                            <div className="mt-3 grid gap-3">
+                              {livePanel.submissionTemplates.slice(0, 8).map(item => (
+                                <div key={item._id} className="rounded-xl border border-[#E5ECF3] bg-white px-4 py-3">
+                                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                    <div>
+                                      <p className="text-[14px] font-semibold text-[#1E293B]">{item.name}</p>
+                                      <p className="mt-1 text-[12px] text-[#607B90]">
+                                        {item.destinationType}
+                                        {` • ${item.channel}`}
+                                        {` • ${item.jurisdiction}`}
+                                      </p>
+                                      <p className="mt-1 text-[12px] text-[#607B90]">
+                                        Ack:
+                                        {" "}
+                                        {item.acknowledgementMode}
+                                        {" • Attachments: "}
+                                        {item.attachmentMode}
+                                      </p>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => void toggleSubmissionTemplateActive(item)}
+                                      className="inline-flex h-8 items-center justify-center rounded-md border border-[#D8E3EE] px-3 text-[12px] font-semibold text-[#0F67AE] transition hover:bg-[#EEF6FF]"
+                                    >
+                                      {item.isActive ? "Deactivate" : "Activate"}
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         </div>
                       )
