@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
 import type {
@@ -8,6 +8,7 @@ import type {
   AdminAnalyticsOverview,
   AdminDestinationRecord,
   AdminPrivacyRequestRecord,
+  AdminReportDeliveryRecord,
   AdminSubmissionTemplateRecord,
   AdminTaxonomyRecord,
 } from "@/lib/admin-operations";
@@ -16,11 +17,14 @@ import {
   createAdminDestination,
   createAdminSubmissionTemplate,
   createAdminTaxonomy,
+  deleteAdminTaxonomy,
+  getAdminTaxonomy,
   getAdminAnalyticsCategories,
   getAdminAnalyticsHeatmap,
   getAdminAnalyticsLanguages,
   getAdminAnalyticsOverview,
   getAdminAnalyticsTrends,
+  listAdminReportDeliveries,
   listAdminDestinations,
   listAdminPrivacyRequests,
   listAdminSubmissionTemplates,
@@ -72,6 +76,7 @@ type AdminOperationsSectionKey =
   | "taxonomies"
   | "destinations"
   | "privacyRequests"
+  | "deliveries"
   | "analytics";
 
 type LivePanelState = {
@@ -81,6 +86,7 @@ type LivePanelState = {
   destinations: AdminDestinationRecord[];
   submissionTemplates: AdminSubmissionTemplateRecord[];
   privacyRequests: AdminPrivacyRequestRecord[];
+  deliveries: AdminReportDeliveryRecord[];
   analyticsOverview: AdminAnalyticsOverview | null;
   analyticsHeatmap: AdminAnalyticsBucket[];
   analyticsTrends: AdminAnalyticsBucket[];
@@ -103,6 +109,125 @@ function parseCommaSeparatedValues(value: string) {
     .filter(Boolean);
 }
 
+function formatMetadataLabel(key: string) {
+  return key
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .split(" ")
+    .filter(Boolean)
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function formatMetadataText(value: unknown): string {
+  if (typeof value === "string") {
+    return formatMetadataLabel(value);
+  }
+
+  if (typeof value === "boolean") {
+    return value ? "Yes" : "No";
+  }
+
+  if (typeof value === "number") {
+    return String(value);
+  }
+
+  if (Array.isArray(value)) {
+    return value.length ? value.map(formatMetadataText).join(", ") : "None";
+  }
+
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>);
+
+    return entries.length
+      ? entries.map(([key, entryValue]) => `${formatMetadataLabel(key)}: ${formatMetadataText(entryValue)}`).join("; ")
+      : "None";
+  }
+
+  return "Not provided";
+}
+
+function normalizeMetadataKey(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function inferCultureProfileGroup(item: AdminTaxonomyRecord) {
+  const key = normalizeMetadataKey(item.key);
+  const label = item.label.trim().toLowerCase();
+
+  if (key.startsWith("faith_") || ["buddhist", "christian", "hindu", "jewish", "muslim", "sikh"].includes(label)) {
+    return "faith";
+  }
+
+  if (key.startsWith("community_") || key.includes("migrant") || key.includes("student") || key.includes("disability")) {
+    return "community";
+  }
+
+  return "cultural";
+}
+
+function getGeneratedTaxonomyMetadata(item: AdminTaxonomyRecord): Record<string, unknown> {
+  const metadata = item.metadata ?? {};
+
+  if (Object.keys(metadata).length) {
+    return metadata;
+  }
+
+  const generatedMetadata: Record<string, unknown> = {
+    source: "admin_created",
+    taxonomyType: item.type,
+    normalizedKey: normalizeMetadataKey(item.key),
+    hasDescription: Boolean(item.description?.trim()),
+  };
+
+  if (item.type === "incident_type") {
+    return {
+      ...generatedMetadata,
+      usage: "report_classification",
+      analyticsDimension: "incidentType",
+    };
+  }
+
+  if (item.type === "support_need") {
+    return {
+      ...generatedMetadata,
+      usage: "support_recommendation",
+      analyticsDimension: "supportNeed",
+    };
+  }
+
+  if (item.type === "language") {
+    return {
+      ...generatedMetadata,
+      usage: "language_access",
+      analyticsDimension: "language",
+      region: "Custom",
+      priority: "admin",
+    };
+  }
+
+  return {
+    ...generatedMetadata,
+    usage: "profile_context",
+    analyticsDimension: "profileContext",
+    profileGroup: inferCultureProfileGroup(item),
+  };
+}
+
+function getAdminErrorMessage(error: unknown, fallback: string) {
+  const message = error instanceof Error ? error.message : "";
+
+  if (/duplicate key|E11000/i.test(message)) {
+    return "This taxonomy key already exists for the selected type. Use a different key, or update the existing record.";
+  }
+
+  return message || fallback;
+}
+
 const defaultLivePanelState: LivePanelState = {
   isLoading: false,
   error: null,
@@ -110,11 +235,19 @@ const defaultLivePanelState: LivePanelState = {
   destinations: [],
   submissionTemplates: [],
   privacyRequests: [],
+  deliveries: [],
   analyticsOverview: null,
   analyticsHeatmap: [],
   analyticsTrends: [],
   analyticsCategories: [],
   analyticsLanguages: [],
+};
+
+const taxonomyTypeByModuleId: Partial<Record<string, AdminTaxonomyRecord["type"]>> = {
+  "incident-types": "incident_type",
+  "destination-types": "support_need",
+  "cultural-categories": "culture",
+  "language-codes": "language",
 };
 
 function statusClass(status: AdminOperationsModule["status"]) {
@@ -150,6 +283,7 @@ export function AdminOperationsSectionPage({
     label: "",
     description: "",
   });
+  const [selectedTaxonomy, setSelectedTaxonomy] = useState<AdminTaxonomyRecord | null>(null);
   const [destinationDraft, setDestinationDraft] = useState({
     type: "police" as AdminDestinationRecord["type"],
     key: "",
@@ -165,6 +299,7 @@ export function AdminOperationsSectionPage({
     expectedNextSteps: "",
     requiredConsentFlags: "share_with_agencies",
     incidentTypes: "",
+    recommendationReason: "",
     submissionTitleTemplate: "",
     submissionSummaryTemplate: "",
     consentRequired: true,
@@ -190,6 +325,21 @@ export function AdminOperationsSectionPage({
     nextSearchParams.set("focus", moduleId);
     setSearchParams(nextSearchParams, { replace: true });
   };
+
+  useEffect(() => {
+    if (sectionKey !== "taxonomies") {
+      return;
+    }
+
+    const nextType = taxonomyTypeByModuleId[activeModule.id];
+
+    if (!nextType) {
+      return;
+    }
+
+    setTaxonomyDraft(prev => (prev.type === nextType ? prev : { ...prev, type: nextType }));
+    setSelectedTaxonomy(null);
+  }, [activeModule.id, sectionKey]);
 
   useEffect(() => {
     if (!sectionKey) {
@@ -244,6 +394,19 @@ export function AdminOperationsSectionPage({
         return;
       }
 
+      if (sectionKey === "deliveries") {
+        const deliveries = await listAdminReportDeliveries({ limit: 25 });
+
+        if (isMounted) {
+          setLivePanel({
+            ...defaultLivePanelState,
+            isLoading: false,
+            deliveries,
+          });
+        }
+        return;
+      }
+
       const [
         analyticsOverview,
         analyticsHeatmap,
@@ -288,6 +451,15 @@ export function AdminOperationsSectionPage({
     };
   }, [sectionKey]);
 
+  const visibleTaxonomies = useMemo(
+    () => livePanel.taxonomies.filter(item => item.type === taxonomyDraft.type),
+    [livePanel.taxonomies, taxonomyDraft.type],
+  );
+  const selectedTaxonomyMetadata = useMemo(
+    () => (selectedTaxonomy ? getGeneratedTaxonomyMetadata(selectedTaxonomy) : {}),
+    [selectedTaxonomy],
+  );
+
   const handleTaxonomyCreate = async () => {
     setIsSubmittingLiveChange(true);
 
@@ -306,8 +478,9 @@ export function AdminOperationsSectionPage({
         taxonomies: [taxonomy, ...prev.taxonomies],
         error: null,
       }));
+      setSelectedTaxonomy(taxonomy);
       setTaxonomyDraft({
-        type: "incident_type",
+        type: taxonomy.type,
         key: "",
         label: "",
         description: "",
@@ -316,7 +489,7 @@ export function AdminOperationsSectionPage({
     catch (error) {
       setLivePanel(prev => ({
         ...prev,
-        error: error instanceof Error ? error.message : "Unable to create taxonomy.",
+        error: getAdminErrorMessage(error, "Unable to create taxonomy."),
       }));
     }
     finally {
@@ -347,6 +520,7 @@ export function AdminOperationsSectionPage({
         metadata: {
           requiredConsentFlags: parseCommaSeparatedValues(destinationDraft.requiredConsentFlags),
           incidentTypes: parseCommaSeparatedValues(destinationDraft.incidentTypes),
+          recommendationReason: destinationDraft.recommendationReason || undefined,
           submissionTitleTemplate: destinationDraft.submissionTitleTemplate || undefined,
           submissionSummaryTemplate: destinationDraft.submissionSummaryTemplate || undefined,
         },
@@ -372,6 +546,7 @@ export function AdminOperationsSectionPage({
         expectedNextSteps: "",
         requiredConsentFlags: "share_with_agencies",
         incidentTypes: "",
+        recommendationReason: "",
         submissionTitleTemplate: "",
         submissionSummaryTemplate: "",
         consentRequired: true,
@@ -457,11 +632,69 @@ export function AdminOperationsSectionPage({
         taxonomies: prev.taxonomies.map(row => (row._id === item._id ? taxonomy : row)),
         error: null,
       }));
+      setSelectedTaxonomy(prev => (prev?._id === item._id ? taxonomy : prev));
     }
     catch (error) {
       setLivePanel(prev => ({
         ...prev,
         error: error instanceof Error ? error.message : "Unable to update taxonomy.",
+      }));
+    }
+    finally {
+      setIsSubmittingLiveChange(false);
+    }
+  };
+
+  const handleTaxonomyView = async (item: AdminTaxonomyRecord) => {
+    if (selectedTaxonomy?._id === item._id) {
+      setSelectedTaxonomy(null);
+      return;
+    }
+
+    setIsSubmittingLiveChange(true);
+
+    try {
+      const taxonomy = await getAdminTaxonomy(item._id);
+      setSelectedTaxonomy(taxonomy);
+      setLivePanel(prev => ({
+        ...prev,
+        taxonomies: prev.taxonomies.map(row => (row._id === item._id ? taxonomy : row)),
+        error: null,
+      }));
+    }
+    catch (error) {
+      setLivePanel(prev => ({
+        ...prev,
+        error: error instanceof Error ? error.message : "Unable to load taxonomy details.",
+      }));
+    }
+    finally {
+      setIsSubmittingLiveChange(false);
+    }
+  };
+
+  const handleTaxonomyDelete = async (item: AdminTaxonomyRecord) => {
+    const confirmed = window.confirm(`Delete "${item.label}" from taxonomies?`);
+
+    if (!confirmed) {
+      return;
+    }
+
+    setIsSubmittingLiveChange(true);
+
+    try {
+      await deleteAdminTaxonomy(item._id);
+      setLivePanel(prev => ({
+        ...prev,
+        taxonomies: prev.taxonomies.filter(row => row._id !== item._id),
+        error: null,
+      }));
+      setSelectedTaxonomy(prev => (prev?._id === item._id ? null : prev));
+    }
+    catch (error) {
+      setLivePanel(prev => ({
+        ...prev,
+        error: error instanceof Error ? error.message : "Unable to delete taxonomy.",
       }));
     }
     finally {
@@ -665,7 +898,9 @@ export function AdminOperationsSectionPage({
                             ? "Review live destination routing records for agencies and services."
                             : sectionKey === "privacyRequests"
                               ? "Update privacy request review state from the live backend queue."
-                              : "Review anonymised analytics aggregates returned by the backend analytics module."}
+                              : sectionKey === "deliveries"
+                                ? "Monitor consent-gated delivery attempts without exposing raw payloads."
+                                : "Review anonymised analytics aggregates returned by the backend analytics module."}
                       </p>
                     </div>
                     {livePanel.isLoading
@@ -689,10 +924,13 @@ export function AdminOperationsSectionPage({
                               <span>Type</span>
                               <select
                                 value={taxonomyDraft.type}
-                                onChange={event => setTaxonomyDraft(prev => ({
-                                  ...prev,
-                                  type: event.target.value as AdminTaxonomyRecord["type"],
-                                }))}
+                                onChange={event => {
+                                  setTaxonomyDraft(prev => ({
+                                    ...prev,
+                                    type: event.target.value as AdminTaxonomyRecord["type"],
+                                  }));
+                                  setSelectedTaxonomy(null);
+                                }}
                                 className="h-10 w-full rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
                               >
                                 <option value="incident_type">Incident Type</option>
@@ -735,7 +973,7 @@ export function AdminOperationsSectionPage({
                             {isSubmittingLiveChange ? "Saving..." : "Create taxonomy"}
                           </button>
                           <div className="grid gap-3">
-                            {livePanel.taxonomies.slice(0, 8).map(item => (
+                            {visibleTaxonomies.map(item => (
                               <div key={item._id} className="rounded-xl border border-[#E5ECF3] bg-white px-4 py-3">
                                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                   <div>
@@ -746,17 +984,135 @@ export function AdminOperationsSectionPage({
                                       {item.key}
                                     </p>
                                   </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => void toggleTaxonomyActive(item)}
-                                    className="inline-flex h-8 items-center justify-center rounded-md border border-[#D8E3EE] px-3 text-[12px] font-semibold text-[#0F67AE] transition hover:bg-[#EEF6FF]"
-                                  >
-                                    {item.isActive ? "Deactivate" : "Activate"}
-                                  </button>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleTaxonomyView(item)}
+                                      disabled={isSubmittingLiveChange}
+                                      className="inline-flex h-8 items-center justify-center rounded-md border border-[#D8E3EE] px-3 text-[12px] font-semibold text-[#0F67AE] transition hover:bg-[#EEF6FF] disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                      {selectedTaxonomy?._id === item._id ? "Hide" : "View"}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => void toggleTaxonomyActive(item)}
+                                      disabled={isSubmittingLiveChange}
+                                      className="inline-flex h-8 items-center justify-center rounded-md border border-[#D8E3EE] px-3 text-[12px] font-semibold text-[#0F67AE] transition hover:bg-[#EEF6FF] disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                      {item.isActive ? "Deactivate" : "Activate"}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleTaxonomyDelete(item)}
+                                      disabled={isSubmittingLiveChange}
+                                      className="inline-flex h-8 items-center justify-center rounded-md border border-[#F4C7C3] px-3 text-[12px] font-semibold text-[#B42318] transition hover:bg-[#FFF7F6] disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                      Delete
+                                    </button>
+                                  </div>
                                 </div>
+                                {selectedTaxonomy?._id === item._id
+                                  ? (
+                                      <div className="mt-3 grid gap-2 border-t border-[#E5ECF3] pt-3 text-[11px] text-[#52667A] md:grid-cols-2">
+                                        <div className="rounded-lg border border-[#E5ECF3] bg-[#FBFDFF] px-3 py-2">
+                                          <span className="font-semibold text-[#1E293B]">Description</span>
+                                          <p>{selectedTaxonomy.description || "No description provided."}</p>
+                                        </div>
+                                        <div className="rounded-lg border border-[#E5ECF3] bg-[#FBFDFF] px-3 py-2">
+                                          <span className="font-semibold text-[#1E293B]">Status</span>
+                                          <p>{selectedTaxonomy.isActive ? "Active" : "Inactive"}</p>
+                                        </div>
+                                        <div className="rounded-lg border border-[#E5ECF3] bg-[#FBFDFF] px-3 py-2">
+                                          <span className="font-semibold text-[#1E293B]">Created</span>
+                                          <p>{selectedTaxonomy.createdAt ? new Date(selectedTaxonomy.createdAt).toLocaleString() : "Not available"}</p>
+                                        </div>
+                                        <div className="rounded-lg border border-[#E5ECF3] bg-[#FBFDFF] px-3 py-2">
+                                          <span className="font-semibold text-[#1E293B]">Updated</span>
+                                          <p>{selectedTaxonomy.updatedAt ? new Date(selectedTaxonomy.updatedAt).toLocaleString() : "Not available"}</p>
+                                        </div>
+                                        <div className="rounded-lg border border-[#E5ECF3] bg-[#FBFDFF] px-3 py-2 md:col-span-2">
+                                          <span className="font-semibold text-[#1E293B]">Metadata</span>
+                                          {Object.keys(selectedTaxonomyMetadata).length
+                                            ? (
+                                                <div className="mt-2 flex flex-wrap gap-2">
+                                                  {Object.entries(selectedTaxonomyMetadata).map(([key, value]) => (
+                                                    <span
+                                                      key={key}
+                                                      className="inline-flex items-center rounded-full border border-[#D8E3EE] bg-white px-2.5 py-1 text-[11px] text-[#607B90]"
+                                                    >
+                                                      <span className="font-semibold text-[#1E293B]">{formatMetadataLabel(key)}:</span>
+                                                      <span className="ml-1">{formatMetadataText(value)}</span>
+                                                    </span>
+                                                  ))}
+                                                </div>
+                                              )
+                                            : <p className="mt-1 text-[#607B90]">None</p>}
+                                        </div>
+                                      </div>
+                                    )
+                                  : null}
                               </div>
                             ))}
+                            {!visibleTaxonomies.length && !livePanel.isLoading
+                              ? (
+                                  <div className="rounded-lg border border-[#D8E3EE] bg-white px-3 py-4 text-[12px] text-[#607B90]">
+                                    No taxonomy records match this type yet.
+                                  </div>
+                                )
+                              : null}
                           </div>
+                        </div>
+                      )
+                    : null}
+
+                  {sectionKey === "deliveries"
+                    ? (
+                        <div className="mt-4 space-y-3">
+                          {livePanel.deliveries.length
+                            ? livePanel.deliveries.map(item => (
+                                <article key={item._id} className="rounded-xl border border-[#E5ECF3] bg-white px-4 py-3">
+                                  <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                                    <div>
+                                      <p className="text-[13px] font-semibold text-[#1E293B]">{item.destinationName}</p>
+                                      <p className="mt-1 text-[12px] text-[#607B90]">
+                                        {item.destinationType}
+                                        {" via "}
+                                        {item.channel}
+                                        {" • "}
+                                        {item.jurisdiction}
+                                      </p>
+                                      <p className="mt-1 text-[11px] text-[#607B90]">
+                                        Report {item.reportId} · Template {item.templateKey ?? "default"}
+                                      </p>
+                                    </div>
+                                    <span className="rounded-full bg-[#EEF6FF] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#0F67AE]">
+                                      {item.status}
+                                    </span>
+                                  </div>
+                                  <div className="mt-3 grid gap-2 text-[11px] text-[#52667A] md:grid-cols-3">
+                                    <div className="rounded-lg border border-[#E5ECF3] bg-[#FBFDFF] px-3 py-2">
+                                      <span className="font-semibold text-[#1E293B]">External ref</span>
+                                      <p>{item.externalReference ?? "Not received"}</p>
+                                    </div>
+                                    <div className="rounded-lg border border-[#E5ECF3] bg-[#FBFDFF] px-3 py-2">
+                                      <span className="font-semibold text-[#1E293B]">Artifacts</span>
+                                      <p>{item.hasDeliveryArtifacts ? "Available" : "None"}</p>
+                                    </div>
+                                    <div className="rounded-lg border border-[#E5ECF3] bg-[#FBFDFF] px-3 py-2">
+                                      <span className="font-semibold text-[#1E293B]">Consent flags</span>
+                                      <p>{item.requiredConsentFlags.join(", ") || "None"}</p>
+                                    </div>
+                                  </div>
+                                  {item.deliveryMessage
+                                    ? <p className="mt-2 text-[11px] leading-5 text-[#607B90]">{item.deliveryMessage}</p>
+                                    : null}
+                                </article>
+                              ))
+                            : (
+                                <div className="rounded-lg border border-[#D8E3EE] bg-white px-3 py-4 text-[12px] text-[#607B90]">
+                                  No delivery attempts are available yet.
+                                </div>
+                              )}
                         </div>
                       )
                     : null}
@@ -905,6 +1261,15 @@ export function AdminOperationsSectionPage({
                                 value={destinationDraft.incidentTypes}
                                 onChange={event => setDestinationDraft(prev => ({ ...prev, incidentTypes: event.target.value }))}
                                 placeholder="online_harassment, cyber_scam"
+                                className="h-10 w-full rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
+                              />
+                            </label>
+                            <label className="space-y-1 text-[12px] text-[#52667A] md:col-span-2">
+                              <span>Recommendation Reason</span>
+                              <input
+                                value={destinationDraft.recommendationReason}
+                                onChange={event => setDestinationDraft(prev => ({ ...prev, recommendationReason: event.target.value }))}
+                                placeholder="Suggested for NSW racial abuse reports"
                                 className="h-10 w-full rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
                               />
                             </label>

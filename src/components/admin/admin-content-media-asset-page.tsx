@@ -9,33 +9,32 @@ import { ChevronDown, FileImage, ImageUp } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 const CATEGORY_OPTIONS = ["Cybersecurity", "Racism Reporting", "Online Abuse", "Emergency Help"] as const;
-
-function nextOption<T extends readonly string[]>(options: T, currentValue: string) {
-  const currentIndex = options.findIndex(option => option === currentValue);
-  const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % options.length;
-  return options[nextIndex];
-}
+const CARD_TITLE_MAX_LENGTH = 120;
+const SUBTITLE_MAX_LENGTH = 180;
 
 function CardInput({
   label,
   value,
-  helper,
+  maxLength,
   onChange,
 }: {
   label: string;
   value: string;
-  helper?: string;
+  maxLength: number;
   onChange: (value: string) => void;
 }) {
   return (
     <label className="space-y-1">
       <div className="flex items-center justify-between gap-2">
         <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">{label}</p>
-        {helper ? <span className="text-[10px] text-[#94A3B8]">{helper}</span> : null}
+        <span className="text-[10px] text-[#94A3B8]">
+          {value.length}/{maxLength} chars
+        </span>
       </div>
       <input
         type="text"
         value={value}
+        maxLength={maxLength}
         onChange={event => onChange(event.target.value)}
         className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#1E293B] outline-none transition focus:border-[#0F67AE]"
       />
@@ -54,6 +53,9 @@ export function AdminContentMediaAssetPage() {
   const [bodyText, setBodyText] = useState("Phishing emails often create a sense of urgency. Look for generic greetings like 'Dear Customer,' misspelled words, or strange sender addresses. If an email asks for sensitive information immediately, verify it through another channel.");
   const [statusMessage, setStatusMessage] = useState<string | null>("Loading media asset controls...");
   const [isSaving, setIsSaving] = useState(false);
+  const categoryOptions = CATEGORY_OPTIONS.includes(category as (typeof CATEGORY_OPTIONS)[number])
+    ? CATEGORY_OPTIONS
+    : [category, ...CATEGORY_OPTIONS];
 
   useEffect(() => {
     let isMounted = true;
@@ -173,6 +175,7 @@ export function AdminContentMediaAssetPage() {
               if (file && file.size > 2 * 1024 * 1024) {
                 setSelectedFile(null);
                 setAssetName(currentAsset?.originalFileName ?? null);
+                event.target.value = "";
                 setStatusMessage("Image must be 2MB or smaller.");
                 return;
               }
@@ -202,19 +205,24 @@ export function AdminContentMediaAssetPage() {
         </div>
 
         <div className="space-y-2">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">Categorization</p>
-          <button
-            type="button"
-            onClick={() => {
-              const nextCategory = nextOption(CATEGORY_OPTIONS, category);
-              setCategory(nextCategory);
-              setStatusMessage(`Category changed to ${nextCategory}.`);
-            }}
-            className="flex h-9 w-full items-center justify-between rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] transition hover:bg-[#F8FBFF]"
-          >
-            {category}
-            <ChevronDown className="h-4 w-4 text-[#94A3B8]" />
-          </button>
+          <label className="block space-y-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">Categorization</p>
+            <span className="relative block">
+              <select
+                value={category}
+                onChange={(event) => {
+                  setCategory(event.target.value);
+                  setStatusMessage(`Category changed to ${event.target.value}.`);
+                }}
+                className="h-9 w-full appearance-none rounded-md border border-[#D8E3EE] bg-white px-3 pr-9 text-sm text-[#334155] outline-none transition hover:bg-[#F8FBFF] focus:border-[#0F67AE]"
+              >
+                {categoryOptions.map(option => (
+                  <option key={option} value={option}>{option}</option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#94A3B8]" />
+            </span>
+          </label>
         </div>
 
         <div className="space-y-3">
@@ -227,8 +235,18 @@ export function AdminContentMediaAssetPage() {
           </div>
 
           <div className="grid gap-3 md:grid-cols-2">
-            <CardInput label="Card Title" value={cardTitle} helper="28/60 chars" onChange={setCardTitle} />
-            <CardInput label="Subtitle" value={subtitle} helper="34/100 chars" onChange={setSubtitle} />
+            <CardInput
+              label="Card Title"
+              value={cardTitle}
+              maxLength={CARD_TITLE_MAX_LENGTH}
+              onChange={setCardTitle}
+            />
+            <CardInput
+              label="Subtitle"
+              value={subtitle}
+              maxLength={SUBTITLE_MAX_LENGTH}
+              onChange={setSubtitle}
+            />
           </div>
 
           <div className="space-y-1">

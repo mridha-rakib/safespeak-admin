@@ -61,6 +61,19 @@ export type KnowledgeSourceMetadata = {
   adminCategory?: string;
   templates?: Record<string, string>;
   chunkCount?: number;
+  uploadedFile?: {
+    originalFileName?: string;
+    mimeType?: string;
+    fileSizeBytes?: number;
+    storageKey?: string;
+    uploadedAt?: string;
+  };
+  ingestionPipeline?: {
+    status?: string;
+    extractor?: string;
+    updatedAt?: string;
+    error?: string;
+  };
   detectedLegalType?: string;
   detectedActNames?: string[];
   detectedSectionRefs?: string[];
@@ -158,6 +171,19 @@ export type KnowledgeSourceRefreshInput = KnowledgeSourceIngestInput & {
   nextRefreshAt?: string;
 };
 
+export type KnowledgeSourceChunkPreview = {
+  id: string;
+  chunkIndex: number;
+  text: string;
+  tokenCount: number;
+  citationLabel?: string;
+  citationUrl?: string;
+  sectionRef?: string;
+  metadata?: KnowledgeSourceMetadata;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
 export function getKnowledgeSourceId(source: KnowledgeSourceItem): string {
   return source.id ?? source._id ?? "";
 }
@@ -203,6 +229,16 @@ export async function deleteKnowledgeSource(id: string): Promise<void> {
   await adminApiRequest<null>(`/rag/knowledge-sources/${id}`, {
     method: "DELETE",
   });
+}
+
+export async function listKnowledgeSourceChunks(
+  id: string,
+): Promise<KnowledgeSourceChunkPreview[]> {
+  const response = await adminApiRequest<{ chunks: KnowledgeSourceChunkPreview[] }>(
+    `/rag/knowledge-sources/${id}/chunks`,
+  );
+
+  return response.data.chunks;
 }
 
 export async function approveKnowledgeSource(
@@ -252,6 +288,47 @@ export async function ingestKnowledgeSource(
   }>(`/rag/knowledge-sources/${id}/ingest`, {
     method: "POST",
     body: input,
+  });
+
+  return response.data.result;
+}
+
+export async function uploadKnowledgeSourceDocument(
+  id: string,
+  file: File,
+  options: { ingestImmediately?: boolean } = {},
+): Promise<{
+    source?: KnowledgeSourceItem;
+    uploadedFile?: KnowledgeSourceMetadata["uploadedFile"];
+    chunkCount?: number;
+    sha256Hash?: string;
+    extractedLegalMetadata?: Record<string, unknown>;
+    ingestionStatus?: KnowledgeSourceItem["ingestionStatus"];
+    error?: string;
+    message?: string;
+  }> {
+  const formData = new FormData();
+
+  formData.append("file", file);
+  formData.append(
+    "ingestImmediately",
+    String(options.ingestImmediately ?? true),
+  );
+
+  const response = await adminApiRequest<{
+    result: {
+      source?: KnowledgeSourceItem;
+      uploadedFile?: KnowledgeSourceMetadata["uploadedFile"];
+      chunkCount?: number;
+      sha256Hash?: string;
+      extractedLegalMetadata?: Record<string, unknown>;
+      ingestionStatus?: KnowledgeSourceItem["ingestionStatus"];
+      error?: string;
+      message?: string;
+    };
+  }>(`/rag/knowledge-sources/${id}/document`, {
+    method: "POST",
+    body: formData,
   });
 
   return response.data.result;

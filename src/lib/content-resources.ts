@@ -15,6 +15,10 @@ export type ContentResourceItem = {
   originalFileName: string;
   mimeType: string;
   fileSizeBytes: number;
+  imageOriginalFileName?: string;
+  imageMimeType?: string;
+  imageSizeBytes?: number;
+  imagePath?: string;
   downloadPath: string;
   createdAt?: string;
   updatedAt?: string;
@@ -28,6 +32,7 @@ export type ContentResourceFormInput = {
   reviewDate?: string;
   status?: ContentResourceStatus;
   file?: File | null;
+  imageFile?: File | null;
 };
 
 function createContentResourceFormData(input: ContentResourceFormInput): FormData {
@@ -48,6 +53,10 @@ function createContentResourceFormData(input: ContentResourceFormInput): FormDat
 
   if (input.file) {
     formData.append("file", input.file);
+  }
+
+  if (input.imageFile) {
+    formData.append("image", input.imageFile);
   }
 
   return formData;
@@ -78,7 +87,7 @@ export async function updateContentResource(
   id: string,
   input: ContentResourceFormInput,
 ): Promise<ContentResourceItem> {
-  const body = input.file
+  const body = input.file || input.imageFile
     ? createContentResourceFormData(input)
     : {
         name: input.name,
@@ -105,4 +114,8 @@ export async function deleteContentResource(id: string): Promise<void> {
 
 export function getContentResourceDownloadUrl(resource: Pick<ContentResourceItem, "downloadPath">): string {
   return `${getApiBaseUrl()}${resource.downloadPath}`;
+}
+
+export function getContentResourceImageUrl(resource: Pick<ContentResourceItem, "imagePath">): string | undefined {
+  return resource.imagePath ? `${getApiBaseUrl()}${resource.imagePath}` : undefined;
 }

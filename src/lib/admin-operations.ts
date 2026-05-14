@@ -27,6 +27,8 @@ export type AdminTaxonomyRecord = {
   description?: string;
   isActive: boolean;
   metadata?: Record<string, unknown>;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 export type AdminDestinationRecord = {
@@ -66,6 +68,7 @@ export type AdminDestinationRecord = {
   metadata?: {
     requiredConsentFlags?: string[];
     incidentTypes?: string[];
+    recommendationReason?: string;
     submissionTitleTemplate?: string;
     submissionSummaryTemplate?: string;
   };
@@ -102,6 +105,111 @@ export type AdminSubmissionTemplateRecord = {
   attachmentMode: "metadata_only" | "include_hashes" | "include_manifest";
   isActive: boolean;
   metadata?: Record<string, unknown>;
+};
+
+export type AdminReportDeliveryRecord = {
+  _id: string;
+  reportId: string;
+  destinationId: string;
+  templateId?: string;
+  templateKey?: string;
+  destinationKey: string;
+  destinationType: AdminDestinationRecord["type"];
+  destinationName: string;
+  channel: AdminDestinationRecord["channel"];
+  jurisdiction: string;
+  status: string;
+  anonymityMode: "identified" | "anonymous" | "pseudonymous";
+  requiredConsentFlags: string[];
+  expectedNextSteps: string[];
+  deliveryArtifacts?: Array<Record<string, unknown>>;
+  deliveryMessage?: string;
+  externalReference?: string;
+  hasExternalReference?: boolean;
+  hasDeliveryArtifacts?: boolean;
+  submittedAt?: string;
+  lastAttemptAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type AdminSupportServiceRecord = {
+  _id: string;
+  id?: string;
+  key: string;
+  name: string;
+  type:
+    | "counselling"
+    | "legal_information"
+    | "housing"
+    | "financial"
+    | "crisis"
+    | "community"
+    | "health"
+    | "online_safety";
+  description: string;
+  cardImageUrl?: string;
+  cardImageAlt?: string;
+  cardIcon:
+    | "scale"
+    | "shield"
+    | "phone"
+    | "community"
+    | "counselling"
+    | "home"
+    | "bell"
+    | "sparkles";
+  cardOverlayTone: "default" | "dark" | "blue" | "red" | "brown" | "purple";
+  availabilityLabel: string;
+  referralTitle: string;
+  referralDescription: string;
+  resourceLinks: Array<{ label: string; url: string }>;
+  jurisdiction: string;
+  regions: string[];
+  languages: string[];
+  eligibility: string[];
+  bookingUrl?: string;
+  websiteUrl?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  crisis: boolean;
+  informationOnly: boolean;
+  isPublished: boolean;
+  isActive: boolean;
+  sortOrder: number;
+  metadata?: Record<string, unknown>;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type AdminWarmReferralRecord = {
+  _id: string;
+  serviceId: string;
+  serviceName?: string;
+  serviceType?: string;
+  partnerKey?: string;
+  contactPreference: "phone" | "email" | "in_app";
+  safeContactMasked?: string;
+  hasSafeContact?: boolean;
+  minimalSummary?: {
+    incidentSummary?: string;
+    immediateSafetyConcerns?: string;
+    preferredContactMethod?: string;
+    interpreterPreference?: string;
+    culturalContext?: string;
+    informationOnlyDisclaimer?: boolean;
+  };
+  includedFields: string[];
+  shareProfileContext: boolean;
+  consentSnapshot?: {
+    warm_referral: boolean;
+    capturedAt: string;
+  };
+  status: "pending" | "accepted" | "completed" | "cancelled";
+  metadata?: Record<string, unknown>;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 export type AdminAnalyticsOverview = {
@@ -182,6 +290,12 @@ export async function listAdminTaxonomies(query: {
   return response.data.taxonomies;
 }
 
+export async function getAdminTaxonomy(id: string): Promise<AdminTaxonomyRecord> {
+  const response = await adminApiRequest<{ taxonomy: AdminTaxonomyRecord }>(`/admin/taxonomies/${id}`);
+
+  return response.data.taxonomy;
+}
+
 export async function createAdminTaxonomy(
   input: Omit<AdminTaxonomyRecord, "_id">,
 ): Promise<AdminTaxonomyRecord> {
@@ -203,6 +317,12 @@ export async function patchAdminTaxonomy(
   });
 
   return response.data.taxonomy;
+}
+
+export async function deleteAdminTaxonomy(id: string): Promise<void> {
+  await adminApiRequest<{ taxonomy: AdminTaxonomyRecord }>(`/admin/taxonomies/${id}`, {
+    method: "DELETE",
+  });
 }
 
 export async function listAdminDestinations(query: {
@@ -284,6 +404,98 @@ export async function patchAdminSubmissionTemplate(
   );
 
   return response.data.template;
+}
+
+export async function listAdminReportDeliveries(query: {
+  status?: string;
+  destinationType?: AdminDestinationRecord["type"];
+  channel?: AdminDestinationRecord["channel"];
+  limit?: number;
+} = {}): Promise<AdminReportDeliveryRecord[]> {
+  const response = await adminApiRequest<{ deliveries: AdminReportDeliveryRecord[] }>(
+    `/admin/report-deliveries${toQueryString(query)}`,
+  );
+
+  return response.data.deliveries;
+}
+
+export async function listAdminSupportServices(query: {
+  type?: AdminSupportServiceRecord["type"];
+  jurisdiction?: string;
+  language?: string;
+  region?: string;
+  eligibility?: string;
+  profile?: string;
+  isPublished?: boolean;
+  isActive?: boolean;
+} = {}): Promise<AdminSupportServiceRecord[]> {
+  const response = await adminApiRequest<{ services: AdminSupportServiceRecord[] }>(
+    `/admin/support-services${toQueryString(query)}`,
+  );
+
+  return response.data.services;
+}
+
+export async function createAdminSupportService(
+  input: Omit<AdminSupportServiceRecord, "_id" | "id" | "createdAt" | "updatedAt">,
+): Promise<AdminSupportServiceRecord> {
+  const response = await adminApiRequest<{ service: AdminSupportServiceRecord }>(
+    "/admin/support-services",
+    {
+      method: "POST",
+      body: input,
+    },
+  );
+
+  return response.data.service;
+}
+
+export async function patchAdminSupportService(
+  id: string,
+  input: Partial<Omit<AdminSupportServiceRecord, "_id" | "id" | "createdAt" | "updatedAt">>,
+): Promise<AdminSupportServiceRecord> {
+  const response = await adminApiRequest<{ service: AdminSupportServiceRecord }>(
+    `/admin/support-services/${id}`,
+    {
+      method: "PATCH",
+      body: input,
+    },
+  );
+
+  return response.data.service;
+}
+
+export async function deleteAdminSupportService(id: string): Promise<void> {
+  await adminApiRequest<null>(`/admin/support-services/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export async function listAdminWarmReferrals(query: {
+  status?: AdminWarmReferralRecord["status"];
+  serviceId?: string;
+  limit?: number;
+} = {}): Promise<AdminWarmReferralRecord[]> {
+  const response = await adminApiRequest<{ referrals: AdminWarmReferralRecord[] }>(
+    `/admin/support-services/warm-referrals${toQueryString(query)}`,
+  );
+
+  return response.data.referrals;
+}
+
+export async function patchAdminWarmReferral(
+  id: string,
+  input: { status: AdminWarmReferralRecord["status"]; notes?: string },
+): Promise<AdminWarmReferralRecord> {
+  const response = await adminApiRequest<{ referral: AdminWarmReferralRecord }>(
+    `/admin/support-services/warm-referrals/${id}`,
+    {
+      method: "PATCH",
+      body: input,
+    },
+  );
+
+  return response.data.referral;
 }
 
 export async function listAdminPrivacyRequests(query: {

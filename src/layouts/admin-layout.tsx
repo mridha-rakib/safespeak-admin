@@ -25,7 +25,14 @@ export function AdminLayout() {
               isDesktopSidebarOpen ? "lg:w-[300px] xl:w-[326px]" : "lg:w-[88px]",
             )}
           >
-            <AdminSidebar className="h-full w-full max-w-none rounded-none border-y-0 border-l-0" />
+            <div
+              className={cn(
+                "fixed inset-y-0 left-0 z-30 hidden transition-[width] duration-300 ease-out lg:block",
+                isDesktopSidebarOpen ? "lg:w-[300px] xl:w-[326px]" : "lg:w-[88px]",
+              )}
+            >
+              <AdminSidebar className="h-full w-full max-w-none rounded-none border-y-0 border-l-0" />
+            </div>
           </div>
           <section className="w-full min-w-0 flex-1 space-y-3 p-3 sm:space-y-4 sm:p-4 md:p-5 lg:space-y-5 lg:p-5 xl:p-6">
             <AdminTopBar onMenuClick={() => setIsMobileSidebarOpen(true)} />

@@ -1,6 +1,7 @@
 import {
   Building2,
   Edit3,
+  ImagePlus,
   Info,
   MapPin,
   Phone,
@@ -14,6 +15,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   createMicroEducationItem,
   deleteMicroEducationItem,
+  getMicroEducationImageUrl,
   listAdminMicroEducation,
   type MicroEducationChip,
   type MicroEducationDuration,
@@ -79,11 +81,28 @@ const resourceStatusOptions: Array<{ label: string; value: ResourceStatus }> = [
   { label: "Published", value: "published" },
 ];
 
+const resourceCategoryOptions = [
+  "Banks",
+  "Legal Aid",
+  "Counseling",
+  "Community",
+  "Housing",
+  "Crisis Support",
+  "Financial",
+  "Other",
+];
+
 const defaultEditorValues: MicroEducationInput = {
   title: "",
   summary: "",
+  readTimeLabel: "4 min read",
   tag: "Safety",
   cta: "Start Now",
+  detailHeading: "",
+  detailSummary: "",
+  detailBody: "",
+  detailTakeaway: "",
+  imageAlt: "",
   tone: "blue",
   chips: ["safety"],
   duration: "quick",
@@ -133,6 +152,7 @@ export function AdminContentManagementDashboard() {
   const [editingCard, setEditingCard] = useState<MicroEducationItem | null>(null);
   const [editingResource, setEditingResource] = useState<ResourceItem | null>(null);
   const [editorValues, setEditorValues] = useState<MicroEducationInput>(defaultEditorValues);
+  const [editorImageFile, setEditorImageFile] = useState<File | null>(null);
   const [resourceValues, setResourceValues] = useState<ResourceInput>(defaultResourceValues);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
@@ -146,7 +166,23 @@ export function AdminContentManagementDashboard() {
   const [deletingCardId, setDeletingCardId] = useState<string | null>(null);
   const [deletingResourceId, setDeletingResourceId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const editorImageInputRef = useRef<HTMLInputElement>(null);
   const maxUploadSize = 5 * 1024 * 1024;
+  const editorImagePreviewUrl = useMemo(() => {
+    if (editorImageFile) {
+      return URL.createObjectURL(editorImageFile);
+    }
+
+    return editingCard ? getMicroEducationImageUrl(editingCard) : undefined;
+  }, [editingCard, editorImageFile]);
+
+  useEffect(() => {
+    return () => {
+      if (editorImageFile && editorImagePreviewUrl) {
+        URL.revokeObjectURL(editorImagePreviewUrl);
+      }
+    };
+  }, [editorImageFile, editorImagePreviewUrl]);
 
   useEffect(() => {
     let isMounted = true;
@@ -301,13 +337,23 @@ export function AdminContentManagementDashboard() {
     setEditingCard(card ?? null);
     setEditorError(null);
     setStatusMessage(null);
+    setEditorImageFile(null);
+    if (editorImageInputRef.current) {
+      editorImageInputRef.current.value = "";
+    }
     setEditorValues(
       card
         ? {
             title: card.title,
             summary: card.summary,
+            readTimeLabel: card.readTimeLabel || "4 min read",
             tag: card.tag,
             cta: card.cta,
+            detailHeading: card.detailHeading || card.title,
+            detailSummary: card.detailSummary ?? "",
+            detailBody: card.detailBody || card.summary,
+            detailTakeaway: card.detailTakeaway || card.summary,
+            imageAlt: card.imageAlt ?? "",
             tone: card.tone,
             chips: card.chips.length ? card.chips : ["safety"],
             duration: card.duration,
@@ -327,8 +373,12 @@ export function AdminContentManagementDashboard() {
   const closeEditorModal = () => {
     setIsEditorModalOpen(false);
     setEditingCard(null);
+    setEditorImageFile(null);
     setEditorError(null);
     setIsSaving(false);
+    if (editorImageInputRef.current) {
+      editorImageInputRef.current.value = "";
+    }
   };
 
   const setEditorValue = <TKey extends keyof MicroEducationInput>(
@@ -351,12 +401,34 @@ export function AdminContentManagementDashboard() {
     });
   };
 
+  const onEditorImageSelected = (file?: File) => {
+    if (!file) {
+      return;
+    }
+
+    if (!["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.type)) {
+      setEditorError("Image must be a JPG, PNG, WebP, or GIF file.");
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      setEditorError("Image is too large. Maximum size is 10MB.");
+      return;
+    }
+
+    setEditorImageFile(file);
+    setEditorError(null);
+  };
+
   const saveEditorValues = async () => {
     const title = editorValues.title.trim();
     const summary = editorValues.summary.trim();
+    const detailHeading = editorValues.detailHeading.trim();
+    const detailBody = editorValues.detailBody.trim();
+    const detailTakeaway = editorValues.detailTakeaway.trim();
 
-    if (!title || !summary) {
-      setEditorError("Title and description are required.");
+    if (!title || !summary || !detailHeading || !detailBody || !detailTakeaway) {
+      setEditorError("Title, description, detail heading, detail body, and key takeaway are required.");
       return;
     }
 
@@ -367,11 +439,18 @@ export function AdminContentManagementDashboard() {
       ...editorValues,
       title,
       summary,
+      readTimeLabel: editorValues.readTimeLabel.trim() || "4 min read",
       tag: editorValues.tag.trim() || "Safety",
       cta: editorValues.cta.trim() || "Start Now",
+      detailHeading,
+      detailSummary: editorValues.detailSummary?.trim() || summary,
+      detailBody,
+      detailTakeaway,
+      imageAlt: editorValues.imageAlt?.trim() || title,
       chips: editorValues.chips.length ? editorValues.chips : ["safety"],
       sortOrder: Number.isFinite(editorValues.sortOrder) ? editorValues.sortOrder : 0,
       views: Number.isFinite(editorValues.views ?? 0) ? editorValues.views : 0,
+      imageFile: editorImageFile,
     };
 
     try {
@@ -545,6 +624,12 @@ export function AdminContentManagementDashboard() {
       const statusIndex = headers.findIndex(header => header === "status" || header === "publishstatus");
       const viewsIndex = headers.indexOf("views");
       const ctaIndex = headers.indexOf("cta");
+      const readTimeIndex = headers.findIndex(header => header === "readtime" || header === "readtimelabel");
+      const detailHeadingIndex = headers.findIndex(header => header === "detailheading" || header === "headline");
+      const detailSummaryIndex = headers.findIndex(header => header === "detailsummary" || header === "articlesummary");
+      const detailBodyIndex = headers.findIndex(header => header === "detailbody" || header === "body" || header === "articlebody");
+      const detailTakeawayIndex = headers.findIndex(header => header === "detailtakeaway" || header === "takeaway");
+      const imageAltIndex = headers.findIndex(header => header === "imagealt" || header === "alt");
       const toneIndex = headers.indexOf("tone");
       const chipsIndex = headers.indexOf("chips");
       const durationIndex = headers.indexOf("duration");
@@ -563,6 +648,12 @@ export function AdminContentManagementDashboard() {
           const title = row[titleIndex]?.trim();
           const summary = row[descriptionIndex]?.trim();
           const statusRaw = statusIndex >= 0 ? row[statusIndex]?.trim().toLowerCase() : "";
+          const readTimeRaw = readTimeIndex >= 0 ? row[readTimeIndex]?.trim() : "";
+          const detailHeadingRaw = detailHeadingIndex >= 0 ? row[detailHeadingIndex]?.trim() : "";
+          const detailSummaryRaw = detailSummaryIndex >= 0 ? row[detailSummaryIndex]?.trim() : "";
+          const detailBodyRaw = detailBodyIndex >= 0 ? row[detailBodyIndex]?.trim() : "";
+          const detailTakeawayRaw = detailTakeawayIndex >= 0 ? row[detailTakeawayIndex]?.trim() : "";
+          const imageAltRaw = imageAltIndex >= 0 ? row[imageAltIndex]?.trim() : "";
           const toneRaw = toneIndex >= 0 ? row[toneIndex]?.trim() : "";
           const chipsRaw = chipsIndex >= 0 ? row[chipsIndex]?.trim() : "";
           const durationRaw = durationIndex >= 0 ? row[durationIndex]?.trim() : "";
@@ -585,8 +676,14 @@ export function AdminContentManagementDashboard() {
           return {
             title,
             summary,
+            readTimeLabel: readTimeRaw || "4 min read",
             tag: tagIndex >= 0 && row[tagIndex]?.trim() ? row[tagIndex].trim() : "Safety",
             cta: ctaIndex >= 0 && row[ctaIndex]?.trim() ? row[ctaIndex].trim() : "Start Now",
+            detailHeading: detailHeadingRaw || title,
+            detailSummary: detailSummaryRaw || summary,
+            detailBody: detailBodyRaw || summary,
+            detailTakeaway: detailTakeawayRaw || summary,
+            imageAlt: imageAltRaw || title,
             tone: toneOptions.some(option => option.value === toneRaw) ? (toneRaw as MicroEducationTone) : "blue",
             chips: chips.length ? chips : ["safety"],
             duration: durationOptions.some(option => option.value === durationRaw)
@@ -677,7 +774,15 @@ export function AdminContentManagementDashboard() {
               : null}
             {!isLoadingCards && filteredMicroCards.map(card => (
               <article key={card.id} className="overflow-hidden rounded-[10px] border border-[#D5DEE7] bg-[#FCFDFE]">
-                <div className="h-24 bg-gradient-to-r from-[#184A70] via-[#2A6A95] to-[#1B344C]" />
+                {getMicroEducationImageUrl(card) ? (
+                  <div
+                    aria-hidden="true"
+                    style={{ backgroundImage: `url(${getMicroEducationImageUrl(card)})` }}
+                    className="h-24 bg-cover bg-center"
+                  />
+                ) : (
+                  <div className="h-24 bg-gradient-to-r from-[#184A70] via-[#2A6A95] to-[#1B344C]" />
+                )}
                 <div className="space-y-2 p-3">
                   <div className="flex items-start justify-between gap-2">
                     <h4 className="text-[15px] font-semibold text-[#0F172A]">{card.title}</h4>
@@ -729,13 +834,13 @@ export function AdminContentManagementDashboard() {
         <section className="rounded-[12px] border border-[#D9E2EC] bg-white p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h3 className="text-[30px] font-semibold leading-none text-[#0F172A]">Resource Directory</h3>
-              <p className="mt-1 text-sm text-[#64748B]">Directory of Banks, Legal Aid, and Counseling services.</p>
+              <h3 className="text-[26px] font-semibold leading-tight text-[#0F172A]">Resource Directory</h3>
+              <p className="mt-1 text-sm text-[#64748B]">Directory of banks, legal aid, counseling, and local support services.</p>
             </div>
             <button
               type="button"
               onClick={() => openResourceModal()}
-              className="inline-flex h-9 items-center gap-1.5 rounded-full border border-[#D5DEE7] bg-white px-3 text-sm font-medium text-[#1E3A5F] transition hover:bg-[#F3F7FB]"
+              className="inline-flex h-10 items-center gap-1.5 rounded-full border border-[#C9D8E8] bg-white px-4 text-sm font-semibold text-[#1E3A5F] transition hover:bg-[#F3F7FB]"
             >
               <Plus className="h-4 w-4" />
               Add Resource
@@ -753,6 +858,7 @@ export function AdminContentManagementDashboard() {
                   <th className="px-4 py-3 font-semibold">Category</th>
                   <th className="px-4 py-3 font-semibold">Region / Availability</th>
                   <th className="px-4 py-3 font-semibold">Contact Info</th>
+                  <th className="px-4 py-3 font-semibold">Status</th>
                   <th className="px-4 py-3 font-semibold">Actions</th>
                 </tr>
               </thead>
@@ -760,7 +866,7 @@ export function AdminContentManagementDashboard() {
                 {isLoadingResources
                   ? (
                       <tr className="border-t border-[#E4EAF1] text-sm text-[#64748B]">
-                        <td className="px-4 py-8 text-center" colSpan={5}>Loading resources...</td>
+                        <td className="px-4 py-8 text-center" colSpan={6}>Loading resources...</td>
                       </tr>
                     )
                   : null}
@@ -792,6 +898,11 @@ export function AdminContentManagementDashboard() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${resource.status === "published" ? "bg-[#DCFCE7] text-[#047857]" : "bg-[#F1F5F9] text-[#64748B]"}`}>
+                        {toStatusLabel(resource.status)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
                       <div className="flex items-center gap-1">
                         <button
                           type="button"
@@ -817,7 +928,7 @@ export function AdminContentManagementDashboard() {
                 {!isLoadingResources && resources.length === 0
                   ? (
                       <tr className="border-t border-[#E4EAF1] text-sm text-[#64748B]">
-                        <td className="px-4 py-8 text-center" colSpan={5}>No resources have been added yet.</td>
+                        <td className="px-4 py-8 text-center" colSpan={6}>No resources have been added yet.</td>
                       </tr>
                     )
                   : null}
@@ -829,18 +940,18 @@ export function AdminContentManagementDashboard() {
 
       {isResourceModalOpen
         ? (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#111827]/50 p-4">
-              <div className="max-h-[92vh] w-full max-w-[760px] overflow-y-auto rounded-[10px] border border-[#E1E7EF] bg-white shadow-[0_8px_32px_rgba(0,0,0,0.22)]">
-                <div className="px-6 pb-4 pt-6 sm:px-8">
-                  <h3 className="text-center text-[28px] font-semibold leading-none text-[#0F172A] sm:text-[34px] lg:text-[42px]">
+            <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[#111827]/50 p-4 py-6">
+              <div className="flex w-full max-w-[820px] flex-col overflow-hidden rounded-[12px] border border-[#D8E3EE] bg-white shadow-[0_24px_60px_rgba(15,23,42,0.28)]">
+                <div className="border-b border-[#E5EAF1] px-6 py-5 sm:px-8">
+                  <h3 className="text-[26px] font-semibold leading-none text-[#0F172A] sm:text-[32px]">
                     {editingResource ? "Edit Resource" : "Add Resource"}
                   </h3>
-                  <p className="mx-auto mt-3 max-w-[520px] text-center text-[16px] text-[#64748B]">
-                    Add a single organization to the resource directory.
+                  <p className="mt-2 max-w-[620px] text-sm leading-6 text-[#64748B]">
+                    Manage the support organization data that appears in the client resource directory.
                   </p>
                 </div>
 
-                <div className="grid gap-4 px-6 sm:grid-cols-2 sm:px-8">
+                <div className="grid max-h-[calc(100vh-220px)] gap-4 overflow-y-auto px-6 py-5 sm:grid-cols-2 sm:px-8">
                   <label className="space-y-1.5 sm:col-span-2">
                     <span className="text-sm font-semibold text-[#334155]">Organization Name</span>
                     <input
@@ -851,11 +962,18 @@ export function AdminContentManagementDashboard() {
                   </label>
                   <label className="space-y-1.5">
                     <span className="text-sm font-semibold text-[#334155]">Category</span>
-                    <input
+                    <select
                       value={resourceValues.category}
                       onChange={event => setResourceValue("category", event.target.value)}
-                      className="h-10 w-full rounded-[6px] border border-[#D5DEE7] px-3 text-sm text-[#0F172A] outline-none transition focus:border-[#4BA3D9]"
-                    />
+                      className="h-10 w-full rounded-[6px] border border-[#D5DEE7] bg-white px-3 text-sm text-[#0F172A] outline-none transition focus:border-[#4BA3D9]"
+                    >
+                      {resourceCategoryOptions.includes(resourceValues.category) ? null : (
+                        <option value={resourceValues.category}>{resourceValues.category}</option>
+                      )}
+                      {resourceCategoryOptions.map(category => (
+                        <option key={category} value={category}>{category}</option>
+                      ))}
+                    </select>
                   </label>
                   <label className="space-y-1.5">
                     <span className="text-sm font-semibold text-[#334155]">Region / Availability</span>
@@ -870,6 +988,7 @@ export function AdminContentManagementDashboard() {
                     <input
                       value={resourceValues.contact}
                       onChange={event => setResourceValue("contact", event.target.value)}
+                      placeholder="Phone, email, website, or referral note"
                       className="h-10 w-full rounded-[6px] border border-[#D5DEE7] px-3 text-sm text-[#0F172A] outline-none transition focus:border-[#4BA3D9]"
                     />
                   </label>
@@ -904,7 +1023,7 @@ export function AdminContentManagementDashboard() {
                   <button
                     type="button"
                     onClick={closeResourceModal}
-                    className="text-[20px] font-medium text-[#334155] transition hover:text-[#1E293B]"
+                    className="inline-flex h-10 items-center rounded-[6px] px-3 text-sm font-semibold text-[#334155] transition hover:bg-[#F1F5F9]"
                   >
                     Cancel
                   </button>
@@ -912,7 +1031,7 @@ export function AdminContentManagementDashboard() {
                     type="button"
                     onClick={() => void saveResourceValues()}
                     disabled={isSavingResource}
-                    className="inline-flex h-10 min-w-28 items-center justify-center rounded-[6px] bg-[#01579B] px-5 text-[20px] font-medium text-white transition enabled:hover:bg-[#0B4A80] disabled:cursor-not-allowed disabled:bg-[#9FB9D1]"
+                    className="inline-flex h-10 min-w-28 items-center justify-center rounded-[6px] bg-[#01579B] px-5 text-sm font-semibold text-white transition enabled:hover:bg-[#0B4A80] disabled:cursor-not-allowed disabled:bg-[#9FB9D1]"
                   >
                     {isSavingResource ? "Saving..." : "Save"}
                   </button>
@@ -924,18 +1043,18 @@ export function AdminContentManagementDashboard() {
 
       {isEditorModalOpen
         ? (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#111827]/50 p-4">
-              <div className="max-h-[92vh] w-full max-w-[760px] overflow-y-auto rounded-[10px] border border-[#E1E7EF] bg-white shadow-[0_8px_32px_rgba(0,0,0,0.22)]">
-                <div className="px-6 pb-4 pt-6 sm:px-8">
-                  <h3 className="text-center text-[28px] font-semibold leading-none text-[#0F172A] sm:text-[34px] lg:text-[42px]">
+            <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[#111827]/50 p-4 py-6">
+              <div className="flex w-full max-w-[880px] flex-col overflow-hidden rounded-[12px] border border-[#D8E3EE] bg-white shadow-[0_24px_60px_rgba(15,23,42,0.28)]">
+                <div className="border-b border-[#E5EAF1] px-6 py-5 sm:px-8">
+                  <h3 className="text-[26px] font-semibold leading-none text-[#0F172A] sm:text-[32px]">
                     {editingCard ? "Edit Educational Content" : "Create Educational Content"}
                   </h3>
-                  <p className="mx-auto mt-3 max-w-[520px] text-center text-[16px] text-[#64748B]">
+                  <p className="mt-2 max-w-[620px] text-sm leading-6 text-[#64748B]">
                     Manage the data that appears in the user micro-education view.
                   </p>
                 </div>
 
-                <div className="grid gap-4 px-6 sm:grid-cols-2 sm:px-8">
+                <div className="grid max-h-[calc(100vh-220px)] gap-4 overflow-y-auto px-6 py-5 sm:grid-cols-2 sm:px-8">
                   <label className="space-y-1.5 sm:col-span-2">
                     <span className="text-sm font-semibold text-[#334155]">Title</span>
                     <input
@@ -952,6 +1071,109 @@ export function AdminContentManagementDashboard() {
                       className="min-h-24 w-full rounded-[6px] border border-[#D5DEE7] px-3 py-2 text-sm text-[#0F172A] outline-none transition focus:border-[#4BA3D9]"
                     />
                   </label>
+                  <label className="space-y-1.5">
+                    <span className="text-sm font-semibold text-[#334155]">Read Time</span>
+                    <input
+                      value={editorValues.readTimeLabel}
+                      onChange={event => setEditorValue("readTimeLabel", event.target.value)}
+                      placeholder="4 min read"
+                      className="h-10 w-full rounded-[6px] border border-[#D5DEE7] px-3 text-sm text-[#0F172A] outline-none transition focus:border-[#4BA3D9]"
+                    />
+                  </label>
+                  <label className="space-y-1.5">
+                    <span className="text-sm font-semibold text-[#334155]">Image Alt Text</span>
+                    <input
+                      value={editorValues.imageAlt ?? ""}
+                      onChange={event => setEditorValue("imageAlt", event.target.value)}
+                      className="h-10 w-full rounded-[6px] border border-[#D5DEE7] px-3 text-sm text-[#0F172A] outline-none transition focus:border-[#4BA3D9]"
+                    />
+                  </label>
+                  <label className="space-y-1.5 sm:col-span-2">
+                    <span className="text-sm font-semibold text-[#334155]">Detail Heading</span>
+                    <input
+                      value={editorValues.detailHeading}
+                      onChange={event => setEditorValue("detailHeading", event.target.value)}
+                      className="h-10 w-full rounded-[6px] border border-[#D5DEE7] px-3 text-sm text-[#0F172A] outline-none transition focus:border-[#4BA3D9]"
+                    />
+                  </label>
+                  <label className="space-y-1.5 sm:col-span-2">
+                    <span className="text-sm font-semibold text-[#334155]">Detail Summary</span>
+                    <textarea
+                      value={editorValues.detailSummary ?? ""}
+                      onChange={event => setEditorValue("detailSummary", event.target.value)}
+                      className="min-h-20 w-full rounded-[6px] border border-[#D5DEE7] px-3 py-2 text-sm text-[#0F172A] outline-none transition focus:border-[#4BA3D9]"
+                    />
+                  </label>
+                  <label className="space-y-1.5 sm:col-span-2">
+                    <span className="text-sm font-semibold text-[#334155]">Detail Body</span>
+                    <textarea
+                      value={editorValues.detailBody}
+                      onChange={event => setEditorValue("detailBody", event.target.value)}
+                      className="min-h-28 w-full rounded-[6px] border border-[#D5DEE7] px-3 py-2 text-sm text-[#0F172A] outline-none transition focus:border-[#4BA3D9]"
+                    />
+                  </label>
+                  <label className="space-y-1.5 sm:col-span-2">
+                    <span className="text-sm font-semibold text-[#334155]">Key Takeaway</span>
+                    <textarea
+                      value={editorValues.detailTakeaway}
+                      onChange={event => setEditorValue("detailTakeaway", event.target.value)}
+                      className="min-h-20 w-full rounded-[6px] border border-[#D5DEE7] px-3 py-2 text-sm text-[#0F172A] outline-none transition focus:border-[#4BA3D9]"
+                    />
+                  </label>
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <span className="text-sm font-semibold text-[#334155]">Image (Optional)</span>
+                    <input
+                      ref={editorImageInputRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/gif"
+                      className="hidden"
+                      onChange={event => onEditorImageSelected(event.target.files?.[0])}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => editorImageInputRef.current?.click()}
+                      onDragOver={event => event.preventDefault()}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        onEditorImageSelected(event.dataTransfer.files?.[0]);
+                      }}
+                      className="flex min-h-[112px] w-full items-center gap-4 rounded-[8px] border border-dashed border-[#C9D8E8] bg-[#FAFCFF] p-4 text-left transition hover:border-[#0F67AE] hover:bg-[#F4F9FF]"
+                    >
+                      {editorImagePreviewUrl ? (
+                        <span
+                          aria-hidden="true"
+                          style={{ backgroundImage: `url(${editorImagePreviewUrl})` }}
+                          className="h-20 w-28 shrink-0 rounded-[8px] border border-[#D8E3EE] bg-cover bg-center"
+                        />
+                      ) : (
+                        <span className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#EEF6FF] text-[#0F67AE]">
+                          <ImagePlus className="h-5 w-5" />
+                        </span>
+                      )}
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-semibold text-[#334155]">
+                          {editorImageFile ? editorImageFile.name : editingCard?.imageOriginalFileName ?? "Upload a card image"}
+                        </span>
+                        <span className="mt-1 block text-xs text-[#64748B]">
+                          JPG, PNG, WebP, or GIF. This image appears on the admin card and the user micro-education card.
+                        </span>
+                      </span>
+                    </button>
+                    {editorImageFile ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditorImageFile(null);
+                          if (editorImageInputRef.current) {
+                            editorImageInputRef.current.value = "";
+                          }
+                        }}
+                        className="text-xs font-semibold text-[#64748B] transition hover:text-[#0F67AE]"
+                      >
+                        Clear selected image
+                      </button>
+                    ) : null}
+                  </div>
                   <label className="space-y-1.5">
                     <span className="text-sm font-semibold text-[#334155]">Tag</span>
                     <input
@@ -1026,6 +1248,16 @@ export function AdminContentManagementDashboard() {
                       className="h-10 w-full rounded-[6px] border border-[#D5DEE7] px-3 text-sm text-[#0F172A] outline-none transition focus:border-[#4BA3D9]"
                     />
                   </label>
+                  <label className="space-y-1.5">
+                    <span className="text-sm font-semibold text-[#334155]">Views</span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={editorValues.views ?? 0}
+                      onChange={event => setEditorValue("views", Number.parseInt(event.target.value, 10) || 0)}
+                      className="h-10 w-full rounded-[6px] border border-[#D5DEE7] px-3 text-sm text-[#0F172A] outline-none transition focus:border-[#4BA3D9]"
+                    />
+                  </label>
                   <div className="space-y-2 sm:col-span-2">
                     <p className="text-sm font-semibold text-[#334155]">Filters</p>
                     <div className="flex flex-wrap gap-2">
@@ -1050,11 +1282,11 @@ export function AdminContentManagementDashboard() {
                     : null}
                 </div>
 
-                <div className="flex items-center justify-between border-t border-[#E5EAF1] px-6 py-4 sm:px-8">
+                <div className="flex items-center justify-between border-t border-[#E5EAF1] bg-white px-6 py-4 sm:px-8">
                   <button
                     type="button"
                     onClick={closeEditorModal}
-                    className="text-[20px] font-medium text-[#334155] transition hover:text-[#1E293B]"
+                    className="rounded-[6px] px-3 py-2 text-sm font-semibold text-[#334155] transition hover:bg-[#F3F7FB] hover:text-[#1E293B]"
                   >
                     Cancel
                   </button>
@@ -1062,7 +1294,7 @@ export function AdminContentManagementDashboard() {
                     type="button"
                     onClick={() => void saveEditorValues()}
                     disabled={isSaving}
-                    className="inline-flex h-10 min-w-28 items-center justify-center rounded-[6px] bg-[#01579B] px-5 text-[20px] font-medium text-white transition enabled:hover:bg-[#0B4A80] disabled:cursor-not-allowed disabled:bg-[#9FB9D1]"
+                    className="inline-flex h-10 min-w-28 items-center justify-center rounded-[6px] bg-[#01579B] px-5 text-sm font-semibold text-white transition enabled:hover:bg-[#0B4A80] disabled:cursor-not-allowed disabled:bg-[#9FB9D1]"
                   >
                     {isSaving ? "Saving..." : "Save"}
                   </button>

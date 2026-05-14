@@ -87,14 +87,6 @@ function SidebarOverviewCard() {
   return (
     <div className="rounded-[20px] border border-[#DFE8F0] bg-[#F7FAFC] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
       <SidebarBrand />
-      <div className="mt-4 rounded-[16px] border border-[#E3EBF2] bg-white px-4 py-3">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#607B90]">
-          Admin Operations Hub
-        </p>
-        <p className="mt-2 text-[14px] font-semibold leading-5 text-[#154760]">
-          Intelligence, compliance, crisis response, and partner routing in one workspace.
-        </p>
-      </div>
     </div>
   );
 }
@@ -319,7 +311,7 @@ export function AdminSidebar({ items = ADMIN_SIDEBAR_ITEMS, className, onNavigat
         className,
       )}
     >
-      <SidebarHeader className={cn("gap-4 px-4 pb-3 pt-5 sm:px-6 sm:pt-6", isCollapsed ? "px-3 sm:px-3" : "")}>
+      <SidebarHeader className={cn("gap-3 px-4 pb-2 pt-4 sm:px-6 sm:pt-4", isCollapsed ? "px-3 sm:px-3" : "")}>
         <div className={cn("flex items-center gap-3", isCollapsed ? "justify-center" : "justify-between")}>
           {!isCollapsed
             ? (

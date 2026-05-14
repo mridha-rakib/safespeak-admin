@@ -126,6 +126,10 @@ export const ADMIN_SIDEBAR_ITEMS: AdminSidebarItem[] = [
         to: APP_ROUTE_PATHS.adminCrisisResponseCenter,
       },
       {
+        label: "Support Services",
+        to: APP_ROUTE_PATHS.adminSupportServices,
+      },
+      {
         label: "Content Moderation",
         to: APP_ROUTE_PATHS.adminContentModeration,
       },

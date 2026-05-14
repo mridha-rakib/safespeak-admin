@@ -24,6 +24,7 @@ import { AdminPrivacyPolicyPage } from "@/pages/admin/privacy-policy-page";
 import { AdminProfilePage } from "@/pages/admin/profile-page";
 import { AdminSettingsPage } from "@/pages/admin/settings-page";
 import { AdminSubscriptionsPage } from "@/pages/admin/subscriptions-page";
+import { AdminSupportServicesPage } from "@/pages/admin/support-services-page";
 import { AdminTermsConditionsPage } from "@/pages/admin/terms-conditions-page";
 import { AdminUsersPage } from "@/pages/admin/users-page";
 import { ForgotPasswordPage } from "@/pages/forgot-password-page";
@@ -172,6 +173,7 @@ export const appRouter = createBrowserRouter([
         element: (
           <AdminOperationsSectionPage
             config={ADMIN_OPERATIONS_CONFIGS.integrationManagement}
+            sectionKey="deliveries"
           />
         ),
       },
@@ -212,6 +214,10 @@ export const appRouter = createBrowserRouter([
             config={ADMIN_OPERATIONS_CONFIGS.crisisResponseCenter}
           />
         ),
+      },
+      {
+        path: `${APP_ROUTE_SEGMENTS.crisisSafety}/${APP_ROUTE_SEGMENTS.supportServices}`,
+        element: <AdminSupportServicesPage />,
       },
       {
         path: `${APP_ROUTE_SEGMENTS.crisisSafety}/${APP_ROUTE_SEGMENTS.contentModeration}`,

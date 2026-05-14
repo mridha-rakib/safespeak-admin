@@ -2,12 +2,13 @@ import { AdminContentManagementShell } from "@/components/admin/admin-content-ma
 import {
   deleteContentResource,
   getContentResourceDownloadUrl,
+  getContentResourceImageUrl,
   listAdminContentResources,
   type ContentResourceItem,
 } from "@/lib/content-resources";
 import { APP_ROUTE_PATHS } from "@/routes/paths";
-import { Download, MoreVertical, Pencil, Plus, Search, Trash2, Upload } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Download, ImageIcon, MoreVertical, Pencil, Plus, Search, Trash2, Upload } from "lucide-react";
+import { type MouseEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 const FILTERS = ["All Resources", "Legal Awareness", "Online Abuse", "Family Safety", "Youth Support"] as const;
@@ -39,6 +40,8 @@ function statusClass(status: string) {
 }
 
 const PAGE_SIZE = 2;
+const ACTION_MENU_WIDTH = 152;
+const ACTION_MENU_HEIGHT = 122;
 
 function formatBytes(bytes: number) {
   if (bytes < 1024) {
@@ -64,6 +67,7 @@ export function AdminContentResourceLibraryPage() {
   const [activePage, setActivePage] = useState(1);
   const [resources, setResources] = useState<ContentResourceItem[]>([]);
   const [openActionId, setOpenActionId] = useState<string | null>(null);
+  const [actionMenuPosition, setActionMenuPosition] = useState<{ left: number; top: number } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [statusMessage, setStatusMessage] = useState<string | null>(() => {
     const state = location.state as { statusMessage?: string } | null;
@@ -89,6 +93,25 @@ export function AdminContentResourceLibraryPage() {
     void loadResources();
   }, [loadResources]);
 
+  useEffect(() => {
+    if (!openActionId) {
+      return;
+    }
+
+    const closeActionMenu = () => {
+      setOpenActionId(null);
+      setActionMenuPosition(null);
+    };
+
+    window.addEventListener("resize", closeActionMenu);
+    window.addEventListener("scroll", closeActionMenu, true);
+
+    return () => {
+      window.removeEventListener("resize", closeActionMenu);
+      window.removeEventListener("scroll", closeActionMenu, true);
+    };
+  }, [openActionId]);
+
   const filteredRows = useMemo(() => {
     const normalizedSearch = searchValue.trim().toLowerCase();
 
@@ -97,7 +120,8 @@ export function AdminContentResourceLibraryPage() {
         || item.name.toLowerCase().includes(normalizedSearch)
         || item.language.toLowerCase().includes(normalizedSearch)
         || item.category.toLowerCase().includes(normalizedSearch)
-        || item.originalFileName.toLowerCase().includes(normalizedSearch);
+        || item.originalFileName.toLowerCase().includes(normalizedSearch)
+        || (item.imageOriginalFileName?.toLowerCase().includes(normalizedSearch) ?? false);
 
       const matchesFilter = activeFilter === "All Resources"
         || item.category === activeFilter;
@@ -108,6 +132,34 @@ export function AdminContentResourceLibraryPage() {
 
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
   const paginatedRows = filteredRows.slice((activePage - 1) * PAGE_SIZE, activePage * PAGE_SIZE);
+  const activeActionItem = resources.find(item => item.id === openActionId) ?? null;
+
+  const toggleActionMenu = (item: ContentResourceItem, event: MouseEvent<HTMLButtonElement>) => {
+    if (openActionId === item.id) {
+      setOpenActionId(null);
+      setActionMenuPosition(null);
+      return;
+    }
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    const topCandidate = rect.bottom + 8;
+    const top = topCandidate + ACTION_MENU_HEIGHT > window.innerHeight - 12
+      ? Math.max(12, rect.top - ACTION_MENU_HEIGHT - 8)
+      : topCandidate;
+    const left = Math.min(
+      Math.max(12, rect.right - ACTION_MENU_WIDTH),
+      window.innerWidth - ACTION_MENU_WIDTH - 12,
+    );
+
+    setOpenActionId(item.id);
+    setActionMenuPosition({ left, top });
+  };
+
+  const closeActionMenu = () => {
+    setOpenActionId(null);
+    setActionMenuPosition(null);
+  };
+
   const handleDelete = async (item: ContentResourceItem) => {
     const confirmed = window.confirm(`Delete ${item.name}?`);
 
@@ -119,7 +171,7 @@ export function AdminContentResourceLibraryPage() {
       await deleteContentResource(item.id);
       setResources(currentResources => currentResources.filter(resource => resource.id !== item.id));
       setStatusMessage(`Deleted ${item.name}.`);
-      setOpenActionId(null);
+      closeActionMenu();
     }
     catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Could not delete resource.");
@@ -153,7 +205,7 @@ export function AdminContentResourceLibraryPage() {
             </label>
             <button
               type="button"
-              onClick={() => navigate(APP_ROUTE_PATHS.adminContentUploadResource)}
+              onClick={() => navigate(`${APP_ROUTE_PATHS.adminContentUploadResource}?mode=bulk`)}
               className="inline-flex h-8 items-center gap-1 rounded-full bg-[#F59E0B] px-3 text-[11px] font-semibold text-white transition hover:bg-[#D88B07]"
             >
               <Upload className="h-3.5 w-3.5" />
@@ -190,6 +242,56 @@ export function AdminContentResourceLibraryPage() {
           ))}
         </div>
 
+        {activeActionItem && actionMenuPosition
+          ? (
+              <>
+                <button
+                  type="button"
+                  aria-label="Close resource actions"
+                  className="fixed inset-0 z-40 cursor-default bg-transparent"
+                  onClick={closeActionMenu}
+                />
+                <div
+                  className="fixed z-50 w-[152px] overflow-hidden rounded-lg border border-[#D8E3EE] bg-white py-1 text-[11px] shadow-[0_18px_36px_rgba(15,23,42,0.18)]"
+                  style={{
+                    left: actionMenuPosition.left,
+                    top: actionMenuPosition.top,
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigate(`${APP_ROUTE_PATHS.adminContentUploadResource}?resourceId=${activeActionItem.id}`);
+                      closeActionMenu();
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[#334155] transition hover:bg-[#F8FBFF]"
+                  >
+                    <Pencil className="h-3.5 w-3.5 text-[#0F67AE]" />
+                    Edit
+                  </button>
+                  <a
+                    href={getContentResourceDownloadUrl(activeActionItem)}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={closeActionMenu}
+                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[#334155] transition hover:bg-[#F8FBFF]"
+                  >
+                    <Download className="h-3.5 w-3.5 text-[#0F67AE]" />
+                    Download
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => void handleDelete(activeActionItem)}
+                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[#B42318] transition hover:bg-[#FFF5F5]"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Delete
+                  </button>
+                </div>
+              </>
+            )
+          : null}
+
         <div className="overflow-x-auto rounded-[10px] border border-[#D5DEE7]">
           <table className="w-full min-w-[860px] border-collapse text-left">
             <thead className="bg-[#F8FBFF]">
@@ -217,12 +319,32 @@ export function AdminContentResourceLibraryPage() {
                 <tr key={item.id} className="border-t border-[#E4EAF1] text-[12px] text-[#1E293B]">
                   <td className="px-3 py-2.5"><input type="checkbox" readOnly /></td>
                   <td className="px-3 py-2.5">
-                    <p className="font-medium">{item.name}</p>
-                    <p className="text-[10px] text-[#94A3B8]">
-                      {formatBytes(item.fileSizeBytes)}
-                      {" | "}
-                      {item.originalFileName}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      {getContentResourceImageUrl(item)
+                        ? (
+                            <img
+                              src={getContentResourceImageUrl(item)}
+                              alt=""
+                              className="h-10 w-10 rounded-md border border-[#D8E3EE] object-cover"
+                            />
+                          )
+                        : (
+                            <span className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-[#D8E3EE] bg-[#F8FBFF] text-[#94A3B8]">
+                              <ImageIcon className="h-4 w-4" />
+                            </span>
+                          )}
+                      <div className="min-w-0">
+                        <p className="font-medium">{item.name}</p>
+                        <p className="text-[10px] text-[#94A3B8]">
+                          {formatBytes(item.fileSizeBytes)}
+                          {" | "}
+                          {item.originalFileName}
+                        </p>
+                        {item.imageOriginalFileName
+                          ? <p className="truncate text-[10px] text-[#94A3B8]">Image: {item.imageOriginalFileName}</p>
+                          : null}
+                      </div>
+                    </div>
                   </td>
                   <td className="px-3 py-2.5 text-[#475569]">{item.language}</td>
                   <td className="px-3 py-2.5">
@@ -236,42 +358,12 @@ export function AdminContentResourceLibraryPage() {
                     <div className="relative inline-flex">
                       <button
                         type="button"
-                        onClick={() => setOpenActionId(currentId => currentId === item.id ? null : item.id)}
-                        className="inline-flex h-6 w-6 items-center justify-center rounded text-[#607B90] transition hover:bg-[#EEF3F8]"
+                        onClick={(event) => toggleActionMenu(item, event)}
+                        aria-expanded={openActionId === item.id}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-full text-[#607B90] transition hover:bg-[#EEF3F8] hover:text-[#0F67AE]"
                       >
                         <MoreVertical className="h-4 w-4" />
                       </button>
-                      {openActionId === item.id
-                        ? (
-                            <div className="absolute right-0 top-7 z-20 w-32 overflow-hidden rounded-md border border-[#D8E3EE] bg-white text-[11px] shadow-[0_12px_28px_rgba(15,23,42,0.14)]">
-                              <button
-                                type="button"
-                                onClick={() => navigate(`${APP_ROUTE_PATHS.adminContentUploadResource}?resourceId=${item.id}`)}
-                                className="flex w-full items-center gap-2 px-3 py-2 text-left text-[#334155] transition hover:bg-[#F8FBFF]"
-                              >
-                                <Pencil className="h-3.5 w-3.5" />
-                                Edit
-                              </button>
-                              <a
-                                href={getContentResourceDownloadUrl(item)}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="flex w-full items-center gap-2 px-3 py-2 text-left text-[#334155] transition hover:bg-[#F8FBFF]"
-                              >
-                                <Download className="h-3.5 w-3.5" />
-                                Download
-                              </a>
-                              <button
-                                type="button"
-                                onClick={() => void handleDelete(item)}
-                                className="flex w-full items-center gap-2 px-3 py-2 text-left text-[#B42318] transition hover:bg-[#FFF5F5]"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                                Delete
-                              </button>
-                            </div>
-                          )
-                        : null}
                     </div>
                   </td>
                 </tr>

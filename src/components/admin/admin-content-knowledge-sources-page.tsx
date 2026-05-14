@@ -1,8 +1,19 @@
-import { FileUp, Plus, RefreshCcw, RotateCcw, Trash2 } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  FileText,
+  FileUp,
+  Plus,
+  RefreshCcw,
+  RotateCcw,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type {
   KnowledgeSourceCategory,
+  KnowledgeSourceChunkPreview,
   KnowledgeSourceInput,
   KnowledgeSourceItem,
   KnowledgeSourceJurisdiction,
@@ -12,18 +23,19 @@ import type {
 } from "@/lib/knowledge-sources";
 
 import { AdminContentManagementShell } from "@/components/admin/admin-content-management-shell";
-import { getAdminAuthSession } from "@/lib/admin-auth";
 import {
   approveKnowledgeSource,
   createKnowledgeSource,
   deleteKnowledgeSource,
   getKnowledgeSourceId,
   ingestKnowledgeSource,
+  listKnowledgeSourceChunks,
   listKnowledgeSources,
   refreshKnowledgeSource,
   reindexKnowledgeSource,
   rejectKnowledgeSource,
   updateKnowledgeSource,
+  uploadKnowledgeSourceDocument,
 } from "@/lib/knowledge-sources";
 
 const TEMPLATE_TABS = [
@@ -131,10 +143,34 @@ type CreateSourceFormState = {
   legalReviewed: boolean;
   ingestImmediately: boolean;
   rawContent: string;
-  localFilePath: string;
+  documentFile: File | null;
   constitutionalBasis: string;
   legislationTags: string;
 };
+
+type CreateSourceValidationErrors = Partial<
+  Record<
+    | "title"
+    | "sourceCategory"
+    | "publisher"
+    | "licenseStatus"
+    | "url"
+    | "lastUpdated"
+    | "nextRefreshAt"
+    | "sourceType"
+    | "document",
+    string
+  >
+>;
+
+type DocumentUploadStatus =
+  | "idle"
+  | "selected"
+  | "uploading"
+  | "extracting"
+  | "indexed"
+  | "failed"
+  | "needs_review";
 
 type GovernanceDraft = Pick<
   KnowledgeSourceInput,
@@ -207,7 +243,7 @@ function createDefaultCreateForm(): CreateSourceFormState {
     legalReviewed: false,
     ingestImmediately: true,
     rawContent: "",
-    localFilePath: "",
+    documentFile: null,
     constitutionalBasis: "",
     legislationTags: "",
   };
@@ -223,6 +259,90 @@ function getFriendlyError(error: unknown, fallback: string) {
   }
 
   return error.message;
+}
+
+function formatFileSize(bytes?: number) {
+  if (!bytes || bytes <= 0) {
+    return "Unknown size";
+  }
+
+  const units = ["B", "KB", "MB", "GB"];
+  let value = bytes;
+  let unitIndex = 0;
+
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+
+  return `${value.toFixed(value >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+}
+
+function getFileLabel(file: File | null) {
+  if (!file) {
+    return "";
+  }
+
+  return `${file.name} · ${formatFileSize(file.size)} · ${file.type || "unknown type"}`;
+}
+
+function validateCreateSourceForm(
+  form: CreateSourceFormState,
+): CreateSourceValidationErrors {
+  const errors: CreateSourceValidationErrors = {};
+  const isOfficial = form.sourceCategory.startsWith("official_");
+
+  if (!form.title.trim()) {
+    errors.title = "Source name is required.";
+  }
+  if (!form.sourceCategory) {
+    errors.sourceCategory = "Source category is required.";
+  }
+  if (!form.sourceType) {
+    errors.sourceType = "Source type is required.";
+  }
+  if (!form.publisher.trim()) {
+    errors.publisher = "Publisher is required.";
+  }
+  if (!form.licenseStatus.trim()) {
+    errors.licenseStatus = "License status is required.";
+  }
+  if (isOfficial && !form.url.trim()) {
+    errors.url = "Official legal/support sources require an authoritative URL.";
+  }
+  if (isOfficial && !form.lastUpdated) {
+    errors.lastUpdated = "Official sources require a last-updated date.";
+  }
+  if (isOfficial && !form.nextRefreshAt) {
+    errors.nextRefreshAt = "Official sources require a refresh date.";
+  }
+  if (
+    form.ingestImmediately
+    && !form.documentFile
+    && !form.rawContent.trim()
+  ) {
+    errors.document = "Add a document or paste source text before immediate ingestion.";
+  }
+
+  return errors;
+}
+
+function hasValidationErrors(errors: CreateSourceValidationErrors) {
+  return Object.values(errors).some(Boolean);
+}
+
+function fieldBorder(error?: string) {
+  return error
+    ? "border-[#D14343] focus:border-[#D14343]"
+    : "border-[#D8E3EE] focus:border-[#0F67AE]";
+}
+
+function FieldError({ message }: { message?: string }) {
+  if (!message) {
+    return null;
+  }
+
+  return <p className="text-[11px] font-medium text-[#B42318]">{message}</p>;
 }
 
 function categoryClass(category: string) {
@@ -262,6 +382,61 @@ function getChunkCount(source: KnowledgeSourceItem) {
   return typeof chunkCount === "number" ? chunkCount : 0;
 }
 
+function isLegalRagSource(source: KnowledgeSourceItem) {
+  return (
+    source.sourceCategory === "official_legal_source"
+    || source.sourceType === "Act"
+    || source.sourceType === "Regulation"
+  );
+}
+
+function getAdminIngestionStatus(source: KnowledgeSourceItem) {
+  const metadata = getMetadata(source);
+  const pipelineStatus = metadata.ingestionPipeline?.status;
+  const chunkCount = getChunkCount(source);
+
+  if (source.deletedAt || source.status === "archived" || source.status === "expired") {
+    return "needs_review";
+  }
+  if (source.ingestionStatus === "failed" || pipelineStatus === "failed") {
+    return "failed";
+  }
+  if (source.ingestionStatus === "embedded" && chunkCount > 0) {
+    return "indexed";
+  }
+  if (pipelineStatus === "extracting") {
+    return "extracting";
+  }
+  if (source.ingestionStatus === "chunked") {
+    return "chunking";
+  }
+  if (source.ingestionStatus === "fetched") {
+    return "pending";
+  }
+  if (source.ingestionStatus === "metadata_only" || pipelineStatus === "needs_review") {
+    return "needs_review";
+  }
+  if (!source.ingestionStatus) {
+    return "not_started";
+  }
+
+  return "pending";
+}
+
+function getEmbeddingStatus(source: KnowledgeSourceItem) {
+  if (getAdminIngestionStatus(source) === "indexed") {
+    return "Indexed";
+  }
+  if (source.ingestionStatus === "failed") {
+    return "Failed";
+  }
+  if (getChunkCount(source) > 0) {
+    return "Chunks available";
+  }
+
+  return "Not indexed";
+}
+
 function isRefreshDue(source: KnowledgeSourceItem) {
   if (!isOfficialSource(source)) {
     return false;
@@ -276,22 +451,137 @@ function isRefreshDue(source: KnowledgeSourceItem) {
   return Number.isNaN(time) || time <= Date.now();
 }
 
+function isReviewDue(source: KnowledgeSourceItem) {
+  if (!source.nextReviewAt) {
+    return false;
+  }
+
+  const time = new Date(source.nextReviewAt).getTime();
+
+  return Number.isNaN(time) || time <= Date.now();
+}
+
 function isExcludedFromRag(source: KnowledgeSourceItem) {
+  return getRagEligibilityReasons(source).length > 0;
+}
+
+function getRagEligibilityChecks(source: KnowledgeSourceItem) {
+  const hasChunks = source.ingestionStatus === "embedded" && getChunkCount(source) > 0;
+  const legalReviewSatisfied =
+    source.sourceCategory !== "official_legal_source" || source.legalReviewed;
+  const refreshCurrent = !isOfficialSource(source) || !isRefreshDue(source);
+  const reviewCurrent = !isReviewDue(source);
+  const legalCategory = isLegalRagSource(source);
+  const indexed = getAdminIngestionStatus(source) === "indexed";
+
+  return [
+    {
+      label: "Source approved",
+      passed: source.status === "approved",
+      nextStep: "Click Save & Approve for RAG after registry details are complete.",
+    },
+    {
+      label: "Indexed chunks available",
+      passed: indexed && hasChunks,
+      nextStep: "Upload and ingest a document, then re-index so searchable chunks are created.",
+    },
+    {
+      label: "Legal review complete",
+      passed: legalReviewSatisfied,
+      nextStep: "Mark legal review complete and save registry details.",
+    },
+    {
+      label: "Refresh date current",
+      passed: refreshCurrent,
+      nextStep: "Set a future refresh date or refresh the source.",
+    },
+    {
+      label: "Review date current",
+      passed: reviewCurrent,
+      nextStep: "Set a future review date or clear the expired review due date.",
+    },
+    {
+      label: "Legal source category",
+      passed: legalCategory,
+      nextStep: "Use Official legal source with Act or Regulation for legal RAG eligibility.",
+    },
+  ];
+}
+
+function getRagEligibilityReasons(source: KnowledgeSourceItem) {
+  const reasons: string[] = [];
+
+  if (source.deletedAt || source.status === "archived" || source.status === "expired") {
+    reasons.push("Source archived");
+  }
   if (source.status !== "approved") {
-    return true;
+    reasons.push("Not approved yet");
   }
-
-  if (source.ingestionStatus !== "embedded" && getChunkCount(source) === 0) {
-    return true;
+  if (!source.legalReviewed) {
+    reasons.push("Legal review incomplete");
   }
-
+  if (source.ingestionStatus === "failed") {
+    reasons.push(source.ingestionError || "PDF extraction failed");
+  }
+  if (getAdminIngestionStatus(source) !== "indexed") {
+    reasons.push("No indexed chunks available");
+  }
+  if (getChunkCount(source) <= 0) {
+    reasons.push("No indexed chunks available");
+  }
+  if (!isLegalRagSource(source)) {
+    reasons.push("Source category is not legal");
+  }
   if (isOfficialSource(source) && isRefreshDue(source)) {
-    return true;
+    reasons.push("Source refresh is due");
+  }
+  if (isReviewDue(source)) {
+    reasons.push("Review date is due");
   }
 
+  return Array.from(new Set(reasons));
+}
+
+function getRagNextStep(source: KnowledgeSourceItem) {
   return (
-    source.sourceCategory === "official_legal_source" && !source.legalReviewed
+    getRagEligibilityChecks(source).find(check => !check.passed)?.nextStep
+    ?? "Eligible for frontend RAG citations. This uses retrieval, not model training."
   );
+}
+
+function getApprovalBlockReason(source: KnowledgeSourceItem) {
+  if (source.status === "approved") {
+    return "Already approved.";
+  }
+  if (source.status === "archived" || source.status === "expired") {
+    return "Archived sources cannot be approved.";
+  }
+  if (!source.title.trim()) {
+    return "Title is required.";
+  }
+  if (!source.publisher.trim()) {
+    return "Publisher is required.";
+  }
+  if (!source.licenseStatus.trim()) {
+    return "License status is required.";
+  }
+  if (isOfficialSource(source) && !source.url?.trim()) {
+    return "Official sources require an authoritative URL.";
+  }
+  if (isOfficialSource(source) && !source.lastUpdated) {
+    return "Official sources require last-updated metadata.";
+  }
+  if (isOfficialSource(source) && !source.nextRefreshAt) {
+    return "Official sources require a future refresh date.";
+  }
+  if (source.sourceCategory === "official_legal_source" && !source.legalReviewed) {
+    return "Legal review must be complete before approval.";
+  }
+  if (source.ingestionStatus === "failed") {
+    return "Fix failed extraction or indexing before approval.";
+  }
+
+  return "";
 }
 
 function displayCategory(source: KnowledgeSourceItem) {
@@ -322,7 +612,7 @@ function displayStatus(source: KnowledgeSourceItem) {
     archived: "Archived",
   };
 
-  if (source.ingestionStatus === "failed") {
+  if (getAdminIngestionStatus(source) === "failed") {
     return "Ingestion Failed";
   }
 
@@ -345,7 +635,7 @@ function displayStatus(source: KnowledgeSourceItem) {
     return "Needs Legal Review";
   }
 
-  if (source.ingestionStatus === "metadata_only") {
+  if (getAdminIngestionStatus(source) === "needs_review") {
     return "Needs Extracted Text";
   }
 
@@ -355,12 +645,12 @@ function displayStatus(source: KnowledgeSourceItem) {
 
   if (
     source.status === "approved"
-    && (source.ingestionStatus === "embedded" || getMetadata(source).chunkCount)
+    && getAdminIngestionStatus(source) === "indexed"
   ) {
     return "Approved For RAG";
   }
 
-  if (source.ingestionStatus === "embedded" || getMetadata(source).chunkCount) {
+  if (getAdminIngestionStatus(source) === "indexed") {
     return "Ready For Approval";
   }
 
@@ -506,24 +796,6 @@ function upsertSource(
   );
 }
 
-function getActorRefId(value: KnowledgeSourceItem["createdBy"]): string {
-  if (!value) {
-    return "";
-  }
-
-  if (typeof value === "string") {
-    return value;
-  }
-
-  return value.id ?? value._id ?? "";
-}
-
-function getCurrentAdminId(): string {
-  const session = getAdminAuthSession();
-
-  return session?.user.id ?? session?.user._id ?? "";
-}
-
 function buildGovernanceDraft(
   source: KnowledgeSourceItem | undefined,
 ): GovernanceDraft {
@@ -577,26 +849,23 @@ export function AdminContentKnowledgeSourcesPage() {
   const [createForm, setCreateForm] = useState<CreateSourceFormState>(() =>
     createDefaultCreateForm(),
   );
+  const [createErrors, setCreateErrors] = useState<CreateSourceValidationErrors>({});
   const [governanceDraft, setGovernanceDraft] = useState<GovernanceDraft>(() =>
     buildGovernanceDraft(undefined),
   );
+  const [selectedUploadFile, setSelectedUploadFile] = useState<File | null>(null);
+  const [selectedUploadStatus, setSelectedUploadStatus] = useState<DocumentUploadStatus>("idle");
+  const [sourceChunks, setSourceChunks] = useState<KnowledgeSourceChunkPreview[]>([]);
+  const [isLoadingChunks, setIsLoadingChunks] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(
     "Loading knowledge sources...",
   );
+  const [templateActionMessage, setTemplateActionMessage] = useState<{
+    tone: "success" | "error";
+    text: string;
+  } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const currentAdminId = useMemo(() => getCurrentAdminId(), []);
-
-  const isOwnSource = useCallback(
-    (source: KnowledgeSourceItem | undefined) => {
-      const creatorId = getActorRefId(source?.createdBy);
-
-      return Boolean(
-        currentAdminId && creatorId && creatorId === currentAdminId,
-      );
-    },
-    [currentAdminId],
-  );
 
   const loadSources = useCallback(async () => {
     setIsLoading(true);
@@ -664,11 +933,18 @@ export function AdminContentKnowledgeSourcesPage() {
   useEffect(() => {
     setTemplateDraft(getTemplateValue(selectedSource, activeTemplateTab));
     setGovernanceDraft(buildGovernanceDraft(selectedSource));
+    setSelectedUploadFile(null);
+    setSelectedUploadStatus("idle");
+    setSourceChunks([]);
   }, [activeTemplateTab, selectedSource]);
 
   const saveTemplate = async (publish: boolean) => {
     if (!selectedSource) {
       setStatusMessage("Select a source before saving.");
+      setTemplateActionMessage({
+        tone: "error",
+        text: "Select a source before saving.",
+      });
       return;
     }
 
@@ -676,19 +952,15 @@ export function AdminContentKnowledgeSourcesPage() {
 
     if (!sourceId) {
       setStatusMessage("Selected source is missing an id.");
-      return;
-    }
-
-    if (
-      publish
-      && selectedSource.status !== "approved"
-      && isOwnSource(selectedSource)
-    ) {
-      setStatusMessage("This source needs approval from a different admin.");
+      setTemplateActionMessage({
+        tone: "error",
+        text: "Selected source is missing an id.",
+      });
       return;
     }
 
     setIsSaving(true);
+    setTemplateActionMessage(null);
 
     try {
       const metadata = getMetadata(selectedSource);
@@ -708,14 +980,30 @@ export function AdminContentKnowledgeSourcesPage() {
           : updated;
 
       setSources(currentSources => upsertSource(currentSources, finalSource));
+      const message = publish
+        ? isExcludedFromRag(finalSource)
+          ? `Saved and approved ${finalSource.title}, but one RAG eligibility check still needs attention.`
+          : `${finalSource.title} is approved and eligible for frontend RAG citations.`
+        : `Draft saved for ${finalSource.title}.`;
+
       setStatusMessage(
         publish
-          ? `Published ${TEMPLATE_TABS.find(tab => tab.id === activeTemplateTab)?.label.toLowerCase()} for ${finalSource.title}.`
+          ? `Saved template metadata and approved ${finalSource.title} for RAG if all eligibility checks pass.`
           : `Draft saved for ${finalSource.title}.`,
       );
+      setTemplateActionMessage({
+        tone: "success",
+        text: message,
+      });
     }
     catch (error) {
-      setStatusMessage(getFriendlyError(error, "Could not save template."));
+      const message = getFriendlyError(error, "Could not save template.");
+
+      setStatusMessage(message);
+      setTemplateActionMessage({
+        tone: "error",
+        text: message,
+      });
     }
     finally {
       setIsSaving(false);
@@ -787,29 +1075,11 @@ export function AdminContentKnowledgeSourcesPage() {
 
   const handleCreateSource = async () => {
     const title = createForm.title.trim();
+    const validationErrors = validateCreateSourceForm(createForm);
 
-    if (!title) {
-      setStatusMessage("Source name is required.");
-      return;
-    }
-
-    if (
-      createForm.sourceCategory.startsWith("official_")
-      && !createForm.url.trim()
-    ) {
-      setStatusMessage(
-        "Official legal/support sources require an authoritative source URL.",
-      );
-      return;
-    }
-
-    if (
-      createForm.sourceCategory.startsWith("official_")
-      && (!createForm.lastUpdated || !createForm.nextRefreshAt)
-    ) {
-      setStatusMessage(
-        "Official sources require last-updated and refresh dates.",
-      );
+    setCreateErrors(validationErrors);
+    if (hasValidationErrors(validationErrors)) {
+      setStatusMessage("Fix the highlighted source details before saving.");
       return;
     }
 
@@ -844,14 +1114,30 @@ export function AdminContentKnowledgeSourcesPage() {
       let finalSource = created;
       const createdId = getKnowledgeSourceId(created);
 
+      if (createForm.documentFile && createdId) {
+        setSelectedUploadStatus("uploading");
+        const uploadResult = await uploadKnowledgeSourceDocument(
+          createdId,
+          createForm.documentFile,
+          { ingestImmediately: createForm.ingestImmediately },
+        );
+        setSelectedUploadStatus(
+          uploadResult.error
+            ? "failed"
+            : createForm.ingestImmediately
+              ? "indexed"
+              : "needs_review",
+        );
+        finalSource = uploadResult.source ?? created;
+      }
+      else
       if (
         createForm.ingestImmediately
         && createdId
-        && (createForm.rawContent.trim() || createForm.localFilePath.trim())
+        && createForm.rawContent.trim()
       ) {
         const ingestResult = await ingestKnowledgeSource(createdId, {
           content: createForm.rawContent.trim() || undefined,
-          localFilePath: createForm.localFilePath.trim() || undefined,
           metadata,
         });
         finalSource = ingestResult.source ?? created;
@@ -861,13 +1147,17 @@ export function AdminContentKnowledgeSourcesPage() {
       setSelectedSourceId(getKnowledgeSourceId(finalSource));
       setIsCreateOpen(false);
       setCreateForm(createDefaultCreateForm());
+      setCreateErrors({});
       setStatusMessage(
-        createForm.ingestImmediately
-          ? "New source added and ingestion started."
-          : "New source added to the review queue.",
+        createForm.documentFile
+          ? "New source added and document uploaded."
+          : createForm.ingestImmediately
+            ? "New source added and ingestion started."
+            : "New source added to the review queue.",
       );
     }
     catch (error) {
+      setSelectedUploadStatus("failed");
       setStatusMessage(getFriendlyError(error, "Could not add source."));
     }
     finally {
@@ -880,16 +1170,31 @@ export function AdminContentKnowledgeSourcesPage() {
       return;
     }
 
+    const canPreviewInBrowser = /text|json|csv|html|markdown/i.test(file.type)
+      || /\.(txt|md|html|htm|csv|json)$/i.test(file.name);
+
+    setCreateForm(current => ({
+      ...current,
+      documentFile: file,
+    }));
+    setCreateErrors(current => ({ ...current, document: undefined }));
+    setSelectedUploadStatus("selected");
+
+    if (!canPreviewInBrowser) {
+      setStatusMessage(`Selected ${file.name}. It will be uploaded to the backend for extraction.`);
+      return;
+    }
+
     try {
       const text = await file.text();
       setCreateForm(current => ({
         ...current,
         rawContent: text,
       }));
-      setStatusMessage(`Loaded ${file.name} into the ingestion editor.`);
+      setStatusMessage(`Selected ${file.name} and loaded a text preview.`);
     }
     catch {
-      setStatusMessage("Could not read the selected file.");
+      setStatusMessage(`Selected ${file.name}. Browser preview failed, but backend upload is still available.`);
     }
   };
 
@@ -978,6 +1283,81 @@ export function AdminContentKnowledgeSourcesPage() {
     }
     finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleUploadDocumentForSelectedSource = async () => {
+    if (!selectedSource || !selectedUploadFile) {
+      setStatusMessage("Select a source and document before uploading.");
+      return;
+    }
+
+    const sourceId = getKnowledgeSourceId(selectedSource);
+
+    if (!sourceId) {
+      setStatusMessage("Selected source is missing an id.");
+      return;
+    }
+
+    setIsSaving(true);
+    setSelectedUploadStatus("uploading");
+
+    try {
+      setSelectedUploadStatus("extracting");
+      const result = await uploadKnowledgeSourceDocument(
+        sourceId,
+        selectedUploadFile,
+        { ingestImmediately: true },
+      );
+      const nextSource = result.source ?? selectedSource;
+      setSources(currentSources => upsertSource(currentSources, nextSource));
+      setSelectedSourceId(getKnowledgeSourceId(nextSource));
+      setSelectedUploadStatus(result.error ? "failed" : "indexed");
+      setStatusMessage(
+        result.error
+          ? `${nextSource.title} upload finished, but extraction failed.`
+          : `${nextSource.title} uploaded and indexed with ${result.chunkCount ?? getChunkCount(nextSource)} chunk${(result.chunkCount ?? getChunkCount(nextSource)) === 1 ? "" : "s"}.`,
+      );
+      setSelectedUploadFile(null);
+    }
+    catch (error) {
+      setSelectedUploadStatus("failed");
+      setStatusMessage(getFriendlyError(error, "Could not upload source document."));
+    }
+    finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleLoadChunks = async () => {
+    if (!selectedSource) {
+      setStatusMessage("Select a source before loading chunks.");
+      return;
+    }
+
+    const sourceId = getKnowledgeSourceId(selectedSource);
+
+    if (!sourceId) {
+      setStatusMessage("Selected source is missing an id.");
+      return;
+    }
+
+    setIsLoadingChunks(true);
+
+    try {
+      const chunks = await listKnowledgeSourceChunks(sourceId);
+      setSourceChunks(chunks);
+      setStatusMessage(
+        chunks.length > 0
+          ? `Loaded ${chunks.length} chunk preview${chunks.length === 1 ? "" : "s"}.`
+          : "No chunks are available for this source yet.",
+      );
+    }
+    catch (error) {
+      setStatusMessage(getFriendlyError(error, "Could not load source chunks."));
+    }
+    finally {
+      setIsLoadingChunks(false);
     }
   };
 
@@ -1079,6 +1459,8 @@ export function AdminContentKnowledgeSourcesPage() {
               disabled={isSaving}
               onClick={() => {
                 setIsCreateOpen(true);
+                setCreateErrors({});
+                setSelectedUploadStatus("idle");
                 setStatusMessage("Fill in the new knowledge source details.");
               }}
               className="inline-flex h-8 items-center gap-1 rounded-md bg-[#F59E0B] px-3 text-[11px] font-semibold text-white transition hover:bg-[#D88B07] disabled:cursor-not-allowed disabled:opacity-60"
@@ -1096,7 +1478,7 @@ export function AdminContentKnowledgeSourcesPage() {
                   <div className="flex flex-col gap-3 lg:grid lg:grid-cols-[1fr_180px]">
                     <label className="space-y-1">
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                        Source Name
+                        Source Name *
                       </p>
                       <input
                         type="text"
@@ -1107,8 +1489,9 @@ export function AdminContentKnowledgeSourcesPage() {
                             title: event.target.value,
                           }))}
                         placeholder="Community Safety Bulletin"
-                        className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
+                        className={`h-9 w-full rounded-md border bg-white px-3 text-sm text-[#334155] outline-none transition ${fieldBorder(createErrors.title)}`}
                       />
+                      <FieldError message={createErrors.title} />
                     </label>
                     <label className="space-y-1">
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
@@ -1158,7 +1541,7 @@ export function AdminContentKnowledgeSourcesPage() {
                   <div className="grid gap-3 lg:grid-cols-2">
                     <label className="space-y-1">
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                        Source Category
+                        Source Category *
                       </p>
                       <select
                         value={createForm.sourceCategory}
@@ -1168,7 +1551,7 @@ export function AdminContentKnowledgeSourcesPage() {
                             sourceCategory: event.target
                               .value as KnowledgeSourceCategory,
                           }))}
-                        className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
+                        className={`h-9 w-full rounded-md border bg-white px-3 text-sm text-[#334155] outline-none transition ${fieldBorder(createErrors.sourceCategory)}`}
                       >
                         {SOURCE_CATEGORY_OPTIONS.map(option => (
                           <option key={option.value} value={option.value}>
@@ -1176,10 +1559,11 @@ export function AdminContentKnowledgeSourcesPage() {
                           </option>
                         ))}
                       </select>
+                      <FieldError message={createErrors.sourceCategory} />
                     </label>
                     <label className="space-y-1">
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                        Publisher
+                        Publisher *
                       </p>
                       <input
                         type="text"
@@ -1189,12 +1573,13 @@ export function AdminContentKnowledgeSourcesPage() {
                             ...current,
                             publisher: event.target.value,
                           }))}
-                        className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
+                        className={`h-9 w-full rounded-md border bg-white px-3 text-sm text-[#334155] outline-none transition ${fieldBorder(createErrors.publisher)}`}
                       />
+                      <FieldError message={createErrors.publisher} />
                     </label>
                     <label className="space-y-1">
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                        License Status
+                        License Status *
                       </p>
                       <input
                         type="text"
@@ -1205,8 +1590,9 @@ export function AdminContentKnowledgeSourcesPage() {
                             ...current,
                             licenseStatus: event.target.value,
                           }))}
-                        className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
+                        className={`h-9 w-full rounded-md border bg-white px-3 text-sm text-[#334155] outline-none transition ${fieldBorder(createErrors.licenseStatus)}`}
                       />
+                      <FieldError message={createErrors.licenseStatus} />
                     </label>
                     <label className="space-y-1">
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
@@ -1251,7 +1637,7 @@ export function AdminContentKnowledgeSourcesPage() {
                     </label>
                     <label className="space-y-1">
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                        Source Type
+                        Source Type *
                       </p>
                       <select
                         value={createForm.sourceType}
@@ -1260,7 +1646,7 @@ export function AdminContentKnowledgeSourcesPage() {
                             ...current,
                             sourceType: event.target.value as KnowledgeSourceType,
                           }))}
-                        className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
+                        className={`h-9 w-full rounded-md border bg-white px-3 text-sm text-[#334155] outline-none transition ${fieldBorder(createErrors.sourceType)}`}
                       >
                         {SOURCE_TYPE_OPTIONS.map(option => (
                           <option key={option} value={option}>
@@ -1268,10 +1654,11 @@ export function AdminContentKnowledgeSourcesPage() {
                           </option>
                         ))}
                       </select>
+                      <FieldError message={createErrors.sourceType} />
                     </label>
                     <label className="space-y-1">
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                        Source URL
+                        Source URL *
                       </p>
                       <input
                         type="url"
@@ -1282,8 +1669,9 @@ export function AdminContentKnowledgeSourcesPage() {
                             url: event.target.value,
                           }))}
                         placeholder="https://example.org/source"
-                        className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
+                        className={`h-9 w-full rounded-md border bg-white px-3 text-sm text-[#334155] outline-none transition ${fieldBorder(createErrors.url)}`}
                       />
+                      <FieldError message={createErrors.url} />
                     </label>
                   </div>
 
@@ -1307,7 +1695,7 @@ export function AdminContentKnowledgeSourcesPage() {
                   <div className="grid gap-3 lg:grid-cols-3">
                     <label className="space-y-1">
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                        Last Updated
+                        Last Updated *
                       </p>
                       <input
                         type="date"
@@ -1322,12 +1710,13 @@ export function AdminContentKnowledgeSourcesPage() {
                           || addDaysInputValue(lastUpdated, 90),
                           }));
                         }}
-                        className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
+                        className={`h-9 w-full rounded-md border bg-white px-3 text-sm text-[#334155] outline-none transition ${fieldBorder(createErrors.lastUpdated)}`}
                       />
+                      <FieldError message={createErrors.lastUpdated} />
                     </label>
                     <label className="space-y-1">
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                        Refresh Date
+                        Refresh Date *
                       </p>
                       <input
                         type="date"
@@ -1337,8 +1726,9 @@ export function AdminContentKnowledgeSourcesPage() {
                             ...current,
                             nextRefreshAt: event.target.value,
                           }))}
-                        className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
+                        className={`h-9 w-full rounded-md border bg-white px-3 text-sm text-[#334155] outline-none transition ${fieldBorder(createErrors.nextRefreshAt)}`}
                       />
+                      <FieldError message={createErrors.nextRefreshAt} />
                     </label>
                     <label className="space-y-1">
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
@@ -1426,41 +1816,64 @@ export function AdminContentKnowledgeSourcesPage() {
                     />
                   </label>
 
-                  <div className="grid gap-3 lg:grid-cols-2">
-                    <label className="space-y-1">
-                      <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                        Local File Path
-                      </p>
-                      <input
-                        type="text"
-                        value={createForm.localFilePath}
-                        onChange={event =>
-                          setCreateForm(current => ({
-                            ...current,
-                            localFilePath: event.target.value,
-                          }))}
-                        placeholder="D:\\docs\\policy.txt"
-                        className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
-                      />
-                    </label>
-                    <label className="space-y-1">
-                      <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                        Upload File
-                      </p>
-                      <label className="inline-flex h-9 w-full cursor-pointer items-center justify-center gap-2 rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] transition hover:bg-[#F8FBFF]">
+                  <div className="rounded-md border border-[#D8E3EE] bg-white p-3">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
+                          Legal Document Upload
+                        </p>
+                        <p className="mt-0.5 text-[11px] text-[#607B90]">
+                          PDF, Word, TXT, MD, HTML, CSV, and JSON are accepted. PDFs and Word documents are uploaded to the backend for extraction.
+                        </p>
+                      </div>
+                      <label className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-md border border-[#D8E3EE] bg-white px-3 text-sm font-semibold text-[#334155] transition hover:bg-[#F8FBFF]">
                         <FileUp className="h-4 w-4" />
-                        Load File Into Text
+                        Select Document
                         <input
                           type="file"
-                          accept=".txt,.md,.html,.csv,.json"
+                          accept=".pdf,.doc,.docx,.txt,.md,.html,.htm,.csv,.json,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown,text/html,text/csv,application/json"
                           className="hidden"
                           onChange={(event) => {
                             const file = event.target.files?.[0] ?? null;
                             void handleFileUpload(file);
+                            event.currentTarget.value = "";
                           }}
                         />
                       </label>
-                    </label>
+                    </div>
+
+                    {createForm.documentFile ? (
+                      <div className="mt-3 flex flex-col gap-2 rounded-md border border-[#E4EAF1] bg-[#FAFCFF] px-3 py-2 text-[12px] text-[#475569] sm:flex-row sm:items-center sm:justify-between">
+                        <span className="inline-flex items-center gap-2">
+                          <FileText className="h-4 w-4 text-[#0F67AE]" />
+                          {getFileLabel(createForm.documentFile)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCreateForm(current => ({
+                              ...current,
+                              documentFile: null,
+                            }));
+                            setSelectedUploadStatus("idle");
+                          }}
+                          className="inline-flex h-7 items-center gap-1 rounded border border-[#D8E3EE] px-2 text-[11px] font-semibold text-[#B42318] transition hover:bg-[#FFF5F5]"
+                        >
+                          <X className="h-3 w-3" />
+                          Remove
+                        </button>
+                      </div>
+                    ) : null}
+
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-[#607B90]">
+                      <span className="rounded-full bg-[#EEF6FF] px-2 py-1 font-semibold text-[#0F67AE]">
+                        Upload status: {selectedUploadStatus}
+                      </span>
+                      {createForm.documentFile ? (
+                        <span>Replacing is supported by selecting another file before saving.</span>
+                      ) : null}
+                    </div>
+                    <FieldError message={createErrors.document} />
                   </div>
 
                   <div className="flex flex-wrap items-center gap-4">
@@ -1496,6 +1909,8 @@ export function AdminContentKnowledgeSourcesPage() {
                       onClick={() => {
                         setIsCreateOpen(false);
                         setCreateForm(createDefaultCreateForm());
+                        setCreateErrors({});
+                        setSelectedUploadStatus("idle");
                         setStatusMessage("New source cancelled.");
                       }}
                       className="h-8 rounded-md px-3 text-xs font-semibold text-[#64748B] transition hover:bg-[#F3F7FB]"
@@ -1564,8 +1979,11 @@ export function AdminContentKnowledgeSourcesPage() {
                 <th className="px-3 py-2 font-semibold">Source Name</th>
                 <th className="px-3 py-2 font-semibold">Category</th>
                 <th className="px-3 py-2 font-semibold">Jurisdiction</th>
-                <th className="px-3 py-2 font-semibold">Refresh</th>
-                <th className="px-3 py-2 font-semibold">Review Status</th>
+                <th className="px-3 py-2 font-semibold">Ingestion</th>
+                <th className="px-3 py-2 font-semibold">Legal</th>
+                <th className="px-3 py-2 font-semibold">Approval</th>
+                <th className="px-3 py-2 font-semibold">Last Ingested</th>
+                <th className="px-3 py-2 font-semibold">Chunks</th>
                 <th className="px-3 py-2 font-semibold">Actions</th>
               </tr>
             </thead>
@@ -1574,7 +1992,7 @@ export function AdminContentKnowledgeSourcesPage() {
                 ? (
                     <tr>
                       <td
-                        colSpan={6}
+                        colSpan={9}
                         className="px-3 py-8 text-center text-[12px] text-[#607B90]"
                       >
                         Loading knowledge sources...
@@ -1586,7 +2004,7 @@ export function AdminContentKnowledgeSourcesPage() {
                 ? (
                     <tr>
                       <td
-                        colSpan={6}
+                        colSpan={9}
                         className="px-3 py-8 text-center text-[12px] text-[#607B90]"
                       >
                         No knowledge sources have been added yet.
@@ -1598,8 +2016,8 @@ export function AdminContentKnowledgeSourcesPage() {
                 const sourceId = getKnowledgeSourceId(row);
                 const category = displayCategory(row);
                 const status = displayStatus(row);
-                const cannotApproveOwnSource
-                  = row.status !== "approved" && isOwnSource(row);
+                const adminIngestionStatus = getAdminIngestionStatus(row);
+                const approvalBlockReason = getApprovalBlockReason(row);
                 return (
                   <tr
                     key={sourceId}
@@ -1620,35 +2038,63 @@ export function AdminContentKnowledgeSourcesPage() {
                     <td className="px-3 py-2.5 text-[#607B90]">
                       {row.jurisdiction}
                     </td>
-                    <td className="px-3 py-2.5 text-[#607B90]">
-                      {formatRefreshDue(row)}
-                    </td>
                     <td className="px-3 py-2.5">
                       <span
                         className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${ingestionClass(status)}`}
                       >
-                        {status}
+                        {adminIngestionStatus}
                       </span>
+                      {row.ingestionStatus === "failed" && row.ingestionError ? (
+                        <p className="mt-1 max-w-[180px] truncate text-[10px] text-[#B42318]">
+                          {row.ingestionError}
+                        </p>
+                      ) : null}
                     </td>
                     <td className="px-3 py-2.5">
-                      <div className="flex items-center gap-1">
+                      <span className={row.legalReviewed ? "text-[#15803D]" : "text-[#B45309]"}>
+                        {row.legalReviewed ? "Reviewed" : "Incomplete"}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 text-[#607B90]">
+                      {row.status}
+                    </td>
+                    <td className="px-3 py-2.5 text-[#607B90]">
+                      {formatDate(row.ingestedAt)}
+                    </td>
+                    <td className="px-3 py-2.5 text-[#607B90]">
+                      {getChunkCount(row)}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <div className="flex flex-wrap items-center gap-1">
                         <button
                           type="button"
+                          disabled={isSaving || (!row.rawText && getAdminIngestionStatus(row) !== "indexed")}
+                          title={
+                            row.rawText || getAdminIngestionStatus(row) === "indexed"
+                              ? "Run ingestion from stored extracted text."
+                              : "Upload or paste text before ingestion."
+                          }
                           onClick={(event) => {
                             event.stopPropagation();
                             void handleIngestSource(row);
                           }}
-                          className="rounded border border-[#D8E3EE] px-2 py-1 text-[10px] font-semibold text-[#0F67AE] transition hover:bg-[#EEF6FF]"
+                          className="rounded border border-[#D8E3EE] px-2 py-1 text-[10px] font-semibold text-[#0F67AE] transition hover:bg-[#EEF6FF] disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           Ingest
                         </button>
                         <button
                           type="button"
+                          disabled={isSaving || getChunkCount(row) <= 0}
+                          title={
+                            getChunkCount(row) > 0
+                              ? "Re-index stored extracted text."
+                              : "No chunks or extracted text are available to re-index."
+                          }
                           onClick={(event) => {
                             event.stopPropagation();
                             void handleReindexSource(row);
                           }}
-                          className="inline-flex items-center gap-1 rounded border border-[#D8E3EE] px-2 py-1 text-[10px] font-semibold text-[#0F67AE] transition hover:bg-[#EEF6FF]"
+                          className="inline-flex items-center gap-1 rounded border border-[#D8E3EE] px-2 py-1 text-[10px] font-semibold text-[#0F67AE] transition hover:bg-[#EEF6FF] disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           <RotateCcw className="h-3 w-3" />
                           Reindex
@@ -1657,7 +2103,7 @@ export function AdminContentKnowledgeSourcesPage() {
                           ? (
                               <button
                                 type="button"
-                                disabled={isSaving || !row.url}
+                                disabled={isSaving || !row.url || row.status === "archived" || row.status === "expired"}
                                 title={
                                   row.url
                                     ? "Fetch the official URL and update verification metadata."
@@ -1688,20 +2134,10 @@ export function AdminContentKnowledgeSourcesPage() {
                           ? (
                               <button
                                 type="button"
-                                disabled={cannotApproveOwnSource}
-                                title={
-                                  cannotApproveOwnSource
-                                    ? "A different admin must approve this source."
-                                    : undefined
-                                }
+                                disabled={Boolean(approvalBlockReason)}
+                                title={approvalBlockReason || "Approve this source."}
                                 onClick={(event) => {
                                   event.stopPropagation();
-                                  if (cannotApproveOwnSource) {
-                                    setStatusMessage(
-                                      "This source needs approval from a different admin.",
-                                    );
-                                    return;
-                                  }
                                   void approveKnowledgeSource(sourceId)
                                     .then((approvedSource) => {
                                       setSources(currentSources =>
@@ -1729,7 +2165,7 @@ export function AdminContentKnowledgeSourcesPage() {
                               </button>
                             )
                           : null}
-                        {row.status !== "rejected"
+                        {row.status !== "rejected" && row.status !== "archived" && row.status !== "expired"
                           ? (
                               <button
                                 type="button"
@@ -1743,6 +2179,17 @@ export function AdminContentKnowledgeSourcesPage() {
                               </button>
                             )
                           : null}
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setSelectedSourceId(sourceId);
+                            setStatusMessage(`Viewing details for ${row.title}.`);
+                          }}
+                          className="rounded border border-[#D8E3EE] px-2 py-1 text-[10px] font-semibold text-[#475569] transition hover:bg-[#F8FBFF]"
+                        >
+                          Details
+                        </button>
                         <button
                           type="button"
                           onClick={(event) => {
@@ -2006,22 +2453,62 @@ export function AdminContentKnowledgeSourcesPage() {
                 className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE] disabled:text-[#94A3B8]"
               />
             </label>
-            <label className="space-y-1">
+            <div className="space-y-1">
               <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                Local File Path
+                Source Document
               </p>
-              <input
-                type="text"
-                value={governanceDraft.localFilePath ?? ""}
-                disabled={!selectedSource}
-                onChange={event =>
-                  setGovernanceDraft(current => ({
-                    ...current,
-                    localFilePath: event.target.value,
-                  }))}
-                className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE] disabled:text-[#94A3B8]"
-              />
-            </label>
+              <div className="flex flex-col gap-2 rounded-md border border-[#D8E3EE] bg-white p-2">
+                <label className="inline-flex h-8 cursor-pointer items-center justify-center gap-2 rounded-md border border-[#D8E3EE] px-3 text-xs font-semibold text-[#334155] transition hover:bg-[#F8FBFF]">
+                  <FileUp className="h-3.5 w-3.5" />
+                  Select Replacement
+                  <input
+                    type="file"
+                    accept=".pdf,.doc,.docx,.txt,.md,.html,.htm,.csv,.json,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown,text/html,text/csv,application/json"
+                    className="hidden"
+                    disabled={!selectedSource}
+                    onChange={(event) => {
+                      setSelectedUploadFile(event.target.files?.[0] ?? null);
+                      setSelectedUploadStatus(event.target.files?.[0] ? "selected" : "idle");
+                      event.currentTarget.value = "";
+                    }}
+                  />
+                </label>
+                {selectedUploadFile ? (
+                  <div className="flex items-center justify-between gap-2 text-[11px] text-[#475569]">
+                    <span className="truncate">{getFileLabel(selectedUploadFile)}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedUploadFile(null);
+                        setSelectedUploadStatus("idle");
+                      }}
+                      className="text-[#B42318]"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-[#607B90]">
+                    {getMetadata(selectedSource).uploadedFile?.originalFileName
+                      ? `Uploaded: ${getMetadata(selectedSource).uploadedFile?.originalFileName}`
+                      : "No uploaded document recorded."}
+                  </p>
+                )}
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-full bg-[#EEF6FF] px-2 py-0.5 text-[10px] font-semibold text-[#0F67AE]">
+                    {selectedUploadStatus}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={!selectedSource || !selectedUploadFile || isSaving}
+                    onClick={() => void handleUploadDocumentForSelectedSource()}
+                    className="h-7 rounded-md bg-[#0F67AE] px-3 text-[11px] font-semibold text-white transition hover:bg-[#0B578F] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Upload & Ingest
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
 
           <label className="mt-3 block space-y-1">
@@ -2116,8 +2603,59 @@ export function AdminContentKnowledgeSourcesPage() {
           ? (
               <section className="rounded-[10px] border border-[#D8E3EE] bg-[#FAFCFF] p-3">
                 <h3 className="text-sm font-semibold text-[#1E293B]">
-                  Detected Legal Metadata
+                  RAG Publishing Status
                 </h3>
+                <p className="mt-1 text-[11px] text-[#607B90]">
+                  Approval makes this source available for retrieval only after all checks pass. This does not train the AI model.
+                </p>
+                <div
+                  className={
+                    isExcludedFromRag(selectedSource)
+                      ? "mt-3 rounded-md border border-[#FDE68A] bg-[#FFFBEB] px-3 py-2 text-[12px] text-[#92400E]"
+                      : "mt-3 rounded-md border border-[#BBF7D0] bg-[#F0FDF4] px-3 py-2 text-[12px] text-[#166534]"
+                  }
+                >
+                  <span className="inline-flex items-center gap-2 font-semibold">
+                    {isExcludedFromRag(selectedSource)
+                      ? <AlertCircle className="h-4 w-4" />
+                      : <CheckCircle2 className="h-4 w-4" />}
+                    {isExcludedFromRag(selectedSource)
+                      ? "Not eligible for legal RAG"
+                      : "Eligible for legal RAG answers"}
+                  </span>
+                  {isExcludedFromRag(selectedSource) ? (
+                    <p className="mt-1">
+                      {getRagEligibilityReasons(selectedSource).join("; ")}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="mt-3 grid gap-2 text-[12px] text-[#475569] lg:grid-cols-2">
+                  {getRagEligibilityChecks(selectedSource).map(check => (
+                    <div
+                      key={check.label}
+                      className="flex items-center gap-2 rounded-md border border-[#E4EAF1] bg-white px-3 py-2"
+                    >
+                      <span
+                        className={
+                          check.passed
+                            ? "inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#DCFCE7] text-[10px] font-bold text-[#15803D]"
+                            : "inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#FEF3C7] text-[10px] font-bold text-[#B45309]"
+                        }
+                      >
+                        {check.passed ? "✓" : "!"}
+                      </span>
+                      <span>{check.label}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-3 rounded-md border border-[#D8E3EE] bg-white px-3 py-2 text-[12px] text-[#334155]">
+                  <span className="font-semibold text-[#1E293B]">Next step:</span>
+                  {" "}
+                  {getRagNextStep(selectedSource)}
+                </div>
+                <h4 className="mt-4 text-sm font-semibold text-[#1E293B]">
+                  Detected Legal Metadata
+                </h4>
                 <div className="mt-2 grid gap-2 text-[12px] text-[#475569] lg:grid-cols-2">
                   <p>
                     <span className="font-semibold text-[#1E293B]">
@@ -2158,7 +2696,7 @@ export function AdminContentKnowledgeSourcesPage() {
                     </span>
                     {" "}
                     {isExcludedFromRag(selectedSource)
-                      ? "Excluded until review/refresh is complete"
+                      ? `Not eligible: ${getRagNextStep(selectedSource)}`
                       : "Eligible for citations"}
                   </p>
                   <p>
@@ -2213,7 +2751,7 @@ export function AdminContentKnowledgeSourcesPage() {
                         )
                       : "None detected"}
                   </p>
-                  {selectedSource.ingestionError
+                  {selectedSource.ingestionStatus === "failed" && selectedSource.ingestionError
                     ? (
                         <p className="lg:col-span-2 text-[#B42318]">
                           <span className="font-semibold">Ingestion error:</span>
@@ -2223,16 +2761,147 @@ export function AdminContentKnowledgeSourcesPage() {
                       )
                     : null}
                 </div>
+
+                <h4 className="mt-4 text-sm font-semibold text-[#1E293B]">
+                  Source Details
+                </h4>
+                <div className="mt-2 grid gap-2 text-[12px] text-[#475569] lg:grid-cols-2">
+                  <p>
+                    <span className="font-semibold text-[#1E293B]">Approval:</span>
+                    {" "}
+                    {selectedSource.status}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-[#1E293B]">Ingestion status:</span>
+                    {" "}
+                    {getAdminIngestionStatus(selectedSource)}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-[#1E293B]">Embedding/indexing:</span>
+                    {" "}
+                    {getEmbeddingStatus(selectedSource)}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-[#1E293B]">Created:</span>
+                    {" "}
+                    {formatDate(selectedSource.createdAt)}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-[#1E293B]">Updated:</span>
+                    {" "}
+                    {formatDate(selectedSource.updatedAt)}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-[#1E293B]">Approved:</span>
+                    {" "}
+                    {formatDate(selectedSource.approvedAt)}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-[#1E293B]">Legal reviewed:</span>
+                    {" "}
+                    {formatDate(selectedSource.legalReviewedAt)}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-[#1E293B]">Ingested:</span>
+                    {" "}
+                    {formatDate(selectedSource.ingestedAt)}
+                  </p>
+                  <p className="lg:col-span-2">
+                    <span className="font-semibold text-[#1E293B]">Uploaded file:</span>
+                    {" "}
+                    {selectedSourceMetadata.uploadedFile?.originalFileName
+                      ? `${selectedSourceMetadata.uploadedFile.originalFileName} (${formatFileSize(selectedSourceMetadata.uploadedFile.fileSizeBytes)}, ${selectedSourceMetadata.uploadedFile.mimeType ?? "unknown type"})`
+                      : "No uploaded file recorded"}
+                  </p>
+                  <p className="lg:col-span-2">
+                    <span className="font-semibold text-[#1E293B]">Citation metadata:</span>
+                    {" "}
+                    {selectedSource.url || selectedSource.publisher
+                      ? `${selectedSource.publisher}${selectedSource.url ? ` · ${selectedSource.url}` : ""}`
+                      : "Not set"}
+                  </p>
+                </div>
+
+                <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                  <div className="rounded-md border border-[#D8E3EE] bg-white p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <h4 className="text-sm font-semibold text-[#1E293B]">
+                        Extracted Text Preview
+                      </h4>
+                      <span className="text-[10px] text-[#607B90]">
+                        {selectedSource.rawText ? `${selectedSource.rawText.length} chars` : "Empty"}
+                      </span>
+                    </div>
+                    <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap rounded-md bg-[#F8FBFF] p-3 text-[11px] leading-5 text-[#475569]">
+                      {selectedSource.rawText?.slice(0, 3000) || "No extracted text is available yet."}
+                    </pre>
+                  </div>
+
+                  <div className="rounded-md border border-[#D8E3EE] bg-white p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <h4 className="text-sm font-semibold text-[#1E293B]">
+                        Chunks Preview
+                      </h4>
+                      <button
+                        type="button"
+                        disabled={!selectedSource || isLoadingChunks}
+                        onClick={() => void handleLoadChunks()}
+                        className="h-7 rounded-md border border-[#D8E3EE] px-2 text-[11px] font-semibold text-[#0F67AE] transition hover:bg-[#EEF6FF] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {isLoadingChunks ? "Loading..." : "Load Chunks"}
+                      </button>
+                    </div>
+                    <div className="mt-2 max-h-56 space-y-2 overflow-auto">
+                      {sourceChunks.length > 0 ? sourceChunks.map(chunk => (
+                        <div
+                          key={chunk.id}
+                          className="rounded-md border border-[#E4EAF1] bg-[#FAFCFF] p-2 text-[11px] leading-5 text-[#475569]"
+                        >
+                          <p className="font-semibold text-[#1E293B]">
+                            Chunk {chunk.chunkIndex + 1}
+                            {" "}
+                            <span className="font-normal text-[#607B90]">
+                              {chunk.tokenCount} tokens
+                            </span>
+                          </p>
+                          <p className="mt-1">{chunk.text.slice(0, 700)}</p>
+                          {chunk.citationLabel ? (
+                            <p className="mt-1 text-[#607B90]">
+                              Citation: {chunk.citationLabel}
+                            </p>
+                          ) : null}
+                        </div>
+                      )) : (
+                        <p className="rounded-md bg-[#F8FBFF] p-3 text-[11px] text-[#607B90]">
+                          No chunks loaded. Use Load Chunks after ingestion/indexing.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </section>
             )
           : null}
 
         <div className="flex flex-col gap-2 text-[11px] sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-[#94A3B8]">
-            {selectedSource?.updatedAt
-              ? `Last synced ${formatSourceAge(selectedSource)}`
-              : "Select a source to edit templates"}
-          </p>
+          <div className="space-y-1">
+            <p className="text-[#94A3B8]">
+              {selectedSource?.updatedAt
+                ? `Last synced ${formatSourceAge(selectedSource)}. Saving or approving updates retrieval metadata only, not model training.`
+                : "Select a source to edit templates"}
+            </p>
+            {templateActionMessage ? (
+              <p
+                className={
+                  templateActionMessage.tone === "success"
+                    ? "font-semibold text-[#15803D]"
+                    : "font-semibold text-[#B42318]"
+                }
+              >
+                {templateActionMessage.text}
+              </p>
+            ) : null}
+          </div>
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -2244,11 +2913,20 @@ export function AdminContentKnowledgeSourcesPage() {
             </button>
             <button
               type="button"
-              disabled={!selectedSource || isSaving}
+              disabled={
+                !selectedSource
+                || isSaving
+                || Boolean(selectedSource && getApprovalBlockReason(selectedSource))
+              }
+              title={
+                selectedSource
+                  ? getApprovalBlockReason(selectedSource) || "Save template metadata and approve."
+                  : "Select a source first."
+              }
               onClick={() => void saveTemplate(true)}
               className="inline-flex h-8 items-center rounded-md bg-[#F59E0B] px-3 font-semibold text-white transition hover:bg-[#D88B07] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Publish Update
+              Save & Approve for RAG
             </button>
           </div>
         </div>
