@@ -163,6 +163,33 @@ export type AdminSupportServiceRecord = {
   availabilityLabel: string;
   referralTitle: string;
   referralDescription: string;
+  resourceType:
+    | "emergency"
+    | "police"
+    | "government"
+    | "legal"
+    | "mental_health"
+    | "domestic_violence_agency"
+    | "workplace_body"
+    | "anti_discrimination_body"
+    | "council_support"
+    | "evidence_guidance"
+    | "safety_planning"
+    | "scam_support"
+    | "online_safety";
+  issueTypes: Array<
+    | "domestic_violence"
+    | "workplace_bullying"
+    | "racism_discrimination"
+    | "online_abuse"
+    | "scam_fraud"
+    | "theft_property"
+    | "harassment"
+    | "mental_health_distress"
+    | "general_support"
+  >;
+  safetyRiskLevels: Array<"low" | "medium" | "high" | "immediate" | "all">;
+  ctaLabel: string;
   resourceLinks: Array<{ label: string; url: string }>;
   jurisdiction: string;
   regions: string[];
@@ -175,6 +202,10 @@ export type AdminSupportServiceRecord = {
   address?: string;
   crisis: boolean;
   informationOnly: boolean;
+  priority: number;
+  safetyNotes?: string;
+  eligibilityNotes?: string;
+  languageSupportNotes?: string;
   isPublished: boolean;
   isActive: boolean;
   sortOrder: number;
@@ -421,6 +452,8 @@ export async function listAdminReportDeliveries(query: {
 
 export async function listAdminSupportServices(query: {
   type?: AdminSupportServiceRecord["type"];
+  resourceType?: AdminSupportServiceRecord["resourceType"];
+  issueType?: AdminSupportServiceRecord["issueTypes"][number];
   jurisdiction?: string;
   language?: string;
   region?: string;

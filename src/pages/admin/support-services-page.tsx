@@ -83,6 +83,42 @@ const OVERLAY_TONES: AdminSupportServiceRecord["cardOverlayTone"][] = [
   "purple",
 ];
 
+const RESOURCE_TYPES: AdminSupportServiceRecord["resourceType"][] = [
+  "emergency",
+  "police",
+  "government",
+  "legal",
+  "mental_health",
+  "domestic_violence_agency",
+  "workplace_body",
+  "anti_discrimination_body",
+  "council_support",
+  "evidence_guidance",
+  "safety_planning",
+  "scam_support",
+  "online_safety",
+];
+
+const ISSUE_TYPES: AdminSupportServiceRecord["issueTypes"][number][] = [
+  "domestic_violence",
+  "workplace_bullying",
+  "racism_discrimination",
+  "online_abuse",
+  "scam_fraud",
+  "theft_property",
+  "harassment",
+  "mental_health_distress",
+  "general_support",
+];
+
+const SAFETY_RISK_LEVELS: AdminSupportServiceRecord["safetyRiskLevels"][number][] = [
+  "low",
+  "medium",
+  "high",
+  "immediate",
+  "all",
+];
+
 const SERVICE_FORM_STEPS = [
   {
     title: "Basics",
@@ -141,12 +177,16 @@ type SupportServiceDraft = Omit<
   | "regions"
   | "languages"
   | "eligibility"
+  | "issueTypes"
+  | "safetyRiskLevels"
   | "metadata"
   | "resourceLinks"
 > & {
   regions: string;
   languages: string;
   eligibility: string;
+  issueTypes: string;
+  safetyRiskLevels: string;
   profiles: string;
   resourceLinks: string;
 };
@@ -164,6 +204,10 @@ const emptyDraft: SupportServiceDraft = {
   referralTitle: "Warm Referral",
   referralDescription:
     "A warm referral ensures the provider has the context they need to help you immediately without repeating your story. This secure transfer of information helps build trust and accelerates the support process.",
+  resourceType: "government",
+  issueTypes: "general_support",
+  safetyRiskLevels: "all",
+  ctaLabel: "View options",
   resourceLinks: "",
   jurisdiction: "AU",
   regions: "national",
@@ -177,6 +221,10 @@ const emptyDraft: SupportServiceDraft = {
   address: "",
   crisis: false,
   informationOnly: true,
+  priority: 50,
+  safetyNotes: "",
+  eligibilityNotes: "",
+  languageSupportNotes: "",
   isPublished: false,
   isActive: true,
   sortOrder: 0,
@@ -224,7 +272,12 @@ function normalizeServiceRecord(service: AdminSupportServiceRecord): AdminSuppor
     availabilityLabel: service.availabilityLabel ?? "Available Now",
     referralTitle: service.referralTitle ?? "Warm Referral",
     referralDescription: service.referralDescription ?? emptyDraft.referralDescription,
+    resourceType: service.resourceType ?? "government",
+    issueTypes: asStringArray(service.issueTypes) as AdminSupportServiceRecord["issueTypes"],
+    safetyRiskLevels: asStringArray(service.safetyRiskLevels) as AdminSupportServiceRecord["safetyRiskLevels"],
+    ctaLabel: service.ctaLabel ?? "View options",
     resourceLinks: Array.isArray(service.resourceLinks) ? service.resourceLinks : [],
+    priority: typeof service.priority === "number" ? service.priority : 50,
   };
 }
 
@@ -253,6 +306,10 @@ function toDraft(service: AdminSupportServiceRecord): SupportServiceDraft {
     availabilityLabel: normalizedService.availabilityLabel,
     referralTitle: normalizedService.referralTitle,
     referralDescription: normalizedService.referralDescription,
+    resourceType: normalizedService.resourceType,
+    issueTypes: normalizedService.issueTypes.join(", "),
+    safetyRiskLevels: normalizedService.safetyRiskLevels.join(", "),
+    ctaLabel: normalizedService.ctaLabel,
     resourceLinks: stringifyResourceLinks(normalizedService.resourceLinks),
     jurisdiction: normalizedService.jurisdiction,
     regions: normalizedService.regions.join(", "),
@@ -266,6 +323,10 @@ function toDraft(service: AdminSupportServiceRecord): SupportServiceDraft {
     address: normalizedService.address ?? "",
     crisis: normalizedService.crisis,
     informationOnly: normalizedService.informationOnly,
+    priority: normalizedService.priority,
+    safetyNotes: normalizedService.safetyNotes ?? "",
+    eligibilityNotes: normalizedService.eligibilityNotes ?? "",
+    languageSupportNotes: normalizedService.languageSupportNotes ?? "",
     isPublished: normalizedService.isPublished,
     isActive: normalizedService.isActive,
     sortOrder: normalizedService.sortOrder,
@@ -285,6 +346,10 @@ function buildServicePayload(draft: SupportServiceDraft) {
     availabilityLabel: draft.availabilityLabel,
     referralTitle: draft.referralTitle,
     referralDescription: draft.referralDescription,
+    resourceType: draft.resourceType,
+    issueTypes: parseCommaSeparatedValues(draft.issueTypes) as AdminSupportServiceRecord["issueTypes"],
+    safetyRiskLevels: parseCommaSeparatedValues(draft.safetyRiskLevels) as AdminSupportServiceRecord["safetyRiskLevels"],
+    ctaLabel: draft.ctaLabel,
     resourceLinks: parseResourceLinks(draft.resourceLinks),
     jurisdiction: draft.jurisdiction,
     regions: parseCommaSeparatedValues(draft.regions),
@@ -297,6 +362,10 @@ function buildServicePayload(draft: SupportServiceDraft) {
     address: draft.address || undefined,
     crisis: draft.crisis,
     informationOnly: draft.informationOnly,
+    priority: Number(draft.priority) || 0,
+    safetyNotes: draft.safetyNotes || undefined,
+    eligibilityNotes: draft.eligibilityNotes || undefined,
+    languageSupportNotes: draft.languageSupportNotes || undefined,
     isPublished: draft.isPublished,
     isActive: draft.isActive,
     sortOrder: Number(draft.sortOrder) || 0,
@@ -519,6 +588,10 @@ export function AdminSupportServicesPage() {
   const [draft, setDraft] = useState<SupportServiceDraft>(emptyDraft);
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
+  const [resourceTypeFilter, setResourceTypeFilter] = useState<"all" | AdminSupportServiceRecord["resourceType"]>("all");
+  const [issueTypeFilter, setIssueTypeFilter] = useState<"all" | AdminSupportServiceRecord["issueTypes"][number]>("all");
+  const [jurisdictionFilter, setJurisdictionFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "published" | "draft" | "active" | "inactive">("all");
   const [activePreviewTab, setActivePreviewTab] = useState<ServicePreviewTab>("overview");
   const [activeDirectoryTab, setActiveDirectoryTab] = useState<"services" | "activity">("services");
   const [activityStatusFilter, setActivityStatusFilter] = useState<ReferralStatusFilter>("all");
@@ -605,25 +678,36 @@ export function AdminSupportServicesPage() {
   const filteredServices = useMemo(() => {
     const normalizedFilter = filter.trim().toLowerCase();
 
-    if (!normalizedFilter) {
-      return services;
-    }
-
     return services.filter((service) => {
       const normalizedService = normalizeServiceRecord(service);
-
-      return [
+      const matchesSearch = !normalizedFilter || [
         normalizedService.name,
         normalizedService.key,
         normalizedService.type,
+        normalizedService.resourceType,
         normalizedService.jurisdiction,
+        ...normalizedService.issueTypes,
         ...normalizedService.eligibility,
       ]
         .join(" ")
         .toLowerCase()
         .includes(normalizedFilter);
+      const matchesResourceType =
+        resourceTypeFilter === "all" || normalizedService.resourceType === resourceTypeFilter;
+      const matchesIssueType =
+        issueTypeFilter === "all" || normalizedService.issueTypes.includes(issueTypeFilter);
+      const matchesJurisdiction =
+        jurisdictionFilter === "all" || normalizedService.jurisdiction === jurisdictionFilter;
+      const matchesStatus =
+        statusFilter === "all"
+          || (statusFilter === "published" && normalizedService.isPublished)
+          || (statusFilter === "draft" && !normalizedService.isPublished)
+          || (statusFilter === "active" && normalizedService.isActive)
+          || (statusFilter === "inactive" && !normalizedService.isActive);
+
+      return matchesSearch && matchesResourceType && matchesIssueType && matchesJurisdiction && matchesStatus;
     });
-  }, [filter, services]);
+  }, [filter, issueTypeFilter, jurisdictionFilter, resourceTypeFilter, services, statusFilter]);
 
   const updateDraft = <K extends keyof SupportServiceDraft>(
     key: K,
@@ -796,7 +880,9 @@ export function AdminSupportServicesPage() {
 
   const previewLinks = parseResourceLinks(draft.resourceLinks);
   const previewEligibility = parseCommaSeparatedValues(draft.eligibility);
+  const previewIssueTypes = parseCommaSeparatedValues(draft.issueTypes);
   const previewRegions = parseCommaSeparatedValues(draft.regions);
+  const previewSafetyRiskLevels = parseCommaSeparatedValues(draft.safetyRiskLevels);
   const previewLanguages = parseCommaSeparatedValues(draft.languages);
   const previewProfiles = parseCommaSeparatedValues(draft.profiles);
   const selectedService = editingServiceId
@@ -955,18 +1041,51 @@ export function AdminSupportServicesPage() {
                     </label>
                     <label className="space-y-1.5 md:col-span-2">
                       <FieldLabel>Category</FieldLabel>
-                      <select
-                        className="h-10 w-full rounded-[8px] border border-[#C9DAE8] bg-white px-3 text-sm capitalize text-[#0B1F33] outline-none transition focus:border-[#0A66A8]"
-                        value={draft.type}
-                        onChange={event =>
-                          updateDraft("type", event.target.value as AdminSupportServiceRecord["type"])}
-                      >
-                        {SUPPORT_TYPES.map(type => (
-                          <option key={type} value={type}>
-                            {formatType(type)}
-                          </option>
-                        ))}
-                      </select>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <select
+                          className="h-10 w-full rounded-[8px] border border-[#C9DAE8] bg-white px-3 text-sm capitalize text-[#0B1F33] outline-none transition focus:border-[#0A66A8]"
+                          value={draft.type}
+                          onChange={event =>
+                            updateDraft("type", event.target.value as AdminSupportServiceRecord["type"])}
+                        >
+                          {SUPPORT_TYPES.map(type => (
+                            <option key={type} value={type}>
+                              {formatType(type)}
+                            </option>
+                          ))}
+                        </select>
+                        <select
+                          className="h-10 w-full rounded-[8px] border border-[#C9DAE8] bg-white px-3 text-sm capitalize text-[#0B1F33] outline-none transition focus:border-[#0A66A8]"
+                          value={draft.resourceType}
+                          onChange={event =>
+                            updateDraft("resourceType", event.target.value as AdminSupportServiceRecord["resourceType"])}
+                        >
+                          {RESOURCE_TYPES.map(type => (
+                            <option key={type} value={type}>
+                              {formatType(type)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </label>
+                    <label className="space-y-1.5">
+                      <FieldLabel>Issue Types</FieldLabel>
+                      <input
+                        className="h-10 w-full rounded-[8px] border border-[#C9DAE8] bg-white px-3 text-sm text-[#0B1F33] outline-none transition focus:border-[#0A66A8]"
+                        placeholder="domestic_violence, general_support"
+                        value={draft.issueTypes}
+                        onChange={event => updateDraft("issueTypes", event.target.value)}
+                        list="support-issue-type-options"
+                      />
+                    </label>
+                    <label className="space-y-1.5">
+                      <FieldLabel>CTA Label</FieldLabel>
+                      <input
+                        className="h-10 w-full rounded-[8px] border border-[#C9DAE8] bg-white px-3 text-sm text-[#0B1F33] outline-none transition focus:border-[#0A66A8]"
+                        placeholder="Call 1800RESPECT"
+                        value={draft.ctaLabel}
+                        onChange={event => updateDraft("ctaLabel", event.target.value)}
+                      />
                     </label>
                     <label className="space-y-1.5 md:col-span-2">
                       <FieldLabel>Short Description</FieldLabel>
@@ -1068,6 +1187,17 @@ export function AdminSupportServicesPage() {
                         onChange={event => updateDraft("referralDescription", event.target.value)}
                       />
                     </label>
+                    <label className="space-y-1.5">
+                      <FieldLabel>Priority</FieldLabel>
+                      <input
+                        className="h-10 w-full rounded-[8px] border border-[#C9DAE8] bg-white px-3 text-sm text-[#0B1F33] outline-none transition focus:border-[#0A66A8]"
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={draft.priority}
+                        onChange={event => updateDraft("priority", Number(event.target.value))}
+                      />
+                    </label>
                     <label className="space-y-1.5 md:col-span-2">
                       <FieldLabel>Resource Links</FieldLabel>
                       <textarea
@@ -1099,6 +1229,16 @@ export function AdminSupportServicesPage() {
                         type="number"
                         value={draft.sortOrder}
                         onChange={event => updateDraft("sortOrder", Number(event.target.value))}
+                      />
+                    </label>
+                    <label className="space-y-1.5 md:col-span-2">
+                      <FieldLabel>Safety Risk Levels</FieldLabel>
+                      <input
+                        className="h-10 w-full rounded-[8px] border border-[#C9DAE8] bg-white px-3 text-sm text-[#0B1F33] outline-none transition focus:border-[#0A66A8]"
+                        placeholder="all or low, medium, high"
+                        value={draft.safetyRiskLevels}
+                        onChange={event => updateDraft("safetyRiskLevels", event.target.value)}
+                        list="support-risk-level-options"
                       />
                     </label>
                     <label className="space-y-1.5">
@@ -1143,6 +1283,30 @@ export function AdminSupportServicesPage() {
               ? (
                   <div className="space-y-5">
                     <div className="grid gap-4 md:grid-cols-2">
+                      <label className="space-y-1.5 md:col-span-2">
+                        <FieldLabel>Safety Notes</FieldLabel>
+                        <textarea
+                          className="min-h-20 w-full rounded-[8px] border border-[#C9DAE8] bg-white px-3 py-2 text-sm text-[#0B1F33] outline-none transition focus:border-[#0A66A8]"
+                          value={draft.safetyNotes ?? ""}
+                          onChange={event => updateDraft("safetyNotes", event.target.value)}
+                        />
+                      </label>
+                      <label className="space-y-1.5">
+                        <FieldLabel>Eligibility Notes</FieldLabel>
+                        <textarea
+                          className="min-h-20 w-full rounded-[8px] border border-[#C9DAE8] bg-white px-3 py-2 text-sm text-[#0B1F33] outline-none transition focus:border-[#0A66A8]"
+                          value={draft.eligibilityNotes ?? ""}
+                          onChange={event => updateDraft("eligibilityNotes", event.target.value)}
+                        />
+                      </label>
+                      <label className="space-y-1.5">
+                        <FieldLabel>Language Support Notes</FieldLabel>
+                        <textarea
+                          className="min-h-20 w-full rounded-[8px] border border-[#C9DAE8] bg-white px-3 py-2 text-sm text-[#0B1F33] outline-none transition focus:border-[#0A66A8]"
+                          value={draft.languageSupportNotes ?? ""}
+                          onChange={event => updateDraft("languageSupportNotes", event.target.value)}
+                        />
+                      </label>
                       <label className="space-y-1.5">
                         <FieldLabel>Website URL</FieldLabel>
                         <input
@@ -1745,12 +1909,17 @@ export function AdminSupportServicesPage() {
                     ? (
                         <>
                           <DetailGrid
-                            items={[
+                          items={[
                               ["Key", draft.key || "Not set"],
                               ["Category", formatType(draft.type)],
+                              ["Resource Type", formatType(draft.resourceType)],
                               ["Jurisdiction", draft.jurisdiction || "Not set"],
                               ["Region", previewRegions.join(", ") || "Not set"],
                               ["Language", previewLanguages.join(", ") || "Not set"],
+                              ["Issue Types", previewIssueTypes.join(", ") || "Not set"],
+                              ["Risk Levels", previewSafetyRiskLevels.join(", ") || "Not set"],
+                              ["CTA Label", draft.ctaLabel || "Not set"],
+                              ["Priority", String(draft.priority || 0)],
                               ["Sort Order", String(draft.sortOrder || 0)],
                               ["Referral Type", draft.referralTitle || "Not set"],
                               ["Availability", draft.availabilityLabel || "Not set"],
@@ -1782,6 +1951,9 @@ export function AdminSupportServicesPage() {
                             ["Overlay", `${formatType(draft.cardOverlayTone)} overlay`],
                             ["Image URL", draft.cardImageUrl || "Not set"],
                             ["Image Alt", draft.cardImageAlt || "Not set"],
+                            ["Safety Notes", draft.safetyNotes || "Not set"],
+                            ["Eligibility Notes", draft.eligibilityNotes || "Not set"],
+                            ["Language Notes", draft.languageSupportNotes || "Not set"],
                             ["Crisis Service", formatDisplayValue(draft.crisis)],
                             ["Information Only", formatDisplayValue(draft.informationOnly)],
                             ["Published", formatDisplayValue(draft.isPublished)],
@@ -1794,6 +1966,18 @@ export function AdminSupportServicesPage() {
                   {activePreviewTab === "tags & filters"
                     ? (
                         <div className="grid gap-5 px-5 py-6 sm:px-6 lg:grid-cols-2">
+                          <div className="rounded-[10px] border border-[#E4ECF3] bg-[#FBFDFF] p-4">
+                            <h3 className="text-sm font-bold text-[#0B1F33]">Issue Types</h3>
+                            <div className="mt-3">
+                              <TagList items={previewIssueTypes} />
+                            </div>
+                          </div>
+                          <div className="rounded-[10px] border border-[#E4ECF3] bg-[#FBFDFF] p-4">
+                            <h3 className="text-sm font-bold text-[#0B1F33]">Safety Risk Levels</h3>
+                            <div className="mt-3">
+                              <TagList items={previewSafetyRiskLevels} />
+                            </div>
+                          </div>
                           <div className="rounded-[10px] border border-[#E4ECF3] bg-[#FBFDFF] p-4">
                             <h3 className="text-sm font-bold text-[#0B1F33]">Regions</h3>
                             <div className="mt-3">
@@ -2017,6 +2201,49 @@ export function AdminSupportServicesPage() {
                           onChange={event => setFilter(event.target.value)}
                         />
                       </label>
+                      <select
+                        className="h-10 rounded-[8px] border border-[#C9DAE8] bg-white px-3 text-sm text-[#244961]"
+                        value={resourceTypeFilter}
+                        onChange={event =>
+                          setResourceTypeFilter(event.target.value as typeof resourceTypeFilter)}
+                      >
+                        <option value="all">All resource types</option>
+                        {RESOURCE_TYPES.map(type => (
+                          <option key={type} value={type}>{formatType(type)}</option>
+                        ))}
+                      </select>
+                      <select
+                        className="h-10 rounded-[8px] border border-[#C9DAE8] bg-white px-3 text-sm text-[#244961]"
+                        value={issueTypeFilter}
+                        onChange={event =>
+                          setIssueTypeFilter(event.target.value as typeof issueTypeFilter)}
+                      >
+                        <option value="all">All issue types</option>
+                        {ISSUE_TYPES.map(type => (
+                          <option key={type} value={type}>{formatType(type)}</option>
+                        ))}
+                      </select>
+                      <select
+                        className="h-10 rounded-[8px] border border-[#C9DAE8] bg-white px-3 text-sm text-[#244961]"
+                        value={jurisdictionFilter}
+                        onChange={event => setJurisdictionFilter(event.target.value)}
+                      >
+                        <option value="all">All jurisdictions</option>
+                        {Array.from(new Set(services.map(service => service.jurisdiction).filter(Boolean))).map(value => (
+                          <option key={value} value={value}>{value}</option>
+                        ))}
+                      </select>
+                      <select
+                        className="h-10 rounded-[8px] border border-[#C9DAE8] bg-white px-3 text-sm text-[#244961]"
+                        value={statusFilter}
+                        onChange={event => setStatusFilter(event.target.value as typeof statusFilter)}
+                      >
+                        <option value="all">All status</option>
+                        <option value="published">Published</option>
+                        <option value="draft">Draft</option>
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                      </select>
                       <div className="flex flex-1 justify-end">
                         <span className="rounded-full bg-[#EEF6FF] px-3 py-1 text-xs font-bold text-[#0A66A8]">
                           Showing
@@ -2037,9 +2264,10 @@ export function AdminSupportServicesPage() {
                           <tr>
                             <th className="px-5 py-3 sm:px-6">Service Name</th>
                             <th className="px-4 py-3">Category</th>
+                            <th className="px-4 py-3">Resource Type</th>
                             <th className="px-4 py-3">Region</th>
                             <th className="px-4 py-3">Status</th>
-                            <th className="px-4 py-3">Sort Order</th>
+                            <th className="px-4 py-3">Priority</th>
                             <th className="px-4 py-3">Updated At</th>
                             <th className="px-5 py-3 text-right sm:px-6">Actions</th>
                           </tr>
@@ -2048,7 +2276,7 @@ export function AdminSupportServicesPage() {
                           {isLoading
                             ? (
                                 <tr>
-                                  <td colSpan={7} className="px-5 py-10 text-center text-sm text-[#526B80]">
+                                  <td colSpan={8} className="px-5 py-10 text-center text-sm text-[#526B80]">
                                     Loading services...
                                   </td>
                                 </tr>
@@ -2057,7 +2285,7 @@ export function AdminSupportServicesPage() {
                           {!isLoading && filteredServices.length === 0
                             ? (
                                 <tr>
-                                  <td colSpan={7} className="px-5 py-10 text-center text-sm text-[#526B80]">
+                                  <td colSpan={8} className="px-5 py-10 text-center text-sm text-[#526B80]">
                                     No support services matched this view.
                                   </td>
                                 </tr>
@@ -2083,11 +2311,15 @@ export function AdminSupportServicesPage() {
                                 </div>
                               </td>
                               <td className="px-4 py-4 text-sm capitalize text-[#244961]">{formatType(service.type)}</td>
+                              <td className="px-4 py-4 text-sm capitalize text-[#244961]">{formatType(service.resourceType)}</td>
                               <td className="px-4 py-4 text-sm text-[#244961]">{service.regions.join(", ") || service.jurisdiction}</td>
                               <td className="px-4 py-4">
-                                <StatusBadge active={service.isPublished} activeLabel="Published" inactiveLabel="Draft" />
+                                <div className="flex flex-col gap-1">
+                                  <StatusBadge active={service.isPublished} activeLabel="Published" inactiveLabel="Draft" />
+                                  <StatusBadge active={service.isActive} activeLabel="Active" inactiveLabel="Inactive" />
+                                </div>
                               </td>
-                              <td className="px-4 py-4 text-sm text-[#244961]">{service.sortOrder}</td>
+                              <td className="px-4 py-4 text-sm text-[#244961]">{service.priority}</td>
                               <td className="px-4 py-4 text-sm text-[#607B90]">
                                 {service.updatedAt ? new Date(service.updatedAt).toLocaleDateString() : "Recently"}
                               </td>
@@ -2204,6 +2436,16 @@ export function AdminSupportServicesPage() {
                 )}
           </section>
         </div>
+        <datalist id="support-issue-type-options">
+          {ISSUE_TYPES.map(value => (
+            <option key={value} value={value} />
+          ))}
+        </datalist>
+        <datalist id="support-risk-level-options">
+          {SAFETY_RISK_LEVELS.map(value => (
+            <option key={value} value={value} />
+          ))}
+        </datalist>
       </section>
     </div>
   );

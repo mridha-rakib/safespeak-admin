@@ -10,6 +10,7 @@ export function AdminLayout() {
   const location = useLocation();
   const [isDesktopSidebarOpen, setIsDesktopSidebarOpen] = useState(true);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const isFlushContentRoute = location.pathname.endsWith("/content-management/media-asset");
 
   useEffect(() => {
     setIsMobileSidebarOpen(false);
@@ -36,9 +37,15 @@ export function AdminLayout() {
           </div>
           <section className="w-full min-w-0 flex-1 space-y-3 p-3 sm:space-y-4 sm:p-4 md:p-5 lg:space-y-5 lg:p-5 xl:p-6">
             <AdminTopBar onMenuClick={() => setIsMobileSidebarOpen(true)} />
-            <div className="admin-panel-min-h w-full min-w-0 rounded-[18px] border border-[#D1DDE9] bg-[#EAF1F7] p-3 sm:p-4 md:p-5 lg:p-6">
-              <Outlet />
-            </div>
+            {isFlushContentRoute ? (
+              <div className="admin-panel-min-h w-full min-w-0">
+                <Outlet />
+              </div>
+            ) : (
+              <div className="admin-panel-min-h w-full min-w-0 rounded-[18px] border border-[#D1DDE9] bg-[#EAF1F7] p-3 sm:p-4 md:p-5 lg:p-6">
+                <Outlet />
+              </div>
+            )}
           </section>
         </div>
 

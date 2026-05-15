@@ -10,6 +10,11 @@ export type MediaAssetItem = {
   bodyText: string;
   category: string;
   status: MediaAssetStatus;
+  createdDate?: string;
+  expirationDate?: string;
+  offlineCachingEnabled: boolean;
+  primaryCta?: string;
+  secondaryButton?: string;
   originalFileName: string;
   mimeType: string;
   fileSizeBytes: number;
@@ -24,6 +29,11 @@ export type MediaAssetFormInput = {
   bodyText: string;
   category: string;
   status?: MediaAssetStatus;
+  createdDate?: string;
+  expirationDate?: string;
+  offlineCachingEnabled?: boolean;
+  primaryCta?: string;
+  secondaryButton?: string;
   file?: File | null;
 };
 
@@ -34,6 +44,23 @@ function createMediaAssetFormData(input: MediaAssetFormInput): FormData {
   formData.append("subtitle", input.subtitle);
   formData.append("bodyText", input.bodyText);
   formData.append("category", input.category);
+  formData.append("offlineCachingEnabled", String(input.offlineCachingEnabled ?? false));
+
+  if (input.createdDate) {
+    formData.append("createdDate", input.createdDate);
+  }
+
+  if (input.expirationDate) {
+    formData.append("expirationDate", input.expirationDate);
+  }
+
+  if (input.primaryCta) {
+    formData.append("primaryCta", input.primaryCta);
+  }
+
+  if (input.secondaryButton) {
+    formData.append("secondaryButton", input.secondaryButton);
+  }
 
   if (input.status) {
     formData.append("status", input.status);
@@ -73,6 +100,11 @@ export async function updateMediaAsset(
         bodyText: input.bodyText,
         category: input.category,
         status: input.status,
+        createdDate: input.createdDate,
+        expirationDate: input.expirationDate,
+        offlineCachingEnabled: input.offlineCachingEnabled,
+        primaryCta: input.primaryCta,
+        secondaryButton: input.secondaryButton,
       };
 
   const response = await adminApiRequest<{ asset: MediaAssetItem }>(`/admin/media-assets/${id}`, {
