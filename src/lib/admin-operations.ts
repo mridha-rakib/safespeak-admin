@@ -71,7 +71,9 @@ export type AdminDestinationRecord = {
     recommendationReason?: string;
     submissionTitleTemplate?: string;
     submissionSummaryTemplate?: string;
-  };
+  } & Record<string, unknown>;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 export type AdminPrivacyRequestRecord = {
@@ -105,6 +107,8 @@ export type AdminSubmissionTemplateRecord = {
   attachmentMode: "metadata_only" | "include_hashes" | "include_manifest";
   isActive: boolean;
   metadata?: Record<string, unknown>;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 export type AdminReportDeliveryRecord = {

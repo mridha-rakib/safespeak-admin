@@ -18,15 +18,15 @@ import {
   createAdminSubmissionTemplate,
   createAdminTaxonomy,
   deleteAdminTaxonomy,
-  getAdminTaxonomy,
   getAdminAnalyticsCategories,
   getAdminAnalyticsHeatmap,
   getAdminAnalyticsLanguages,
   getAdminAnalyticsOverview,
   getAdminAnalyticsTrends,
-  listAdminReportDeliveries,
+  getAdminTaxonomy,
   listAdminDestinations,
   listAdminPrivacyRequests,
+  listAdminReportDeliveries,
   listAdminSubmissionTemplates,
   listAdminTaxonomies,
   patchAdminDestination,
@@ -94,19 +94,398 @@ type LivePanelState = {
   analyticsLanguages: AdminAnalyticsBucket[];
 };
 
+type DestinationDraft = {
+  type: AdminDestinationRecord["type"];
+  key: string;
+  name: string;
+  channel: AdminDestinationRecord["channel"];
+  jurisdiction: string;
+  languages: string;
+  endpoint: string;
+  contactEmail: string;
+  contactPhone: string;
+  minimumRequiredInfo: string;
+  anonymityOptions: string;
+  expectedNextSteps: string;
+  requiredConsentFlags: string;
+  incidentTypes: string;
+  recommendationReason: string;
+  submissionTitleTemplate: string;
+  submissionSummaryTemplate: string;
+  consentRequired: boolean;
+  supportsAcknowledgement: boolean;
+};
+
+type SubmissionTemplateFieldMappingDraft = {
+  id: string;
+  source: string;
+  target: string;
+  required: boolean;
+  transform: string;
+};
+
+type StaticPayloadEntryDraft = {
+  id: string;
+  key: string;
+  value: string;
+  valueType: "text" | "number" | "boolean";
+};
+
 type SubmissionTemplateDraft = Omit<
   AdminSubmissionTemplateRecord,
   "_id" | "fieldMappings" | "staticPayload" | "isActive" | "metadata"
 > & {
-  fieldMappings: string;
-  staticPayload: string;
+  fieldMappings: SubmissionTemplateFieldMappingDraft[];
+  staticPayloadEntries: StaticPayloadEntryDraft[];
+  preservedStaticPayload: Record<string, unknown>;
 };
+
+const defaultFieldMappings = [
+  { source: "refNo", target: "referenceId", required: true },
+  { source: "incidentType", target: "category", required: true },
+  { source: "summary", target: "description", required: true },
+];
+
+const templateVariableOptions = [
+  { value: "refNo", label: "Reference No" },
+  { value: "summary", label: "Summary" },
+  { value: "incidentType", label: "Incident Type" },
+  { value: "category", label: "Category" },
+  { value: "safetyRisk", label: "Safety Risk" },
+  { value: "jurisdiction", label: "Jurisdiction" },
+  { value: "anonymityMode", label: "Anonymity Mode" },
+  { value: "reporterContact", label: "Reporter Contact" },
+  { value: "createdAt", label: "Created Date" },
+];
+
+const titleTemplatePresets = [
+  { label: "Reference report", template: "SafeSpeak report {{refNo}}" },
+  { label: "Incident report", template: "{{incidentType}} report {{refNo}}" },
+  { label: "Jurisdiction report", template: "{{jurisdiction}} SafeSpeak report {{refNo}}" },
+];
+
+const summaryTemplatePresets = [
+  { label: "Use summary only", template: "{{summary}}" },
+  { label: "Summary with risk", template: "{{summary}}\nSafety risk: {{safetyRisk}}" },
+  { label: "Full intake brief", template: "{{summary}}\nIncident type: {{incidentType}}\nJurisdiction: {{jurisdiction}}" },
+];
+
+const safeSpeakFieldOptions = [
+  { value: "refNo", label: "Reference No" },
+  { value: "incidentType", label: "Incident Type" },
+  { value: "category", label: "Category" },
+  { value: "summary", label: "Summary" },
+  { value: "description", label: "Incident Description" },
+  { value: "jurisdiction", label: "Jurisdiction" },
+  { value: "language", label: "Language" },
+  { value: "safetyRisk", label: "Safety Risk" },
+  { value: "anonymityMode", label: "Anonymity Mode" },
+  { value: "reporterContact", label: "Reporter Contact" },
+  { value: "evidenceManifest", label: "Evidence Manifest" },
+  { value: "consentFlags", label: "Consent Flags" },
+  { value: "createdAt", label: "Created Date" },
+];
+
+const transformOptions = [
+  { value: "", label: "No transform" },
+  { value: "trim", label: "Trim spaces" },
+  { value: "lowercase", label: "Lowercase" },
+  { value: "uppercase", label: "Uppercase" },
+  { value: "iso_date", label: "ISO date" },
+  { value: "mask_contact", label: "Mask contact" },
+];
 
 function parseCommaSeparatedValues(value: string) {
   return value
     .split(",")
     .map(item => item.trim())
     .filter(Boolean);
+}
+
+function formatCommaSeparatedValues(value?: string[]) {
+  return value?.join(", ") ?? "";
+}
+
+function getTemplateVariableLabel(token: string) {
+  return templateVariableOptions.find(option => option.value === token)?.label ?? token;
+}
+
+function getSafeSpeakFieldLabel(field: string) {
+  return safeSpeakFieldOptions.find(option => option.value === field)?.label ?? field;
+}
+
+function friendlyTemplateToStorage(value: string) {
+  return value.replace(/\[([^\]]+)\]/g, (_match, label: string) => {
+    const normalizedLabel = label.trim().toLowerCase();
+    const option = templateVariableOptions.find(variable =>
+      variable.label.toLowerCase() === normalizedLabel || variable.value.toLowerCase() === normalizedLabel,
+    );
+
+    return option ? `{{${option.value}}}` : `{{${label.trim()}}}`;
+  });
+}
+
+function storageTemplateToFriendly(value: string) {
+  return value.replace(/\{\{([^{}\r\n]+)\}\}/g, (_match, token: string) => {
+    return `[${getTemplateVariableLabel(token.trim())}]`;
+  });
+}
+
+function appendTemplateVariable(template: string, token: string) {
+  const separator = template && !/\s$/.test(template) ? " " : "";
+
+  return `${template}${separator}{{${token}}}`;
+}
+
+function createDraftRowId(prefix: string) {
+  return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function createFieldMappingDraft(
+  mapping?: Partial<AdminSubmissionTemplateRecord["fieldMappings"][number]>,
+): SubmissionTemplateFieldMappingDraft {
+  return {
+    id: createDraftRowId("mapping"),
+    source: mapping?.source ?? "",
+    target: mapping?.target ?? "",
+    required: Boolean(mapping?.required),
+    transform: mapping?.transform ?? "",
+  };
+}
+
+function createStaticPayloadEntryDraft(
+  key = "",
+  value: string | number | boolean = "",
+): StaticPayloadEntryDraft {
+  return {
+    id: createDraftRowId("payload"),
+    key,
+    value: String(value),
+    valueType:
+      typeof value === "number"
+        ? "number"
+        : typeof value === "boolean"
+          ? "boolean"
+          : "text",
+  };
+}
+
+function createDefaultFieldMappingDrafts() {
+  return defaultFieldMappings.map(mapping => createFieldMappingDraft(mapping));
+}
+
+function splitStaticPayloadForDraft(payload?: Record<string, unknown>) {
+  const staticPayloadEntries: StaticPayloadEntryDraft[] = [];
+  const preservedStaticPayload: Record<string, unknown> = {};
+
+  Object.entries(payload ?? {}).forEach(([key, value]) => {
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+      staticPayloadEntries.push(createStaticPayloadEntryDraft(key, value));
+      return;
+    }
+
+    preservedStaticPayload[key] = value;
+  });
+
+  return {
+    preservedStaticPayload,
+    staticPayloadEntries,
+  };
+}
+
+function createDefaultDestinationDraft(): DestinationDraft {
+  return {
+    type: "police",
+    key: "",
+    name: "",
+    channel: "secure_email",
+    jurisdiction: "NSW",
+    languages: "en",
+    endpoint: "",
+    contactEmail: "",
+    contactPhone: "",
+    minimumRequiredInfo: "",
+    anonymityOptions: "",
+    expectedNextSteps: "",
+    requiredConsentFlags: "share_with_agencies",
+    incidentTypes: "",
+    recommendationReason: "",
+    submissionTitleTemplate: "",
+    submissionSummaryTemplate: "",
+    consentRequired: true,
+    supportsAcknowledgement: false,
+  };
+}
+
+function createDefaultSubmissionTemplateDraft(): SubmissionTemplateDraft {
+  return {
+    key: "",
+    name: "",
+    destinationType: "police",
+    channel: "secure_email",
+    jurisdiction: "NSW",
+    titleTemplate: "SafeSpeak report {{refNo}}",
+    summaryTemplate: "{{summary}}",
+    fieldMappings: createDefaultFieldMappingDrafts(),
+    staticPayloadEntries: [],
+    preservedStaticPayload: {},
+    acknowledgementMode: "manual",
+    attachmentMode: "metadata_only",
+  };
+}
+
+function destinationToDraft(item: AdminDestinationRecord): DestinationDraft {
+  return {
+    type: item.type,
+    key: item.key,
+    name: item.name,
+    channel: item.channel,
+    jurisdiction: item.jurisdiction,
+    languages: formatCommaSeparatedValues(item.languages),
+    endpoint: item.endpoint ?? "",
+    contactEmail: item.contactEmail ?? "",
+    contactPhone: item.contactPhone ?? "",
+    minimumRequiredInfo: formatCommaSeparatedValues(item.minimumRequiredInfo),
+    anonymityOptions: formatCommaSeparatedValues(item.anonymityOptions),
+    expectedNextSteps: formatCommaSeparatedValues(item.expectedNextSteps),
+    requiredConsentFlags: formatCommaSeparatedValues(item.metadata?.requiredConsentFlags),
+    incidentTypes: formatCommaSeparatedValues(item.metadata?.incidentTypes),
+    recommendationReason: item.metadata?.recommendationReason ?? "",
+    submissionTitleTemplate: item.metadata?.submissionTitleTemplate ?? "",
+    submissionSummaryTemplate: item.metadata?.submissionSummaryTemplate ?? "",
+    consentRequired: item.consentRequired,
+    supportsAcknowledgement: item.supportsAcknowledgement,
+  };
+}
+
+function templateToDraft(item: AdminSubmissionTemplateRecord): SubmissionTemplateDraft {
+  const staticPayloadDraft = splitStaticPayloadForDraft(item.staticPayload);
+
+  return {
+    key: item.key,
+    name: item.name,
+    destinationType: item.destinationType,
+    channel: item.channel,
+    jurisdiction: item.jurisdiction,
+    titleTemplate: item.titleTemplate,
+    summaryTemplate: item.summaryTemplate,
+    fieldMappings: (item.fieldMappings ?? []).map(mapping => createFieldMappingDraft(mapping)),
+    staticPayloadEntries: staticPayloadDraft.staticPayloadEntries,
+    preservedStaticPayload: staticPayloadDraft.preservedStaticPayload,
+    acknowledgementMode: item.acknowledgementMode,
+    attachmentMode: item.attachmentMode,
+  };
+}
+
+function buildDestinationPayload(
+  draft: DestinationDraft,
+  existing?: AdminDestinationRecord,
+): Omit<AdminDestinationRecord, "_id" | "createdAt" | "updatedAt"> {
+  return {
+    type: draft.type,
+    key: draft.key.trim(),
+    name: draft.name.trim(),
+    channel: draft.channel,
+    jurisdiction: draft.jurisdiction.trim(),
+    languages: parseCommaSeparatedValues(draft.languages),
+    endpoint: draft.endpoint.trim(),
+    contactEmail: draft.contactEmail.trim(),
+    contactPhone: draft.contactPhone.trim(),
+    minimumRequiredInfo: parseCommaSeparatedValues(draft.minimumRequiredInfo),
+    anonymityOptions: parseCommaSeparatedValues(draft.anonymityOptions),
+    expectedNextSteps: parseCommaSeparatedValues(draft.expectedNextSteps),
+    consentRequired: draft.consentRequired,
+    supportsAcknowledgement: draft.supportsAcknowledgement,
+    isActive: existing?.isActive ?? true,
+    metadata: {
+      ...(existing?.metadata ?? {}),
+      requiredConsentFlags: parseCommaSeparatedValues(draft.requiredConsentFlags),
+      incidentTypes: parseCommaSeparatedValues(draft.incidentTypes),
+      recommendationReason: draft.recommendationReason.trim() || undefined,
+      submissionTitleTemplate: draft.submissionTitleTemplate.trim() || undefined,
+      submissionSummaryTemplate: draft.submissionSummaryTemplate.trim() || undefined,
+    },
+  };
+}
+
+function buildFieldMappingsFromDraft(
+  mappings: SubmissionTemplateFieldMappingDraft[],
+): AdminSubmissionTemplateRecord["fieldMappings"] {
+  return mappings.flatMap((mapping) => {
+    const source = mapping.source.trim();
+    const target = mapping.target.trim() || source;
+    const transform = mapping.transform.trim();
+
+    if (!source && !target && !transform) {
+      return [];
+    }
+
+    if (!source) {
+      throw new TypeError("Each field mapping requires a source field.");
+    }
+
+    return [{
+      source,
+      target,
+      required: mapping.required,
+      ...(transform ? { transform } : {}),
+    }];
+  });
+}
+
+function buildStaticPayloadFromDraft(draft: SubmissionTemplateDraft) {
+  const staticPayload: Record<string, unknown> = {
+    ...draft.preservedStaticPayload,
+  };
+
+  draft.staticPayloadEntries.forEach((entry) => {
+    const key = entry.key.trim();
+
+    if (!key) {
+      return;
+    }
+
+    if (entry.valueType === "number") {
+      const numericValue = Number(entry.value);
+
+      if (Number.isNaN(numericValue)) {
+        throw new TypeError(`Static payload field "${key}" must be a valid number.`);
+      }
+
+      staticPayload[key] = numericValue;
+      return;
+    }
+
+    if (entry.valueType === "boolean") {
+      staticPayload[key] = ["true", "yes", "1"].includes(entry.value.trim().toLowerCase());
+      return;
+    }
+
+    staticPayload[key] = entry.value;
+  });
+
+  return staticPayload;
+}
+
+function buildSubmissionTemplatePayload(
+  draft: SubmissionTemplateDraft,
+  existing?: AdminSubmissionTemplateRecord,
+): Omit<AdminSubmissionTemplateRecord, "_id" | "createdAt" | "updatedAt"> {
+  return {
+    key: draft.key.trim(),
+    name: draft.name.trim(),
+    destinationType: draft.destinationType,
+    channel: draft.channel,
+    jurisdiction: draft.jurisdiction.trim(),
+    titleTemplate: draft.titleTemplate.trim(),
+    summaryTemplate: draft.summaryTemplate.trim(),
+    fieldMappings: buildFieldMappingsFromDraft(draft.fieldMappings),
+    staticPayload: buildStaticPayloadFromDraft(draft),
+    acknowledgementMode: draft.acknowledgementMode,
+    attachmentMode: draft.attachmentMode,
+    isActive: existing?.isActive ?? true,
+    metadata: existing?.metadata ?? {},
+  };
 }
 
 function formatMetadataLabel(key: string) {
@@ -243,6 +622,73 @@ const defaultLivePanelState: LivePanelState = {
   analyticsLanguages: [],
 };
 
+async function fetchLivePanelData(sectionKey: AdminOperationsSectionKey): Promise<LivePanelState> {
+  if (sectionKey === "taxonomies") {
+    const taxonomies = await listAdminTaxonomies();
+
+    return {
+      ...defaultLivePanelState,
+      taxonomies,
+    };
+  }
+
+  if (sectionKey === "destinations") {
+    const [destinations, submissionTemplates, deliveries] = await Promise.all([
+      listAdminDestinations(),
+      listAdminSubmissionTemplates(),
+      listAdminReportDeliveries({ limit: 25 }),
+    ]);
+
+    return {
+      ...defaultLivePanelState,
+      destinations,
+      submissionTemplates,
+      deliveries,
+    };
+  }
+
+  if (sectionKey === "privacyRequests") {
+    const privacyRequests = await listAdminPrivacyRequests({ limit: 50 });
+
+    return {
+      ...defaultLivePanelState,
+      privacyRequests,
+    };
+  }
+
+  if (sectionKey === "deliveries") {
+    const deliveries = await listAdminReportDeliveries({ limit: 25 });
+
+    return {
+      ...defaultLivePanelState,
+      deliveries,
+    };
+  }
+
+  const [
+    analyticsOverview,
+    analyticsHeatmap,
+    analyticsTrends,
+    analyticsCategories,
+    analyticsLanguages,
+  ] = await Promise.all([
+    getAdminAnalyticsOverview(),
+    getAdminAnalyticsHeatmap(),
+    getAdminAnalyticsTrends(),
+    getAdminAnalyticsCategories(),
+    getAdminAnalyticsLanguages(),
+  ]);
+
+  return {
+    ...defaultLivePanelState,
+    analyticsOverview,
+    analyticsHeatmap,
+    analyticsTrends,
+    analyticsCategories,
+    analyticsLanguages,
+  };
+}
+
 const taxonomyTypeByModuleId: Partial<Record<string, AdminTaxonomyRecord["type"]>> = {
   "incident-types": "incident_type",
   "destination-types": "support_need",
@@ -284,40 +730,16 @@ export function AdminOperationsSectionPage({
     description: "",
   });
   const [selectedTaxonomy, setSelectedTaxonomy] = useState<AdminTaxonomyRecord | null>(null);
-  const [destinationDraft, setDestinationDraft] = useState({
-    type: "police" as AdminDestinationRecord["type"],
-    key: "",
-    name: "",
-    channel: "secure_email" as AdminDestinationRecord["channel"],
-    jurisdiction: "NSW",
-    languages: "en",
-    endpoint: "",
-    contactEmail: "",
-    contactPhone: "",
-    minimumRequiredInfo: "",
-    anonymityOptions: "",
-    expectedNextSteps: "",
-    requiredConsentFlags: "share_with_agencies",
-    incidentTypes: "",
-    recommendationReason: "",
-    submissionTitleTemplate: "",
-    submissionSummaryTemplate: "",
-    consentRequired: true,
-    supportsAcknowledgement: false,
-  });
-  const [submissionTemplateDraft, setSubmissionTemplateDraft] = useState<SubmissionTemplateDraft>({
-    key: "",
-    name: "",
-    destinationType: "police" as AdminDestinationRecord["type"],
-    channel: "secure_email" as AdminDestinationRecord["channel"],
-    jurisdiction: "NSW",
-    titleTemplate: "SafeSpeak report {{refNo}}",
-    summaryTemplate: "{{summary}}",
-    fieldMappings: "refNo:referenceId, incidentType:category, summary:description",
-    staticPayload: "{}",
-    acknowledgementMode: "manual" as const,
-    attachmentMode: "metadata_only" as const,
-  });
+  const [destinationDraft, setDestinationDraft] = useState<DestinationDraft>(() => createDefaultDestinationDraft());
+  const [editingDestinationId, setEditingDestinationId] = useState<string | null>(null);
+  const [destinationSearchQuery, setDestinationSearchQuery] = useState("");
+  const [destinationTypeFilter, setDestinationTypeFilter] = useState<AdminDestinationRecord["type"] | "all">("all");
+  const [destinationChannelFilter, setDestinationChannelFilter] = useState<AdminDestinationRecord["channel"] | "all">("all");
+  const [submissionTemplateDraft, setSubmissionTemplateDraft] = useState<SubmissionTemplateDraft>(() =>
+    createDefaultSubmissionTemplateDraft(),
+  );
+  const [editingSubmissionTemplateId, setEditingSubmissionTemplateId] = useState<string | null>(null);
+  const [templateSearchQuery, setTemplateSearchQuery] = useState("");
   const [isSubmittingLiveChange, setIsSubmittingLiveChange] = useState(false);
 
   const setActiveModule = (moduleId: string) => {
@@ -351,85 +773,12 @@ export function AdminOperationsSectionPage({
     setLivePanel(prev => ({ ...prev, isLoading: true, error: null }));
 
     const load = async () => {
-      if (sectionKey === "taxonomies") {
-        const taxonomies = await listAdminTaxonomies();
-
-        if (isMounted) {
-          setLivePanel({
-            ...defaultLivePanelState,
-            isLoading: false,
-            taxonomies,
-          });
-        }
-        return;
-      }
-
-      if (sectionKey === "destinations") {
-        const [destinations, submissionTemplates] = await Promise.all([
-          listAdminDestinations(),
-          listAdminSubmissionTemplates(),
-        ]);
-
-        if (isMounted) {
-          setLivePanel({
-            ...defaultLivePanelState,
-            isLoading: false,
-            destinations,
-            submissionTemplates,
-          });
-        }
-        return;
-      }
-
-      if (sectionKey === "privacyRequests") {
-        const privacyRequests = await listAdminPrivacyRequests({ limit: 50 });
-
-        if (isMounted) {
-          setLivePanel({
-            ...defaultLivePanelState,
-            isLoading: false,
-            privacyRequests,
-          });
-        }
-        return;
-      }
-
-      if (sectionKey === "deliveries") {
-        const deliveries = await listAdminReportDeliveries({ limit: 25 });
-
-        if (isMounted) {
-          setLivePanel({
-            ...defaultLivePanelState,
-            isLoading: false,
-            deliveries,
-          });
-        }
-        return;
-      }
-
-      const [
-        analyticsOverview,
-        analyticsHeatmap,
-        analyticsTrends,
-        analyticsCategories,
-        analyticsLanguages,
-      ] = await Promise.all([
-        getAdminAnalyticsOverview(),
-        getAdminAnalyticsHeatmap(),
-        getAdminAnalyticsTrends(),
-        getAdminAnalyticsCategories(),
-        getAdminAnalyticsLanguages(),
-      ]);
+      const nextLivePanel = await fetchLivePanelData(sectionKey);
 
       if (isMounted) {
         setLivePanel({
-          ...defaultLivePanelState,
+          ...nextLivePanel,
           isLoading: false,
-          analyticsOverview,
-          analyticsHeatmap,
-          analyticsTrends,
-          analyticsCategories,
-          analyticsLanguages,
         });
       }
     };
@@ -451,10 +800,75 @@ export function AdminOperationsSectionPage({
     };
   }, [sectionKey]);
 
+  const refreshLivePanel = async () => {
+    if (!sectionKey) {
+      return;
+    }
+
+    setLivePanel(prev => ({ ...prev, isLoading: true, error: null }));
+
+    try {
+      const nextLivePanel = await fetchLivePanelData(sectionKey);
+      setLivePanel({
+        ...nextLivePanel,
+        isLoading: false,
+      });
+    }
+    catch (error) {
+      setLivePanel(prev => ({
+        ...prev,
+        isLoading: false,
+        error: error instanceof Error ? error.message : "Unable to load admin data.",
+      }));
+    }
+  };
+
   const visibleTaxonomies = useMemo(
     () => livePanel.taxonomies.filter(item => item.type === taxonomyDraft.type),
     [livePanel.taxonomies, taxonomyDraft.type],
   );
+  const visibleDestinations = useMemo(() => {
+    const query = destinationSearchQuery.trim().toLowerCase();
+
+    return livePanel.destinations.filter((item) => {
+      const matchesQuery = !query
+        || [
+          item.name,
+          item.key,
+          item.type,
+          item.channel,
+          item.jurisdiction,
+          item.endpoint ?? "",
+          item.contactEmail ?? "",
+          item.contactPhone ?? "",
+          item.metadata?.recommendationReason ?? "",
+        ].join(" ").toLowerCase().includes(query);
+
+      const matchesType = destinationTypeFilter === "all" || item.type === destinationTypeFilter;
+      const matchesChannel = destinationChannelFilter === "all" || item.channel === destinationChannelFilter;
+
+      return matchesQuery && matchesType && matchesChannel;
+    });
+  }, [destinationChannelFilter, destinationSearchQuery, destinationTypeFilter, livePanel.destinations]);
+  const visibleSubmissionTemplates = useMemo(() => {
+    const query = templateSearchQuery.trim().toLowerCase();
+
+    return livePanel.submissionTemplates.filter((item) => {
+      if (!query) {
+        return true;
+      }
+
+      return [
+        item.name,
+        item.key,
+        item.destinationType,
+        item.channel,
+        item.jurisdiction,
+        item.titleTemplate,
+        item.summaryTemplate,
+      ].join(" ").toLowerCase().includes(query);
+    });
+  }, [livePanel.submissionTemplates, templateSearchQuery]);
   const selectedTaxonomyMetadata = useMemo(
     () => (selectedTaxonomy ? getGeneratedTaxonomyMetadata(selectedTaxonomy) : {}),
     [selectedTaxonomy],
@@ -501,62 +915,28 @@ export function AdminOperationsSectionPage({
     setIsSubmittingLiveChange(true);
 
     try {
-      const destination = await createAdminDestination({
-        type: destinationDraft.type,
-        key: destinationDraft.key,
-        name: destinationDraft.name,
-        channel: destinationDraft.channel,
-        jurisdiction: destinationDraft.jurisdiction,
-        languages: parseCommaSeparatedValues(destinationDraft.languages),
-        endpoint: destinationDraft.endpoint || undefined,
-        contactEmail: destinationDraft.contactEmail || undefined,
-        contactPhone: destinationDraft.contactPhone || undefined,
-        minimumRequiredInfo: parseCommaSeparatedValues(destinationDraft.minimumRequiredInfo),
-        anonymityOptions: parseCommaSeparatedValues(destinationDraft.anonymityOptions),
-        expectedNextSteps: parseCommaSeparatedValues(destinationDraft.expectedNextSteps),
-        consentRequired: destinationDraft.consentRequired,
-        supportsAcknowledgement: destinationDraft.supportsAcknowledgement,
-        isActive: true,
-        metadata: {
-          requiredConsentFlags: parseCommaSeparatedValues(destinationDraft.requiredConsentFlags),
-          incidentTypes: parseCommaSeparatedValues(destinationDraft.incidentTypes),
-          recommendationReason: destinationDraft.recommendationReason || undefined,
-          submissionTitleTemplate: destinationDraft.submissionTitleTemplate || undefined,
-          submissionSummaryTemplate: destinationDraft.submissionSummaryTemplate || undefined,
-        },
-      });
+      const existingDestination = editingDestinationId
+        ? livePanel.destinations.find(item => item._id === editingDestinationId)
+        : undefined;
+      const payload = buildDestinationPayload(destinationDraft, existingDestination);
+      const destination = editingDestinationId
+        ? await patchAdminDestination(editingDestinationId, payload)
+        : await createAdminDestination(payload);
 
       setLivePanel(prev => ({
         ...prev,
-        destinations: [destination, ...prev.destinations],
+        destinations: editingDestinationId
+          ? prev.destinations.map(row => (row._id === destination._id ? destination : row))
+          : [destination, ...prev.destinations],
         error: null,
       }));
-      setDestinationDraft({
-        type: "police",
-        key: "",
-        name: "",
-        channel: "secure_email",
-        jurisdiction: "NSW",
-        languages: "en",
-        endpoint: "",
-        contactEmail: "",
-        contactPhone: "",
-        minimumRequiredInfo: "",
-        anonymityOptions: "",
-        expectedNextSteps: "",
-        requiredConsentFlags: "share_with_agencies",
-        incidentTypes: "",
-        recommendationReason: "",
-        submissionTitleTemplate: "",
-        submissionSummaryTemplate: "",
-        consentRequired: true,
-        supportsAcknowledgement: false,
-      });
+      setDestinationDraft(createDefaultDestinationDraft());
+      setEditingDestinationId(null);
     }
     catch (error) {
       setLivePanel(prev => ({
         ...prev,
-        error: error instanceof Error ? error.message : "Unable to create destination.",
+        error: error instanceof Error ? error.message : "Unable to save destination.",
       }));
     }
     finally {
@@ -568,53 +948,28 @@ export function AdminOperationsSectionPage({
     setIsSubmittingLiveChange(true);
 
     try {
-      const template = await createAdminSubmissionTemplate({
-        key: submissionTemplateDraft.key,
-        name: submissionTemplateDraft.name,
-        destinationType: submissionTemplateDraft.destinationType,
-        channel: submissionTemplateDraft.channel,
-        jurisdiction: submissionTemplateDraft.jurisdiction,
-        titleTemplate: submissionTemplateDraft.titleTemplate,
-        summaryTemplate: submissionTemplateDraft.summaryTemplate,
-        fieldMappings: parseCommaSeparatedValues(submissionTemplateDraft.fieldMappings).map((item) => {
-          const [source, target] = item.split(":").map(part => part.trim());
-
-          return {
-            source,
-            target: target || source,
-            required: false,
-          };
-        }),
-        staticPayload: JSON.parse(submissionTemplateDraft.staticPayload || "{}") as Record<string, unknown>,
-        acknowledgementMode: submissionTemplateDraft.acknowledgementMode,
-        attachmentMode: submissionTemplateDraft.attachmentMode,
-        isActive: true,
-        metadata: {},
-      });
+      const existingTemplate = editingSubmissionTemplateId
+        ? livePanel.submissionTemplates.find(item => item._id === editingSubmissionTemplateId)
+        : undefined;
+      const payload = buildSubmissionTemplatePayload(submissionTemplateDraft, existingTemplate);
+      const template = editingSubmissionTemplateId
+        ? await patchAdminSubmissionTemplate(editingSubmissionTemplateId, payload)
+        : await createAdminSubmissionTemplate(payload);
 
       setLivePanel(prev => ({
         ...prev,
-        submissionTemplates: [template, ...prev.submissionTemplates],
+        submissionTemplates: editingSubmissionTemplateId
+          ? prev.submissionTemplates.map(row => (row._id === template._id ? template : row))
+          : [template, ...prev.submissionTemplates],
         error: null,
       }));
-      setSubmissionTemplateDraft({
-        key: "",
-        name: "",
-        destinationType: "police",
-        channel: "secure_email",
-        jurisdiction: "NSW",
-        titleTemplate: "SafeSpeak report {{refNo}}",
-        summaryTemplate: "{{summary}}",
-        fieldMappings: "refNo:referenceId, incidentType:category, summary:description",
-        staticPayload: "{}",
-        acknowledgementMode: "manual",
-        attachmentMode: "metadata_only",
-      });
+      setSubmissionTemplateDraft(createDefaultSubmissionTemplateDraft());
+      setEditingSubmissionTemplateId(null);
     }
     catch (error) {
       setLivePanel(prev => ({
         ...prev,
-        error: error instanceof Error ? error.message : "Unable to create submission template.",
+        error: error instanceof Error ? error.message : "Unable to save submission template.",
       }));
     }
     finally {
@@ -674,6 +1029,7 @@ export function AdminOperationsSectionPage({
   };
 
   const handleTaxonomyDelete = async (item: AdminTaxonomyRecord) => {
+    // eslint-disable-next-line no-alert
     const confirmed = window.confirm(`Delete "${item.label}" from taxonomies?`);
 
     if (!confirmed) {
@@ -702,6 +1058,17 @@ export function AdminOperationsSectionPage({
     }
   };
 
+  const startDestinationEdit = (item: AdminDestinationRecord) => {
+    setDestinationDraft(destinationToDraft(item));
+    setEditingDestinationId(item._id);
+    setLivePanel(prev => ({ ...prev, error: null }));
+  };
+
+  const cancelDestinationEdit = () => {
+    setDestinationDraft(createDefaultDestinationDraft());
+    setEditingDestinationId(null);
+  };
+
   const toggleDestinationActive = async (item: AdminDestinationRecord) => {
     setIsSubmittingLiveChange(true);
 
@@ -722,6 +1089,69 @@ export function AdminOperationsSectionPage({
     finally {
       setIsSubmittingLiveChange(false);
     }
+  };
+
+  const startSubmissionTemplateEdit = (item: AdminSubmissionTemplateRecord) => {
+    setSubmissionTemplateDraft(templateToDraft(item));
+    setEditingSubmissionTemplateId(item._id);
+    setLivePanel(prev => ({ ...prev, error: null }));
+  };
+
+  const cancelSubmissionTemplateEdit = () => {
+    setSubmissionTemplateDraft(createDefaultSubmissionTemplateDraft());
+    setEditingSubmissionTemplateId(null);
+  };
+
+  const addSubmissionTemplateFieldMapping = () => {
+    setSubmissionTemplateDraft(prev => ({
+      ...prev,
+      fieldMappings: [...prev.fieldMappings, createFieldMappingDraft()],
+    }));
+  };
+
+  const updateSubmissionTemplateFieldMapping = (
+    id: string,
+    updates: Partial<Omit<SubmissionTemplateFieldMappingDraft, "id">>,
+  ) => {
+    setSubmissionTemplateDraft(prev => ({
+      ...prev,
+      fieldMappings: prev.fieldMappings.map(mapping =>
+        mapping.id === id ? { ...mapping, ...updates } : mapping,
+      ),
+    }));
+  };
+
+  const removeSubmissionTemplateFieldMapping = (id: string) => {
+    setSubmissionTemplateDraft(prev => ({
+      ...prev,
+      fieldMappings: prev.fieldMappings.filter(mapping => mapping.id !== id),
+    }));
+  };
+
+  const addStaticPayloadEntry = () => {
+    setSubmissionTemplateDraft(prev => ({
+      ...prev,
+      staticPayloadEntries: [...prev.staticPayloadEntries, createStaticPayloadEntryDraft()],
+    }));
+  };
+
+  const updateStaticPayloadEntry = (
+    id: string,
+    updates: Partial<Omit<StaticPayloadEntryDraft, "id">>,
+  ) => {
+    setSubmissionTemplateDraft(prev => ({
+      ...prev,
+      staticPayloadEntries: prev.staticPayloadEntries.map(entry =>
+        entry.id === id ? { ...entry, ...updates } : entry,
+      ),
+    }));
+  };
+
+  const removeStaticPayloadEntry = (id: string) => {
+    setSubmissionTemplateDraft(prev => ({
+      ...prev,
+      staticPayloadEntries: prev.staticPayloadEntries.filter(entry => entry.id !== id),
+    }));
   };
 
   const toggleSubmissionTemplateActive = async (item: AdminSubmissionTemplateRecord) => {
@@ -849,10 +1279,13 @@ export function AdminOperationsSectionPage({
 
             <button
               type="button"
-              onClick={() => setActiveModule(activeModule.id)}
+              onClick={() => {
+                setActiveModule(activeModule.id);
+                void refreshLivePanel();
+              }}
               className="inline-flex h-10 items-center justify-center rounded-md border border-[#D8E3EE] bg-white px-4 text-[13px] font-semibold text-[#0F67AE] transition hover:bg-[#F3F8FE] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4BA3D9]"
             >
-              Refresh Focus
+              Refresh Data
             </button>
           </div>
 
@@ -924,7 +1357,7 @@ export function AdminOperationsSectionPage({
                               <span>Type</span>
                               <select
                                 value={taxonomyDraft.type}
-                                onChange={event => {
+                                onChange={(event) => {
                                   setTaxonomyDraft(prev => ({
                                     ...prev,
                                     type: event.target.value as AdminTaxonomyRecord["type"],
@@ -1040,7 +1473,10 @@ export function AdminOperationsSectionPage({
                                                       key={key}
                                                       className="inline-flex items-center rounded-full border border-[#D8E3EE] bg-white px-2.5 py-1 text-[11px] text-[#607B90]"
                                                     >
-                                                      <span className="font-semibold text-[#1E293B]">{formatMetadataLabel(key)}:</span>
+                                                      <span className="font-semibold text-[#1E293B]">
+                                                        {formatMetadataLabel(key)}
+                                                        :
+                                                      </span>
                                                       <span className="ml-1">{formatMetadataText(value)}</span>
                                                     </span>
                                                   ))}
@@ -1082,7 +1518,11 @@ export function AdminOperationsSectionPage({
                                         {item.jurisdiction}
                                       </p>
                                       <p className="mt-1 text-[11px] text-[#607B90]">
-                                        Report {item.reportId} · Template {item.templateKey ?? "default"}
+                                        Report
+                                        {" "}
+                                        {item.reportId}
+                                        {" · Template "}
+                                        {item.templateKey ?? "default"}
                                       </p>
                                     </div>
                                     <span className="rounded-full bg-[#EEF6FF] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#0F67AE]">
@@ -1120,6 +1560,27 @@ export function AdminOperationsSectionPage({
                   {sectionKey === "destinations"
                     ? (
                         <div className="mt-4 space-y-4">
+                          <div className="flex flex-col gap-2 rounded-xl border border-[#D8E3EE] bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                              <h5 className="text-[15px] font-semibold text-[#1E293B]">
+                                {editingDestinationId ? "Edit Destination" : "Create Destination"}
+                              </h5>
+                              <p className="mt-1 text-[12px] text-[#607B90]">
+                                All routing, consent, contact, language, and template metadata fields are persisted through the backend.
+                              </p>
+                            </div>
+                            {editingDestinationId
+                              ? (
+                                  <button
+                                    type="button"
+                                    onClick={cancelDestinationEdit}
+                                    className="inline-flex h-9 items-center justify-center rounded-md border border-[#D8E3EE] bg-white px-3 text-[12px] font-semibold text-[#52667A] transition hover:bg-[#F8FBFF]"
+                                  >
+                                    Cancel edit
+                                  </button>
+                                )
+                              : null}
+                          </div>
                           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                             <label className="space-y-1 text-[12px] text-[#52667A]">
                               <span>Type</span>
@@ -1273,24 +1734,114 @@ export function AdminOperationsSectionPage({
                                 className="h-10 w-full rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
                               />
                             </label>
-                            <label className="space-y-1 text-[12px] text-[#52667A] md:col-span-2">
-                              <span>Submission Title Template</span>
+                            <div className="space-y-2 md:col-span-2">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-[12px] text-[#52667A]">Submission Title</span>
+                                <select
+                                  value=""
+                                  onChange={(event) => {
+                                    if (!event.target.value) {
+                                      return;
+                                    }
+
+                                    setDestinationDraft(prev => ({
+                                      ...prev,
+                                      submissionTitleTemplate: event.target.value,
+                                    }));
+                                  }}
+                                  className="h-8 rounded-md border border-[#D8E3EE] bg-white px-2 text-[12px] text-[#52667A]"
+                                >
+                                  <option value="">Use preset</option>
+                                  {titleTemplatePresets.map(preset => (
+                                    <option key={preset.label} value={preset.template}>{preset.label}</option>
+                                  ))}
+                                </select>
+                              </div>
                               <input
-                                value={destinationDraft.submissionTitleTemplate}
-                                onChange={event => setDestinationDraft(prev => ({ ...prev, submissionTitleTemplate: event.target.value }))}
-                                placeholder="SafeSpeak report {{refNo}}"
+                                value={storageTemplateToFriendly(destinationDraft.submissionTitleTemplate)}
+                                onChange={event =>
+                                  setDestinationDraft(prev => ({
+                                    ...prev,
+                                    submissionTitleTemplate: friendlyTemplateToStorage(event.target.value),
+                                  }))}
+                                placeholder="SafeSpeak report [Reference No]"
                                 className="h-10 w-full rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
                               />
-                            </label>
-                            <label className="space-y-1 text-[12px] text-[#52667A] md:col-span-2">
-                              <span>Submission Summary Template</span>
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="text-[11px] text-[#607B90]">Insert:</span>
+                                {templateVariableOptions.slice(0, 5).map(variable => (
+                                  <button
+                                    key={variable.value}
+                                    type="button"
+                                    onClick={() =>
+                                      setDestinationDraft(prev => ({
+                                        ...prev,
+                                        submissionTitleTemplate: appendTemplateVariable(
+                                          prev.submissionTitleTemplate,
+                                          variable.value,
+                                        ),
+                                      }))}
+                                    className="rounded-full border border-[#D8E3EE] bg-white px-2 py-1 text-[11px] font-semibold text-[#0F67AE] transition hover:bg-[#EEF6FF]"
+                                  >
+                                    {variable.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                            <div className="space-y-2 md:col-span-2">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-[12px] text-[#52667A]">Submission Summary</span>
+                                <select
+                                  value=""
+                                  onChange={(event) => {
+                                    if (!event.target.value) {
+                                      return;
+                                    }
+
+                                    setDestinationDraft(prev => ({
+                                      ...prev,
+                                      submissionSummaryTemplate: event.target.value,
+                                    }));
+                                  }}
+                                  className="h-8 rounded-md border border-[#D8E3EE] bg-white px-2 text-[12px] text-[#52667A]"
+                                >
+                                  <option value="">Use preset</option>
+                                  {summaryTemplatePresets.map(preset => (
+                                    <option key={preset.label} value={preset.template}>{preset.label}</option>
+                                  ))}
+                                </select>
+                              </div>
                               <input
-                                value={destinationDraft.submissionSummaryTemplate}
-                                onChange={event => setDestinationDraft(prev => ({ ...prev, submissionSummaryTemplate: event.target.value }))}
-                                placeholder="{{summary}}"
+                                value={storageTemplateToFriendly(destinationDraft.submissionSummaryTemplate)}
+                                onChange={event =>
+                                  setDestinationDraft(prev => ({
+                                    ...prev,
+                                    submissionSummaryTemplate: friendlyTemplateToStorage(event.target.value),
+                                  }))}
+                                placeholder="[Summary]"
                                 className="h-10 w-full rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
                               />
-                            </label>
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="text-[11px] text-[#607B90]">Insert:</span>
+                                {templateVariableOptions.slice(1, 7).map(variable => (
+                                  <button
+                                    key={variable.value}
+                                    type="button"
+                                    onClick={() =>
+                                      setDestinationDraft(prev => ({
+                                        ...prev,
+                                        submissionSummaryTemplate: appendTemplateVariable(
+                                          prev.submissionSummaryTemplate,
+                                          variable.value,
+                                        ),
+                                      }))}
+                                    className="rounded-full border border-[#D8E3EE] bg-white px-2 py-1 text-[11px] font-semibold text-[#0F67AE] transition hover:bg-[#EEF6FF]"
+                                  >
+                                    {variable.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
                             <label className="inline-flex items-center gap-2 text-[12px] text-[#52667A]">
                               <input
                                 type="checkbox"
@@ -1322,15 +1873,84 @@ export function AdminOperationsSectionPage({
                             }
                             className="inline-flex h-10 items-center justify-center rounded-md bg-[#0F67AE] px-4 text-[13px] font-semibold text-white transition hover:bg-[#0B578F] disabled:cursor-not-allowed disabled:opacity-50"
                           >
-                            {isSubmittingLiveChange ? "Saving..." : "Create destination"}
+                            {isSubmittingLiveChange
+                              ? "Saving..."
+                              : editingDestinationId
+                                ? "Save destination"
+                                : "Create destination"}
                           </button>
+                          <div className="mt-6 border-t border-[#E5ECF3] pt-4">
+                            <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+                              <div>
+                                <h5 className="text-[15px] font-semibold text-[#1E293B]">Destination Records</h5>
+                                <p className="mt-1 text-[12px] text-[#607B90]">
+                                  {visibleDestinations.length}
+                                  {" of "}
+                                  {livePanel.destinations.length}
+                                  {" records shown from the backend."}
+                                </p>
+                              </div>
+                              <div className="grid gap-2 sm:grid-cols-3 xl:w-[620px]">
+                                <input
+                                  value={destinationSearchQuery}
+                                  onChange={event => setDestinationSearchQuery(event.target.value)}
+                                  placeholder="Search destinations"
+                                  className="h-10 rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
+                                />
+                                <select
+                                  value={destinationTypeFilter}
+                                  onChange={event =>
+                                    setDestinationTypeFilter(event.target.value as AdminDestinationRecord["type"] | "all")}
+                                  className="h-10 rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
+                                >
+                                  <option value="all">All types</option>
+                                  <option value="police">Police</option>
+                                  <option value="anti_discrimination_agency">Anti-Discrimination Agency</option>
+                                  <option value="esafety">eSafety</option>
+                                  <option value="legal_aid">Legal Aid</option>
+                                  <option value="community_legal_centre">Community Legal Centre</option>
+                                  <option value="education_provider">Education Provider</option>
+                                  <option value="workplace_channel">Workplace Channel</option>
+                                  <option value="scamwatch">Scamwatch</option>
+                                  <option value="reportcyber">ReportCyber</option>
+                                  <option value="community_support_org">Community Support Org</option>
+                                </select>
+                                <select
+                                  value={destinationChannelFilter}
+                                  onChange={event =>
+                                    setDestinationChannelFilter(event.target.value as AdminDestinationRecord["channel"] | "all")}
+                                  className="h-10 rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
+                                >
+                                  <option value="all">All channels</option>
+                                  <option value="api_oauth">API OAuth</option>
+                                  <option value="api_mtls">API mTLS</option>
+                                  <option value="secure_email_pgp">Secure Email PGP</option>
+                                  <option value="secure_email">Secure Email</option>
+                                  <option value="manual_export_pdf">Manual Export PDF</option>
+                                  <option value="manual_export_json">Manual Export JSON</option>
+                                  <option value="booking_link">Booking Link</option>
+                                </select>
+                              </div>
+                            </div>
+                          </div>
                           <div className="grid gap-3">
-                            {livePanel.destinations.slice(0, 8).map(item => (
+                            {visibleDestinations.map(item => (
                               <div key={item._id} className="rounded-xl border border-[#E5ECF3] bg-white px-4 py-3">
                                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                   <div>
-                                    <p className="text-[14px] font-semibold text-[#1E293B]">{item.name}</p>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <p className="text-[14px] font-semibold text-[#1E293B]">{item.name}</p>
+                                      <span className={cn(
+                                        "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em]",
+                                        item.isActive ? "bg-[#E8F7EE] text-[#0F7A43]" : "bg-[#F1F5F9] text-[#64748B]",
+                                      )}
+                                      >
+                                        {item.isActive ? "Active" : "Inactive"}
+                                      </span>
+                                    </div>
                                     <p className="mt-1 text-[12px] text-[#607B90]">
+                                      {item.key}
+                                      {" • "}
                                       {item.type}
                                       {` • ${item.channel}`}
                                       {` • ${item.jurisdiction}`}
@@ -1357,23 +1977,105 @@ export function AdminOperationsSectionPage({
                                         )
                                       : null}
                                   </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => void toggleDestinationActive(item)}
-                                    className="inline-flex h-8 items-center justify-center rounded-md border border-[#D8E3EE] px-3 text-[12px] font-semibold text-[#0F67AE] transition hover:bg-[#EEF6FF]"
-                                  >
-                                    {item.isActive ? "Deactivate" : "Activate"}
-                                  </button>
+                                  <div className="flex flex-wrap gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => startDestinationEdit(item)}
+                                      className="inline-flex h-8 items-center justify-center rounded-md border border-[#D8E3EE] px-3 text-[12px] font-semibold text-[#0F67AE] transition hover:bg-[#EEF6FF]"
+                                    >
+                                      Edit
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => void toggleDestinationActive(item)}
+                                      className="inline-flex h-8 items-center justify-center rounded-md border border-[#D8E3EE] px-3 text-[12px] font-semibold text-[#0F67AE] transition hover:bg-[#EEF6FF]"
+                                    >
+                                      {item.isActive ? "Deactivate" : "Activate"}
+                                    </button>
+                                  </div>
+                                </div>
+                                <div className="mt-3 grid gap-2 text-[11px] text-[#52667A] md:grid-cols-3">
+                                  <div className="rounded-lg border border-[#E5ECF3] bg-[#FBFDFF] px-3 py-2">
+                                    <span className="font-semibold text-[#1E293B]">Contacts</span>
+                                    <p>{[item.contactEmail, item.contactPhone].filter(Boolean).join(" • ") || "Not configured"}</p>
+                                  </div>
+                                  <div className="rounded-lg border border-[#E5ECF3] bg-[#FBFDFF] px-3 py-2">
+                                    <span className="font-semibold text-[#1E293B]">Anonymity</span>
+                                    <p>{item.anonymityOptions.join(", ") || "Not configured"}</p>
+                                  </div>
+                                  <div className="rounded-lg border border-[#E5ECF3] bg-[#FBFDFF] px-3 py-2">
+                                    <span className="font-semibold text-[#1E293B]">Consent and acknowledgement</span>
+                                    <p>
+                                      {item.consentRequired ? "Consent required" : "Consent not required"}
+                                      {" • "}
+                                      {item.supportsAcknowledgement ? "Acknowledgement supported" : "No acknowledgement"}
+                                    </p>
+                                  </div>
+                                  <div className="rounded-lg border border-[#E5ECF3] bg-[#FBFDFF] px-3 py-2 md:col-span-3">
+                                    <span className="font-semibold text-[#1E293B]">Expected next steps</span>
+                                    <p>{item.expectedNextSteps.join(", ") || "Not configured"}</p>
+                                  </div>
+                                  <div className="rounded-lg border border-[#E5ECF3] bg-[#FBFDFF] px-3 py-2 md:col-span-3">
+                                    <span className="font-semibold text-[#1E293B]">Metadata</span>
+                                    <div className="mt-1 flex flex-wrap gap-1.5">
+                                      {Object.entries(item.metadata ?? {}).length
+                                        ? Object.entries(item.metadata ?? {}).map(([key, value]) => (
+                                            <span
+                                              key={key}
+                                              className="inline-flex rounded-full border border-[#D8E3EE] bg-white px-2 py-1"
+                                            >
+                                              <span className="font-semibold text-[#1E293B]">
+                                                {formatMetadataLabel(key)}
+                                                :
+                                              </span>
+                                              <span className="ml-1">{formatMetadataText(value)}</span>
+                                            </span>
+                                          ))
+                                        : <span>Not configured</span>}
+                                    </div>
+                                  </div>
+                                  <div className="rounded-lg border border-[#E5ECF3] bg-[#FBFDFF] px-3 py-2 md:col-span-3">
+                                    <span className="font-semibold text-[#1E293B]">Audit timestamps</span>
+                                    <p>
+                                      Created:
+                                      {" "}
+                                      {item.createdAt ? new Date(item.createdAt).toLocaleString() : "Not available"}
+                                      {" • Updated: "}
+                                      {item.updatedAt ? new Date(item.updatedAt).toLocaleString() : "Not available"}
+                                    </p>
+                                  </div>
                                 </div>
                               </div>
                             ))}
+                            {!visibleDestinations.length && !livePanel.isLoading
+                              ? (
+                                  <div className="rounded-lg border border-[#D8E3EE] bg-white px-3 py-4 text-[12px] text-[#607B90]">
+                                    No destination records match the current filters.
+                                  </div>
+                                )
+                              : null}
                           </div>
                           <div className="mt-6 border-t border-[#E5ECF3] pt-4">
-                            <div className="flex flex-col gap-1">
-                              <h5 className="text-[15px] font-semibold text-[#1E293B]">Submission Templates</h5>
-                              <p className="text-[12px] text-[#607B90]">
-                                Define explicit payload mappings and acknowledgement modes for each delivery channel.
-                              </p>
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                              <div className="flex flex-col gap-1">
+                                <h5 className="text-[15px] font-semibold text-[#1E293B]">
+                                  {editingSubmissionTemplateId ? "Edit Submission Template" : "Submission Templates"}
+                                </h5>
+                                <p className="text-[12px] text-[#607B90]">
+                                  Define explicit payload mappings and acknowledgement modes for each delivery channel.
+                                </p>
+                              </div>
+                              {editingSubmissionTemplateId
+                                ? (
+                                    <button
+                                      type="button"
+                                      onClick={cancelSubmissionTemplateEdit}
+                                      className="inline-flex h-9 items-center justify-center rounded-md border border-[#D8E3EE] bg-white px-3 text-[12px] font-semibold text-[#52667A] transition hover:bg-[#F8FBFF]"
+                                    >
+                                      Cancel edit
+                                    </button>
+                                  )
+                                : null}
                             </div>
                             <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                               <label className="space-y-1 text-[12px] text-[#52667A]">
@@ -1441,40 +2143,317 @@ export function AdminOperationsSectionPage({
                                   className="h-10 w-full rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
                                 />
                               </label>
-                              <label className="space-y-1 text-[12px] text-[#52667A] md:col-span-2 xl:col-span-4">
-                                <span>Title Template</span>
+                              <div className="space-y-2 md:col-span-2 xl:col-span-4">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-[12px] text-[#52667A]">Title Template</span>
+                                  <select
+                                    value=""
+                                    onChange={(event) => {
+                                      if (!event.target.value) {
+                                        return;
+                                      }
+
+                                      setSubmissionTemplateDraft(prev => ({
+                                        ...prev,
+                                        titleTemplate: event.target.value,
+                                      }));
+                                    }}
+                                    className="h-8 rounded-md border border-[#D8E3EE] bg-white px-2 text-[12px] text-[#52667A]"
+                                  >
+                                    <option value="">Use preset</option>
+                                    {titleTemplatePresets.map(preset => (
+                                      <option key={preset.label} value={preset.template}>{preset.label}</option>
+                                    ))}
+                                  </select>
+                                </div>
                                 <input
-                                  value={submissionTemplateDraft.titleTemplate}
-                                  onChange={event => setSubmissionTemplateDraft(prev => ({ ...prev, titleTemplate: event.target.value }))}
+                                  value={storageTemplateToFriendly(submissionTemplateDraft.titleTemplate)}
+                                  onChange={event =>
+                                    setSubmissionTemplateDraft(prev => ({
+                                      ...prev,
+                                      titleTemplate: friendlyTemplateToStorage(event.target.value),
+                                    }))}
+                                  placeholder="SafeSpeak report [Reference No]"
                                   className="h-10 w-full rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
                                 />
-                              </label>
-                              <label className="space-y-1 text-[12px] text-[#52667A] md:col-span-2 xl:col-span-4">
-                                <span>Summary Template</span>
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <span className="text-[11px] text-[#607B90]">Insert:</span>
+                                  {templateVariableOptions.slice(0, 5).map(variable => (
+                                    <button
+                                      key={variable.value}
+                                      type="button"
+                                      onClick={() =>
+                                        setSubmissionTemplateDraft(prev => ({
+                                          ...prev,
+                                          titleTemplate: appendTemplateVariable(prev.titleTemplate, variable.value),
+                                        }))}
+                                      className="rounded-full border border-[#D8E3EE] bg-white px-2 py-1 text-[11px] font-semibold text-[#0F67AE] transition hover:bg-[#EEF6FF]"
+                                    >
+                                      {variable.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                              <div className="space-y-2 md:col-span-2 xl:col-span-4">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-[12px] text-[#52667A]">Summary Template</span>
+                                  <select
+                                    value=""
+                                    onChange={(event) => {
+                                      if (!event.target.value) {
+                                        return;
+                                      }
+
+                                      setSubmissionTemplateDraft(prev => ({
+                                        ...prev,
+                                        summaryTemplate: event.target.value,
+                                      }));
+                                    }}
+                                    className="h-8 rounded-md border border-[#D8E3EE] bg-white px-2 text-[12px] text-[#52667A]"
+                                  >
+                                    <option value="">Use preset</option>
+                                    {summaryTemplatePresets.map(preset => (
+                                      <option key={preset.label} value={preset.template}>{preset.label}</option>
+                                    ))}
+                                  </select>
+                                </div>
                                 <input
-                                  value={submissionTemplateDraft.summaryTemplate}
-                                  onChange={event => setSubmissionTemplateDraft(prev => ({ ...prev, summaryTemplate: event.target.value }))}
+                                  value={storageTemplateToFriendly(submissionTemplateDraft.summaryTemplate)}
+                                  onChange={event =>
+                                    setSubmissionTemplateDraft(prev => ({
+                                      ...prev,
+                                      summaryTemplate: friendlyTemplateToStorage(event.target.value),
+                                    }))}
+                                  placeholder="[Summary]"
                                   className="h-10 w-full rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
                                 />
-                              </label>
-                              <label className="space-y-1 text-[12px] text-[#52667A] md:col-span-2">
-                                <span>Field Mappings</span>
-                                <input
-                                  value={submissionTemplateDraft.fieldMappings}
-                                  onChange={event => setSubmissionTemplateDraft(prev => ({ ...prev, fieldMappings: event.target.value }))}
-                                  placeholder="refNo:referenceId, summary:description"
-                                  className="h-10 w-full rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
-                                />
-                              </label>
-                              <label className="space-y-1 text-[12px] text-[#52667A] md:col-span-2">
-                                <span>Static Payload JSON</span>
-                                <input
-                                  value={submissionTemplateDraft.staticPayload}
-                                  onChange={event => setSubmissionTemplateDraft(prev => ({ ...prev, staticPayload: event.target.value }))}
-                                  placeholder='{"source":"safespeak"}'
-                                  className="h-10 w-full rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
-                                />
-                              </label>
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <span className="text-[11px] text-[#607B90]">Insert:</span>
+                                  {templateVariableOptions.slice(1, 7).map(variable => (
+                                    <button
+                                      key={variable.value}
+                                      type="button"
+                                      onClick={() =>
+                                        setSubmissionTemplateDraft(prev => ({
+                                          ...prev,
+                                          summaryTemplate: appendTemplateVariable(prev.summaryTemplate, variable.value),
+                                        }))}
+                                      className="rounded-full border border-[#D8E3EE] bg-white px-2 py-1 text-[11px] font-semibold text-[#0F67AE] transition hover:bg-[#EEF6FF]"
+                                    >
+                                      {variable.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                              <div className="space-y-3 md:col-span-2 xl:col-span-4">
+                                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                  <div>
+                                    <p className="text-[12px] font-semibold text-[#52667A]">Field Mappings</p>
+                                    <p className="mt-1 text-[11px] text-[#607B90]">
+                                      Connect SafeSpeak fields to the destination fields that receive them.
+                                    </p>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={addSubmissionTemplateFieldMapping}
+                                    className="inline-flex h-8 items-center justify-center rounded-md border border-[#D8E3EE] bg-white px-3 text-[12px] font-semibold text-[#0F67AE] transition hover:bg-[#EEF6FF]"
+                                  >
+                                    Add mapping
+                                  </button>
+                                </div>
+                                <div className="space-y-2">
+                                  {submissionTemplateDraft.fieldMappings.length
+                                    ? submissionTemplateDraft.fieldMappings.map(mapping => (
+                                        <div
+                                          key={mapping.id}
+                                          className="grid gap-2 rounded-xl border border-[#E5ECF3] bg-white p-3 md:grid-cols-[1fr_1fr_120px_1fr_auto]"
+                                        >
+                                          <label className="space-y-1 text-[12px] text-[#52667A]">
+                                            <span>SafeSpeak Field</span>
+                                            <select
+                                              value={mapping.source}
+                                              onChange={event =>
+                                                updateSubmissionTemplateFieldMapping(mapping.id, { source: event.target.value })}
+                                              className="h-10 w-full rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
+                                            >
+                                              <option value="">Choose field</option>
+                                              {mapping.source
+                                                && !safeSpeakFieldOptions.some(option => option.value === mapping.source)
+                                                ? <option value={mapping.source}>{mapping.source}</option>
+                                                : null}
+                                              {safeSpeakFieldOptions.map(option => (
+                                                <option key={option.value} value={option.value}>{option.label}</option>
+                                              ))}
+                                            </select>
+                                          </label>
+                                          <label className="space-y-1 text-[12px] text-[#52667A]">
+                                            <span>Destination Field</span>
+                                            <input
+                                              value={mapping.target}
+                                              onChange={event =>
+                                                updateSubmissionTemplateFieldMapping(mapping.id, { target: event.target.value })}
+                                              placeholder="referenceId"
+                                              className="h-10 w-full rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
+                                            />
+                                          </label>
+                                          <label className="flex items-center gap-2 self-end rounded-lg border border-[#E5ECF3] bg-[#FBFDFF] px-3 py-2 text-[12px] text-[#52667A]">
+                                            <input
+                                              type="checkbox"
+                                              checked={mapping.required}
+                                              onChange={event =>
+                                                updateSubmissionTemplateFieldMapping(mapping.id, { required: event.target.checked })}
+                                            />
+                                            Required
+                                          </label>
+                                          <label className="space-y-1 text-[12px] text-[#52667A]">
+                                            <span>Transform</span>
+                                            <select
+                                              value={mapping.transform}
+                                              onChange={event =>
+                                                updateSubmissionTemplateFieldMapping(mapping.id, { transform: event.target.value })}
+                                              className="h-10 w-full rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
+                                            >
+                                              {mapping.transform
+                                                && !transformOptions.some(option => option.value === mapping.transform)
+                                                ? <option value={mapping.transform}>{mapping.transform}</option>
+                                                : null}
+                                              {transformOptions.map(option => (
+                                                <option key={option.value || "none"} value={option.value}>{option.label}</option>
+                                              ))}
+                                            </select>
+                                          </label>
+                                          <button
+                                            type="button"
+                                            onClick={() => removeSubmissionTemplateFieldMapping(mapping.id)}
+                                            className="self-end rounded-md border border-[#F4C7C3] px-3 py-2 text-[12px] font-semibold text-[#B42318] transition hover:bg-[#FFF7F6]"
+                                          >
+                                            Remove
+                                          </button>
+                                        </div>
+                                      ))
+                                    : (
+                                        <div className="rounded-lg border border-[#D8E3EE] bg-white px-3 py-4 text-[12px] text-[#607B90]">
+                                          No field mappings configured.
+                                        </div>
+                                      )}
+                                </div>
+                              </div>
+                              <div className="space-y-3 md:col-span-2 xl:col-span-4">
+                                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                  <div>
+                                    <p className="text-[12px] font-semibold text-[#52667A]">Static Payload Fields</p>
+                                    <p className="mt-1 text-[11px] text-[#607B90]">
+                                      Add fixed fields that should be sent with every payload for this template.
+                                    </p>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={addStaticPayloadEntry}
+                                    className="inline-flex h-8 items-center justify-center rounded-md border border-[#D8E3EE] bg-white px-3 text-[12px] font-semibold text-[#0F67AE] transition hover:bg-[#EEF6FF]"
+                                  >
+                                    Add payload field
+                                  </button>
+                                </div>
+                                <div className="space-y-2">
+                                  {submissionTemplateDraft.staticPayloadEntries.length
+                                    ? submissionTemplateDraft.staticPayloadEntries.map((entry) => {
+                                        const nextBooleanValue = ["true", "false"].includes(entry.value)
+                                          ? entry.value
+                                          : "true";
+
+                                        return (
+                                          <div
+                                            key={entry.id}
+                                            className="grid gap-2 rounded-xl border border-[#E5ECF3] bg-white p-3 md:grid-cols-[1fr_1fr_140px_auto]"
+                                          >
+                                            <label className="space-y-1 text-[12px] text-[#52667A]">
+                                              <span>Field Name</span>
+                                              <input
+                                                value={entry.key}
+                                                onChange={event => updateStaticPayloadEntry(entry.id, { key: event.target.value })}
+                                                placeholder="source"
+                                                className="h-10 w-full rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
+                                              />
+                                            </label>
+                                            <label className="space-y-1 text-[12px] text-[#52667A]">
+                                              <span>Value</span>
+                                              {entry.valueType === "boolean"
+                                                ? (
+                                                    <select
+                                                      value={nextBooleanValue}
+                                                      onChange={event => updateStaticPayloadEntry(entry.id, { value: event.target.value })}
+                                                      className="h-10 w-full rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
+                                                    >
+                                                      <option value="true">True</option>
+                                                      <option value="false">False</option>
+                                                    </select>
+                                                  )
+                                                : (
+                                                    <input
+                                                      value={entry.value}
+                                                      onChange={event => updateStaticPayloadEntry(entry.id, { value: event.target.value })}
+                                                      placeholder="safespeak"
+                                                      className="h-10 w-full rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
+                                                    />
+                                                  )}
+                                            </label>
+                                            <label className="space-y-1 text-[12px] text-[#52667A]">
+                                              <span>Type</span>
+                                              <select
+                                                value={entry.valueType}
+                                                onChange={(event) => {
+                                                  const valueType = event.target.value as StaticPayloadEntryDraft["valueType"];
+
+                                                  updateStaticPayloadEntry(entry.id, {
+                                                    value: valueType === "boolean" ? nextBooleanValue : entry.value,
+                                                    valueType,
+                                                  });
+                                                }}
+                                                className="h-10 w-full rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B]"
+                                              >
+                                                <option value="text">Text</option>
+                                                <option value="number">Number</option>
+                                                <option value="boolean">Boolean</option>
+                                              </select>
+                                            </label>
+                                            <button
+                                              type="button"
+                                              onClick={() => removeStaticPayloadEntry(entry.id)}
+                                              className="self-end rounded-md border border-[#F4C7C3] px-3 py-2 text-[12px] font-semibold text-[#B42318] transition hover:bg-[#FFF7F6]"
+                                            >
+                                              Remove
+                                            </button>
+                                          </div>
+                                        );
+                                      })
+                                    : (
+                                        <div className="rounded-lg border border-[#D8E3EE] bg-white px-3 py-4 text-[12px] text-[#607B90]">
+                                          No static payload fields configured.
+                                        </div>
+                                      )}
+                                  {Object.keys(submissionTemplateDraft.preservedStaticPayload).length
+                                    ? (
+                                        <div className="rounded-xl border border-[#E5ECF3] bg-[#FBFDFF] px-3 py-2 text-[11px] text-[#607B90]">
+                                          <span className="font-semibold text-[#1E293B]">Preserved system-managed fields:</span>
+                                          <div className="mt-1 flex flex-wrap gap-1.5">
+                                            {Object.entries(submissionTemplateDraft.preservedStaticPayload).map(([key, value]) => (
+                                              <span
+                                                key={key}
+                                                className="inline-flex rounded-full border border-[#D8E3EE] bg-white px-2 py-1"
+                                              >
+                                                <span className="font-semibold text-[#1E293B]">
+                                                  {formatMetadataLabel(key)}
+                                                  :
+                                                </span>
+                                                <span className="ml-1">{formatMetadataText(value)}</span>
+                                              </span>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )
+                                    : null}
+                                </div>
+                              </div>
                               <label className="space-y-1 text-[12px] text-[#52667A]">
                                 <span>Acknowledgement Mode</span>
                                 <select
@@ -1516,15 +2495,47 @@ export function AdminOperationsSectionPage({
                               }
                               className="mt-3 inline-flex h-10 items-center justify-center rounded-md bg-[#0F67AE] px-4 text-[13px] font-semibold text-white transition hover:bg-[#0B578F] disabled:cursor-not-allowed disabled:opacity-50"
                             >
-                              {isSubmittingLiveChange ? "Saving..." : "Create template"}
+                              {isSubmittingLiveChange
+                                ? "Saving..."
+                                : editingSubmissionTemplateId
+                                  ? "Save template"
+                                  : "Create template"}
                             </button>
+                            <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                              <div>
+                                <h5 className="text-[15px] font-semibold text-[#1E293B]">Template Records</h5>
+                                <p className="mt-1 text-[12px] text-[#607B90]">
+                                  {visibleSubmissionTemplates.length}
+                                  {" of "}
+                                  {livePanel.submissionTemplates.length}
+                                  {" records shown from the backend."}
+                                </p>
+                              </div>
+                              <input
+                                value={templateSearchQuery}
+                                onChange={event => setTemplateSearchQuery(event.target.value)}
+                                placeholder="Search templates"
+                                className="h-10 rounded-lg border border-[#D8E3EE] bg-white px-3 text-[13px] text-[#1E293B] sm:w-[320px]"
+                              />
+                            </div>
                             <div className="mt-3 grid gap-3">
-                              {livePanel.submissionTemplates.slice(0, 8).map(item => (
+                              {visibleSubmissionTemplates.map(item => (
                                 <div key={item._id} className="rounded-xl border border-[#E5ECF3] bg-white px-4 py-3">
                                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                     <div>
-                                      <p className="text-[14px] font-semibold text-[#1E293B]">{item.name}</p>
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <p className="text-[14px] font-semibold text-[#1E293B]">{item.name}</p>
+                                        <span className={cn(
+                                          "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em]",
+                                          item.isActive ? "bg-[#E8F7EE] text-[#0F7A43]" : "bg-[#F1F5F9] text-[#64748B]",
+                                        )}
+                                        >
+                                          {item.isActive ? "Active" : "Inactive"}
+                                        </span>
+                                      </div>
                                       <p className="mt-1 text-[12px] text-[#607B90]">
+                                        {item.key}
+                                        {" • "}
                                         {item.destinationType}
                                         {` • ${item.channel}`}
                                         {` • ${item.jurisdiction}`}
@@ -1537,16 +2548,156 @@ export function AdminOperationsSectionPage({
                                         {item.attachmentMode}
                                       </p>
                                     </div>
-                                    <button
-                                      type="button"
-                                      onClick={() => void toggleSubmissionTemplateActive(item)}
-                                      className="inline-flex h-8 items-center justify-center rounded-md border border-[#D8E3EE] px-3 text-[12px] font-semibold text-[#0F67AE] transition hover:bg-[#EEF6FF]"
-                                    >
-                                      {item.isActive ? "Deactivate" : "Activate"}
-                                    </button>
+                                    <div className="flex flex-wrap gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => startSubmissionTemplateEdit(item)}
+                                        className="inline-flex h-8 items-center justify-center rounded-md border border-[#D8E3EE] px-3 text-[12px] font-semibold text-[#0F67AE] transition hover:bg-[#EEF6FF]"
+                                      >
+                                        Edit
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => void toggleSubmissionTemplateActive(item)}
+                                        className="inline-flex h-8 items-center justify-center rounded-md border border-[#D8E3EE] px-3 text-[12px] font-semibold text-[#0F67AE] transition hover:bg-[#EEF6FF]"
+                                      >
+                                        {item.isActive ? "Deactivate" : "Activate"}
+                                      </button>
+                                    </div>
+                                  </div>
+                                  <div className="mt-3 grid gap-2 text-[11px] text-[#52667A] md:grid-cols-2">
+                                    <div className="rounded-lg border border-[#E5ECF3] bg-[#FBFDFF] px-3 py-2">
+                                      <span className="font-semibold text-[#1E293B]">Title template</span>
+                                      <p>{storageTemplateToFriendly(item.titleTemplate)}</p>
+                                    </div>
+                                    <div className="rounded-lg border border-[#E5ECF3] bg-[#FBFDFF] px-3 py-2">
+                                      <span className="font-semibold text-[#1E293B]">Summary template</span>
+                                      <p>{storageTemplateToFriendly(item.summaryTemplate)}</p>
+                                    </div>
+                                    <div className="rounded-lg border border-[#E5ECF3] bg-[#FBFDFF] px-3 py-2 md:col-span-2">
+                                      <span className="font-semibold text-[#1E293B]">Field mappings</span>
+                                      <div className="mt-1 flex flex-wrap gap-1.5">
+                                        {item.fieldMappings.length
+                                          ? item.fieldMappings.map(mapping => (
+                                              <span
+                                                key={`${mapping.source}:${mapping.target}:${mapping.transform ?? ""}`}
+                                                className="inline-flex rounded-full border border-[#D8E3EE] bg-white px-2 py-1"
+                                              >
+                                                {getSafeSpeakFieldLabel(mapping.source)}
+                                                {" -> "}
+                                                {mapping.target}
+                                                {mapping.required ? " (required)" : ""}
+                                                {mapping.transform ? ` (${mapping.transform})` : ""}
+                                              </span>
+                                            ))
+                                          : <span>None</span>}
+                                      </div>
+                                    </div>
+                                    <div className="rounded-lg border border-[#E5ECF3] bg-[#FBFDFF] px-3 py-2 md:col-span-2">
+                                      <span className="font-semibold text-[#1E293B]">Static payload fields</span>
+                                      <div className="mt-1 flex flex-wrap gap-1.5">
+                                        {Object.entries(item.staticPayload ?? {}).length
+                                          ? Object.entries(item.staticPayload ?? {}).map(([key, value]) => (
+                                              <span
+                                                key={key}
+                                                className="inline-flex rounded-full border border-[#D8E3EE] bg-white px-2 py-1"
+                                              >
+                                                <span className="font-semibold text-[#1E293B]">
+                                                  {formatMetadataLabel(key)}
+                                                  :
+                                                </span>
+                                                <span className="ml-1">{formatMetadataText(value)}</span>
+                                              </span>
+                                            ))
+                                          : <span>None</span>}
+                                      </div>
+                                    </div>
+                                    <div className="rounded-lg border border-[#E5ECF3] bg-[#FBFDFF] px-3 py-2">
+                                      <span className="font-semibold text-[#1E293B]">Metadata</span>
+                                      <p>{formatMetadataText(item.metadata ?? {})}</p>
+                                    </div>
+                                    <div className="rounded-lg border border-[#E5ECF3] bg-[#FBFDFF] px-3 py-2">
+                                      <span className="font-semibold text-[#1E293B]">Audit timestamps</span>
+                                      <p>
+                                        Created:
+                                        {" "}
+                                        {item.createdAt ? new Date(item.createdAt).toLocaleString() : "Not available"}
+                                        {" • Updated: "}
+                                        {item.updatedAt ? new Date(item.updatedAt).toLocaleString() : "Not available"}
+                                      </p>
+                                    </div>
                                   </div>
                                 </div>
                               ))}
+                              {!visibleSubmissionTemplates.length && !livePanel.isLoading
+                                ? (
+                                    <div className="rounded-lg border border-[#D8E3EE] bg-white px-3 py-4 text-[12px] text-[#607B90]">
+                                      No submission templates match the current search.
+                                    </div>
+                                  )
+                                : null}
+                            </div>
+                          </div>
+                          <div className="mt-6 border-t border-[#E5ECF3] pt-4">
+                            <div className="flex flex-col gap-1">
+                              <h5 className="text-[15px] font-semibold text-[#1E293B]">Recent Delivery Activity</h5>
+                              <p className="text-[12px] text-[#607B90]">
+                                Delivery attempts are displayed here without raw payload, evidence, or consent snapshots.
+                              </p>
+                            </div>
+                            <div className="mt-3 grid gap-3">
+                              {livePanel.deliveries.slice(0, 6).map(item => (
+                                <article key={item._id} className="rounded-xl border border-[#E5ECF3] bg-white px-4 py-3">
+                                  <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                                    <div>
+                                      <p className="text-[13px] font-semibold text-[#1E293B]">{item.destinationName}</p>
+                                      <p className="mt-1 text-[12px] text-[#607B90]">
+                                        {item.destinationKey}
+                                        {" • "}
+                                        {item.destinationType}
+                                        {" via "}
+                                        {item.channel}
+                                        {" • "}
+                                        {item.jurisdiction}
+                                      </p>
+                                      <p className="mt-1 text-[11px] text-[#607B90]">
+                                        Report
+                                        {" "}
+                                        {item.reportId}
+                                        {" · Template "}
+                                        {item.templateKey ?? "default"}
+                                      </p>
+                                    </div>
+                                    <span className="rounded-full bg-[#EEF6FF] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#0F67AE]">
+                                      {item.status}
+                                    </span>
+                                  </div>
+                                  <div className="mt-3 grid gap-2 text-[11px] text-[#52667A] md:grid-cols-3">
+                                    <div className="rounded-lg border border-[#E5ECF3] bg-[#FBFDFF] px-3 py-2">
+                                      <span className="font-semibold text-[#1E293B]">External ref</span>
+                                      <p>{item.externalReference ?? "Not received"}</p>
+                                    </div>
+                                    <div className="rounded-lg border border-[#E5ECF3] bg-[#FBFDFF] px-3 py-2">
+                                      <span className="font-semibold text-[#1E293B]">Artifacts</span>
+                                      <p>{item.hasDeliveryArtifacts ? "Available" : "None"}</p>
+                                    </div>
+                                    <div className="rounded-lg border border-[#E5ECF3] bg-[#FBFDFF] px-3 py-2">
+                                      <span className="font-semibold text-[#1E293B]">Consent flags</span>
+                                      <p>{item.requiredConsentFlags.join(", ") || "None"}</p>
+                                    </div>
+                                  </div>
+                                  {item.deliveryMessage
+                                    ? <p className="mt-2 text-[11px] leading-5 text-[#607B90]">{item.deliveryMessage}</p>
+                                    : null}
+                                </article>
+                              ))}
+                              {!livePanel.deliveries.length && !livePanel.isLoading
+                                ? (
+                                    <div className="rounded-lg border border-[#D8E3EE] bg-white px-3 py-4 text-[12px] text-[#607B90]">
+                                      No delivery activity is available yet.
+                                    </div>
+                                  )
+                                : null}
                             </div>
                           </div>
                         </div>

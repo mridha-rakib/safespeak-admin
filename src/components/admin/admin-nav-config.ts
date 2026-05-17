@@ -42,10 +42,6 @@ export const ADMIN_SIDEBAR_ITEMS: AdminSidebarItem[] = [
         to: APP_ROUTE_PATHS.adminIdentityAccessManagement,
       },
       {
-        label: "Security Monitoring",
-        to: APP_ROUTE_PATHS.adminSecurityMonitoring,
-      },
-      {
         label: "Data Protection",
         to: APP_ROUTE_PATHS.adminDataProtection,
       },

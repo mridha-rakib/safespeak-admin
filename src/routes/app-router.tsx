@@ -113,11 +113,7 @@ export const appRouter = createBrowserRouter([
       },
       {
         path: `${APP_ROUTE_SEGMENTS.securityCompliance}/${APP_ROUTE_SEGMENTS.securityMonitoring}`,
-        element: (
-          <AdminOperationsSectionPage
-            config={ADMIN_OPERATIONS_CONFIGS.securityMonitoring}
-          />
-        ),
+        element: <Navigate to={APP_ROUTE_PATHS.adminPlatformHealth} replace />,
       },
       {
         path: `${APP_ROUTE_SEGMENTS.securityCompliance}/${APP_ROUTE_SEGMENTS.dataProtection}`,
