@@ -4,6 +4,7 @@ import { AdminOperationsSectionPage } from "@/components/admin/admin-operations-
 import { RequireAdminAuth } from "@/components/auth/require-admin-auth";
 import { AdminLayout } from "@/layouts/admin-layout";
 import { AuthLayout } from "@/layouts/auth-layout";
+import { AdminAiEngineControlPage } from "@/pages/admin/ai-engine-control-page";
 import { AdminChangePasswordPage } from "@/pages/admin/change-password-page";
 import { AdminContentKnowledgeSourcesRoutePage } from "@/pages/admin/content-knowledge-sources-page";
 import { AdminContentEducationalContentRoutePage } from "@/pages/admin/content-educational-content-page";
@@ -13,11 +14,15 @@ import { AdminContentMediaAssetRoutePage } from "@/pages/admin/content-media-ass
 import { AdminContentResourceLibraryRoutePage } from "@/pages/admin/content-resource-library-page";
 import { AdminContentUploadResourceRoutePage } from "@/pages/admin/content-upload-resource-page";
 import { AdminCreateAdminPage } from "@/pages/admin/create-admin-page";
+import { AdminCulturalProfilesPage } from "@/pages/admin/cultural-profiles-page";
+import { AdminDataProtectionPage } from "@/pages/admin/data-protection-page";
 import { AdminDashboardPage } from "@/pages/admin/dashboard-page";
 import { AdminEarningsPage } from "@/pages/admin/earnings-page";
 import { AdminFeedbackPage } from "@/pages/admin/feedback-page";
 import { AdminInsightsIncidentTrendsPage } from "@/pages/admin/insights-incident-trends-page";
 import { AdminInsightsPatternsPage } from "@/pages/admin/insights-patterns-page";
+import { AdminIntelligenceCenterPage } from "@/pages/admin/intelligence-center-page";
+import { AdminLanguagePacksPage } from "@/pages/admin/language-packs-page";
 import { AdminNotificationsPage } from "@/pages/admin/notifications-page";
 import { AdminPlatformSettingsPage } from "@/pages/admin/platform-settings-page";
 import { AdminPrivacyPolicyPage } from "@/pages/admin/privacy-policy-page";
@@ -117,11 +122,7 @@ export const appRouter = createBrowserRouter([
       },
       {
         path: `${APP_ROUTE_SEGMENTS.securityCompliance}/${APP_ROUTE_SEGMENTS.dataProtection}`,
-        element: (
-          <AdminOperationsSectionPage
-            config={ADMIN_OPERATIONS_CONFIGS.dataProtection}
-          />
-        ),
+        element: <AdminDataProtectionPage />,
       },
       {
         path: `${APP_ROUTE_SEGMENTS.securityCompliance}/${APP_ROUTE_SEGMENTS.privacyControls}`,
@@ -175,27 +176,15 @@ export const appRouter = createBrowserRouter([
       },
       {
         path: `${APP_ROUTE_SEGMENTS.platformIntelligence}/${APP_ROUTE_SEGMENTS.aiEngineControl}`,
-        element: (
-          <AdminOperationsSectionPage
-            config={ADMIN_OPERATIONS_CONFIGS.aiEngineControl}
-          />
-        ),
+        element: <AdminAiEngineControlPage />,
       },
       {
         path: `${APP_ROUTE_SEGMENTS.platformIntelligence}/${APP_ROUTE_SEGMENTS.culturalProfiles}`,
-        element: (
-          <AdminOperationsSectionPage
-            config={ADMIN_OPERATIONS_CONFIGS.culturalProfiles}
-          />
-        ),
+        element: <AdminCulturalProfilesPage />,
       },
       {
         path: `${APP_ROUTE_SEGMENTS.platformIntelligence}/${APP_ROUTE_SEGMENTS.languagePacks}`,
-        element: (
-          <AdminOperationsSectionPage
-            config={ADMIN_OPERATIONS_CONFIGS.languagePacks}
-          />
-        ),
+        element: <AdminLanguagePacksPage />,
       },
       {
         path: APP_ROUTE_SEGMENTS.crisisSafety,
@@ -268,30 +257,15 @@ export const appRouter = createBrowserRouter([
       },
       {
         path: `${APP_ROUTE_SEGMENTS.insights}/${APP_ROUTE_SEGMENTS.incidentInsights}`,
-        element: (
-          <AdminOperationsSectionPage
-            config={ADMIN_OPERATIONS_CONFIGS.intelligenceCenter}
-            sectionKey="analytics"
-          />
-        ),
+        element: <AdminIntelligenceCenterPage />,
       },
       {
         path: `${APP_ROUTE_SEGMENTS.insights}/${APP_ROUTE_SEGMENTS.heatmaps}`,
-        element: (
-          <AdminOperationsSectionPage
-            config={ADMIN_OPERATIONS_CONFIGS.intelligenceCenter}
-            sectionKey="analytics"
-          />
-        ),
+        element: <AdminIntelligenceCenterPage />,
       },
       {
         path: `${APP_ROUTE_SEGMENTS.insights}/${APP_ROUTE_SEGMENTS.trends}`,
-        element: (
-          <AdminOperationsSectionPage
-            config={ADMIN_OPERATIONS_CONFIGS.intelligenceCenter}
-            sectionKey="analytics"
-          />
-        ),
+        element: <AdminIntelligenceCenterPage />,
       },
       {
         path: `${APP_ROUTE_SEGMENTS.insights}/${APP_ROUTE_SEGMENTS.incidentTrends}`,
@@ -299,12 +273,7 @@ export const appRouter = createBrowserRouter([
       },
       {
         path: `${APP_ROUTE_SEGMENTS.insights}/${APP_ROUTE_SEGMENTS.intelligenceCenter}`,
-        element: (
-          <AdminOperationsSectionPage
-            config={ADMIN_OPERATIONS_CONFIGS.intelligenceCenter}
-            sectionKey="analytics"
-          />
-        ),
+        element: <AdminIntelligenceCenterPage />,
       },
       {
         path: `${APP_ROUTE_SEGMENTS.insights}/${APP_ROUTE_SEGMENTS.patterns}`,

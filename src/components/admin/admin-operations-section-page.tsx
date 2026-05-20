@@ -715,9 +715,11 @@ function statusClass(status: AdminOperationsModule["status"]) {
 export function AdminOperationsSectionPage({
   config,
   sectionKey,
+  onRefreshConfig,
 }: {
   config: AdminOperationsSectionConfig;
   sectionKey?: AdminOperationsSectionKey;
+  onRefreshConfig?: () => Promise<void>;
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedFocus = searchParams.get("focus");
@@ -801,14 +803,19 @@ export function AdminOperationsSectionPage({
   }, [sectionKey]);
 
   const refreshLivePanel = async () => {
-    if (!sectionKey) {
+    if (!sectionKey && !onRefreshConfig) {
       return;
     }
 
     setLivePanel(prev => ({ ...prev, isLoading: true, error: null }));
 
     try {
-      const nextLivePanel = await fetchLivePanelData(sectionKey);
+      const nextLivePanel = sectionKey ? await fetchLivePanelData(sectionKey) : defaultLivePanelState;
+
+      if (onRefreshConfig) {
+        await onRefreshConfig();
+      }
+
       setLivePanel({
         ...nextLivePanel,
         isLoading: false,
