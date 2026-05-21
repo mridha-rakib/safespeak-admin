@@ -1,17 +1,19 @@
-import { ensureValidAdminSession } from "@/lib/admin-auth";
+import { ensureValidAdminSession, type AdminAuthSession, type AdminRole } from "@/lib/admin-auth";
+import { getDefaultAdminPathForRole, roleCanAccess } from "@/lib/admin-rbac";
 import { APP_ROUTE_PATHS } from "@/routes/paths";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 
 type RequireAdminAuthProps = {
+  allowedRoles?: readonly AdminRole[];
   children: ReactNode;
 };
 
-export function RequireAdminAuth({ children }: RequireAdminAuthProps) {
+export function RequireAdminAuth({ allowedRoles, children }: RequireAdminAuthProps) {
   const location = useLocation();
   const [isChecking, setIsChecking] = useState(true);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [session, setSession] = useState<AdminAuthSession | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -21,12 +23,12 @@ export function RequireAdminAuth({ children }: RequireAdminAuthProps) {
         const session = await ensureValidAdminSession();
 
         if (isMounted) {
-          setIsAuthenticated(Boolean(session));
+          setSession(session);
         }
       }
       catch {
         if (isMounted) {
-          setIsAuthenticated(false);
+          setSession(null);
         }
       }
       finally {
@@ -47,8 +49,12 @@ export function RequireAdminAuth({ children }: RequireAdminAuthProps) {
     return null;
   }
 
-  if (!isAuthenticated) {
+  if (!session) {
     return <Navigate to={APP_ROUTE_PATHS.login} replace state={{ from: location.pathname }} />;
+  }
+
+  if (!roleCanAccess(session.user.role, allowedRoles)) {
+    return <Navigate to={getDefaultAdminPathForRole(session.user.role)} replace />;
   }
 
   return children;

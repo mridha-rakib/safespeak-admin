@@ -137,6 +137,20 @@ export type AdminReportDeliveryRecord = {
   updatedAt?: string;
 };
 
+export type AdminAuditLogRecord = {
+  id?: string;
+  actorType: string;
+  actorId?: string;
+  sessionId?: string;
+  action: string;
+  resourceType: string;
+  resourceId?: string;
+  metadata?: Record<string, unknown>;
+  ipHashPresent: boolean;
+  userAgentHashPresent: boolean;
+  createdAt?: string;
+};
+
 export type AdminSupportServiceRecord = {
   _id: string;
   id?: string;
@@ -452,6 +466,21 @@ export async function listAdminReportDeliveries(query: {
   );
 
   return response.data.deliveries;
+}
+
+export async function listAdminAuditLogs(query: {
+  actorType?: string;
+  resourceType?: string;
+  action?: string;
+  actorId?: string;
+  resourceId?: string;
+  limit?: number;
+} = {}): Promise<AdminAuditLogRecord[]> {
+  const response = await adminApiRequest<{ auditLogs: AdminAuditLogRecord[] }>(
+    `/admin/audit-logs${toQueryString(query)}`,
+  );
+
+  return response.data.auditLogs;
 }
 
 export async function listAdminSupportServices(query: {

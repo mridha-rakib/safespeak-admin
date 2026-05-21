@@ -1,6 +1,6 @@
 import frameIcon from "@/assets/Frame.svg";
 import { ChevronDown, ChevronsLeft, ChevronsRight } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 
 import type { AdminSidebarItem } from "@/components/admin/admin-nav-config";
@@ -23,7 +23,8 @@ import {
   SidebarSeparator,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { clearAdminAuthSession } from "@/lib/admin-auth";
+import { clearAdminAuthSession, getAdminAuthSession } from "@/lib/admin-auth";
+import { roleCanAccess } from "@/lib/admin-rbac";
 import { cn } from "@/lib/utils";
 
 type AdminSidebarProps = {
@@ -50,6 +51,30 @@ function itemMatchesPath(item: AdminSidebarItem, pathname: string) {
 
 function getGroupId(label: string) {
   return `sidebar-group-${label.toLowerCase().replace(/\s+/g, "-")}`;
+}
+
+function filterItemsByRole(items: AdminSidebarItem[]) {
+  const role = getAdminAuthSession()?.user.role;
+
+  return items
+    .map((item) => {
+      const children = item.children?.filter(child => roleCanAccess(role, child.allowedRoles));
+
+      if (item.children?.length) {
+        if (!children?.length) {
+          return null;
+        }
+
+        return {
+          ...item,
+          children,
+          to: children[0]?.to ?? item.to,
+        };
+      }
+
+      return roleCanAccess(role, item.allowedRoles) ? item : null;
+    })
+    .filter((item): item is AdminSidebarItem => Boolean(item));
 }
 
 function SidebarBrand() {
@@ -241,8 +266,9 @@ export function AdminSidebar({ items = ADMIN_SIDEBAR_ITEMS, className, onNavigat
   const location = useLocation();
   const { isMobile, open, toggleSidebar } = useSidebar();
   const scrollAreaRef = useRef<HTMLDivElement | null>(null);
+  const visibleItems = useMemo(() => filterItemsByRole(items), [items]);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() =>
-    items.reduce<Record<string, boolean>>((acc, item) => {
+    visibleItems.reduce<Record<string, boolean>>((acc, item) => {
       if (item.children?.length) {
         acc[item.to] = itemMatchesPath(item, location.pathname);
       }
@@ -255,7 +281,7 @@ export function AdminSidebar({ items = ADMIN_SIDEBAR_ITEMS, className, onNavigat
       let next = prev;
       let changed = false;
 
-      for (const item of items) {
+      for (const item of visibleItems) {
         if (!item.children?.length) {
           continue;
         }
@@ -271,7 +297,7 @@ export function AdminSidebar({ items = ADMIN_SIDEBAR_ITEMS, className, onNavigat
 
       return changed ? next : prev;
     });
-  }, [items, location.pathname]);
+  }, [visibleItems, location.pathname]);
 
   const LogoutIcon = ADMIN_LOGOUT_ITEM.icon;
   const isCollapsed = !isMobile && !open;
@@ -347,7 +373,7 @@ export function AdminSidebar({ items = ADMIN_SIDEBAR_ITEMS, className, onNavigat
               )
             : null}
           <SidebarMenu className="mt-3 gap-2">
-            {items.map((item) => {
+            {visibleItems.map((item) => {
               const hasChildren = Boolean(item.children?.length);
               const isActive = itemMatchesPath(item, location.pathname);
 

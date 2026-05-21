@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
 import type {
+  AdminAuditLogRecord,
   AdminAnalyticsBucket,
   AdminAnalyticsOverview,
   AdminDestinationRecord,
@@ -25,6 +26,7 @@ import {
   getAdminAnalyticsTrends,
   getAdminTaxonomy,
   listAdminDestinations,
+  listAdminAuditLogs,
   listAdminPrivacyRequests,
   listAdminReportDeliveries,
   listAdminSubmissionTemplates,
@@ -77,6 +79,7 @@ type AdminOperationsSectionKey =
   | "destinations"
   | "privacyRequests"
   | "deliveries"
+  | "auditLogs"
   | "analytics";
 
 type LivePanelState = {
@@ -87,6 +90,7 @@ type LivePanelState = {
   submissionTemplates: AdminSubmissionTemplateRecord[];
   privacyRequests: AdminPrivacyRequestRecord[];
   deliveries: AdminReportDeliveryRecord[];
+  auditLogs: AdminAuditLogRecord[];
   analyticsOverview: AdminAnalyticsOverview | null;
   analyticsHeatmap: AdminAnalyticsBucket[];
   analyticsTrends: AdminAnalyticsBucket[];
@@ -615,6 +619,7 @@ const defaultLivePanelState: LivePanelState = {
   submissionTemplates: [],
   privacyRequests: [],
   deliveries: [],
+  auditLogs: [],
   analyticsOverview: null,
   analyticsHeatmap: [],
   analyticsTrends: [],
@@ -662,6 +667,15 @@ async function fetchLivePanelData(sectionKey: AdminOperationsSectionKey): Promis
     return {
       ...defaultLivePanelState,
       deliveries,
+    };
+  }
+
+  if (sectionKey === "auditLogs") {
+    const auditLogs = await listAdminAuditLogs({ limit: 50 });
+
+    return {
+      ...defaultLivePanelState,
+      auditLogs,
     };
   }
 
@@ -1336,10 +1350,12 @@ export function AdminOperationsSectionPage({
                           ? "Manage active incident, support, language, and culture taxonomy records."
                           : sectionKey === "destinations"
                             ? "Review live destination routing records for agencies and services."
-                            : sectionKey === "privacyRequests"
-                              ? "Update privacy request review state from the live backend queue."
-                              : sectionKey === "deliveries"
-                                ? "Monitor consent-gated delivery attempts without exposing raw payloads."
+                          : sectionKey === "privacyRequests"
+                            ? "Update privacy request review state from the live backend queue."
+                            : sectionKey === "deliveries"
+                              ? "Monitor consent-gated delivery attempts without exposing raw payloads."
+                              : sectionKey === "auditLogs"
+                                ? "Review masked admin audit records without raw PII, IP hashes, or user-agent hashes."
                                 : "Review anonymised analytics aggregates returned by the backend analytics module."}
                       </p>
                     </div>
@@ -1558,6 +1574,55 @@ export function AdminOperationsSectionPage({
                             : (
                                 <div className="rounded-lg border border-[#D8E3EE] bg-white px-3 py-4 text-[12px] text-[#607B90]">
                                   No delivery attempts are available yet.
+                                </div>
+                              )}
+                        </div>
+                      )
+                    : null}
+
+                  {sectionKey === "auditLogs"
+                    ? (
+                        <div className="mt-4 space-y-3">
+                          {livePanel.auditLogs.length
+                            ? livePanel.auditLogs.map(item => (
+                                <article key={item.id ?? `${item.action}-${item.createdAt}`} className="rounded-xl border border-[#E5ECF3] bg-white px-4 py-3">
+                                  <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                                    <div>
+                                      <p className="text-[13px] font-semibold text-[#1E293B]">{item.action}</p>
+                                      <p className="mt-1 text-[12px] text-[#607B90]">
+                                        {item.resourceType}
+                                        {item.resourceId ? ` • ${item.resourceId}` : ""}
+                                      </p>
+                                      <p className="mt-1 text-[11px] text-[#607B90]">
+                                        Actor:
+                                        {" "}
+                                        {item.actorType}
+                                        {item.actorId ? ` • ${item.actorId}` : ""}
+                                      </p>
+                                    </div>
+                                    <span className="rounded-full bg-[#EEF6FF] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#0F67AE]">
+                                      {item.createdAt ? new Date(item.createdAt).toLocaleString() : "No timestamp"}
+                                    </span>
+                                  </div>
+                                  <div className="mt-3 grid gap-2 text-[11px] text-[#52667A] md:grid-cols-3">
+                                    <div className="rounded-lg border border-[#E5ECF3] bg-[#FBFDFF] px-3 py-2">
+                                      <span className="font-semibold text-[#1E293B]">IP hash</span>
+                                      <p>{item.ipHashPresent ? "Stored" : "Not stored"}</p>
+                                    </div>
+                                    <div className="rounded-lg border border-[#E5ECF3] bg-[#FBFDFF] px-3 py-2">
+                                      <span className="font-semibold text-[#1E293B]">User agent hash</span>
+                                      <p>{item.userAgentHashPresent ? "Stored" : "Not stored"}</p>
+                                    </div>
+                                    <div className="rounded-lg border border-[#E5ECF3] bg-[#FBFDFF] px-3 py-2">
+                                      <span className="font-semibold text-[#1E293B]">Metadata keys</span>
+                                      <p>{item.metadata ? Object.keys(item.metadata).join(", ") || "None" : "None"}</p>
+                                    </div>
+                                  </div>
+                                </article>
+                              ))
+                            : (
+                                <div className="rounded-lg border border-[#D8E3EE] bg-white px-3 py-4 text-[12px] text-[#607B90]">
+                                  No masked audit records are available yet.
                                 </div>
                               )}
                         </div>

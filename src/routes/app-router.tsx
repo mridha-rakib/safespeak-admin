@@ -4,6 +4,12 @@ import { AdminOperationsSectionPage } from "@/components/admin/admin-operations-
 import { RequireAdminAuth } from "@/components/auth/require-admin-auth";
 import { AdminLayout } from "@/layouts/admin-layout";
 import { AuthLayout } from "@/layouts/auth-layout";
+import {
+  ANALYTICS_ADMIN_ROLES,
+  CONTENT_ADMIN_ROLES,
+  INTEGRATION_ADMIN_ROLES,
+  SUPER_ADMIN_ROLES,
+} from "@/lib/admin-rbac";
 import { AdminAiEngineControlPage } from "@/pages/admin/ai-engine-control-page";
 import { AdminChangePasswordPage } from "@/pages/admin/change-password-page";
 import { AdminContentKnowledgeSourcesRoutePage } from "@/pages/admin/content-knowledge-sources-page";
@@ -38,7 +44,24 @@ import { NotFoundPage } from "@/pages/not-found-page";
 import { ResetPasswordPage } from "@/pages/reset-password-page";
 import { VerifyOtpPage } from "@/pages/verify-otp-page";
 import { APP_ROUTE_PATHS, APP_ROUTE_SEGMENTS } from "@/routes/paths";
+import type { ReactNode } from "react";
 import { createBrowserRouter, Navigate } from "react-router-dom";
+
+const superOnly = (element: ReactNode) => (
+  <RequireAdminAuth allowedRoles={SUPER_ADMIN_ROLES}>{element}</RequireAdminAuth>
+);
+
+const contentOnly = (element: ReactNode) => (
+  <RequireAdminAuth allowedRoles={CONTENT_ADMIN_ROLES}>{element}</RequireAdminAuth>
+);
+
+const integrationOnly = (element: ReactNode) => (
+  <RequireAdminAuth allowedRoles={INTEGRATION_ADMIN_ROLES}>{element}</RequireAdminAuth>
+);
+
+const analyticsOnly = (element: ReactNode) => (
+  <RequireAdminAuth allowedRoles={ANALYTICS_ADMIN_ROLES}>{element}</RequireAdminAuth>
+);
 
 export const appRouter = createBrowserRouter([
   {
@@ -89,19 +112,20 @@ export const appRouter = createBrowserRouter([
       },
       {
         path: APP_ROUTE_SEGMENTS.users,
-        element: <AdminUsersPage />,
+        element: superOnly(<AdminUsersPage />),
       },
       {
         path: APP_ROUTE_SEGMENTS.auditLogs,
-        element: (
+        element: superOnly(
           <AdminOperationsSectionPage
             config={ADMIN_OPERATIONS_CONFIGS.auditLogs}
+            sectionKey="auditLogs"
           />
         ),
       },
       {
         path: APP_ROUTE_SEGMENTS.securityCompliance,
-        element: (
+        element: superOnly(
           <Navigate
             to={APP_ROUTE_PATHS.adminIdentityAccessManagement}
             replace
@@ -110,7 +134,7 @@ export const appRouter = createBrowserRouter([
       },
       {
         path: `${APP_ROUTE_SEGMENTS.securityCompliance}/${APP_ROUTE_SEGMENTS.identityAccessManagement}`,
-        element: (
+        element: superOnly(
           <AdminOperationsSectionPage
             config={ADMIN_OPERATIONS_CONFIGS.identityAccessManagement}
           />
@@ -118,15 +142,15 @@ export const appRouter = createBrowserRouter([
       },
       {
         path: `${APP_ROUTE_SEGMENTS.securityCompliance}/${APP_ROUTE_SEGMENTS.securityMonitoring}`,
-        element: <Navigate to={APP_ROUTE_PATHS.adminPlatformHealth} replace />,
+        element: superOnly(<Navigate to={APP_ROUTE_PATHS.adminPlatformHealth} replace />),
       },
       {
         path: `${APP_ROUTE_SEGMENTS.securityCompliance}/${APP_ROUTE_SEGMENTS.dataProtection}`,
-        element: <AdminDataProtectionPage />,
+        element: superOnly(<AdminDataProtectionPage />),
       },
       {
         path: `${APP_ROUTE_SEGMENTS.securityCompliance}/${APP_ROUTE_SEGMENTS.privacyControls}`,
-        element: (
+        element: superOnly(
           <AdminOperationsSectionPage
             config={ADMIN_OPERATIONS_CONFIGS.privacyControls}
             sectionKey="privacyRequests"
@@ -135,7 +159,7 @@ export const appRouter = createBrowserRouter([
       },
       {
         path: `${APP_ROUTE_SEGMENTS.securityCompliance}/${APP_ROUTE_SEGMENTS.legalCompliance}`,
-        element: (
+        element: superOnly(
           <AdminOperationsSectionPage
             config={ADMIN_OPERATIONS_CONFIGS.legalCompliance}
           />
@@ -143,13 +167,13 @@ export const appRouter = createBrowserRouter([
       },
       {
         path: APP_ROUTE_SEGMENTS.platformIntelligence,
-        element: (
+        element: contentOnly(
           <Navigate to={APP_ROUTE_PATHS.adminTaxonomiesManagement} replace />
         ),
       },
       {
         path: `${APP_ROUTE_SEGMENTS.platformIntelligence}/${APP_ROUTE_SEGMENTS.taxonomiesManagement}`,
-        element: (
+        element: contentOnly(
           <AdminOperationsSectionPage
             config={ADMIN_OPERATIONS_CONFIGS.taxonomiesManagement}
             sectionKey="taxonomies"
@@ -158,7 +182,7 @@ export const appRouter = createBrowserRouter([
       },
       {
         path: `${APP_ROUTE_SEGMENTS.platformIntelligence}/${APP_ROUTE_SEGMENTS.serviceDestinations}`,
-        element: (
+        element: integrationOnly(
           <AdminOperationsSectionPage
             config={ADMIN_OPERATIONS_CONFIGS.serviceDestinations}
             sectionKey="destinations"
@@ -167,7 +191,7 @@ export const appRouter = createBrowserRouter([
       },
       {
         path: `${APP_ROUTE_SEGMENTS.platformIntelligence}/${APP_ROUTE_SEGMENTS.integrationManagement}`,
-        element: (
+        element: integrationOnly(
           <AdminOperationsSectionPage
             config={ADMIN_OPERATIONS_CONFIGS.integrationManagement}
             sectionKey="deliveries"
@@ -176,25 +200,25 @@ export const appRouter = createBrowserRouter([
       },
       {
         path: `${APP_ROUTE_SEGMENTS.platformIntelligence}/${APP_ROUTE_SEGMENTS.aiEngineControl}`,
-        element: <AdminAiEngineControlPage />,
+        element: contentOnly(<AdminAiEngineControlPage />),
       },
       {
         path: `${APP_ROUTE_SEGMENTS.platformIntelligence}/${APP_ROUTE_SEGMENTS.culturalProfiles}`,
-        element: <AdminCulturalProfilesPage />,
+        element: contentOnly(<AdminCulturalProfilesPage />),
       },
       {
         path: `${APP_ROUTE_SEGMENTS.platformIntelligence}/${APP_ROUTE_SEGMENTS.languagePacks}`,
-        element: <AdminLanguagePacksPage />,
+        element: contentOnly(<AdminLanguagePacksPage />),
       },
       {
         path: APP_ROUTE_SEGMENTS.crisisSafety,
-        element: (
+        element: integrationOnly(
           <Navigate to={APP_ROUTE_PATHS.adminCrisisResponseCenter} replace />
         ),
       },
       {
         path: `${APP_ROUTE_SEGMENTS.crisisSafety}/${APP_ROUTE_SEGMENTS.crisisResponseCenter}`,
-        element: (
+        element: superOnly(
           <AdminOperationsSectionPage
             config={ADMIN_OPERATIONS_CONFIGS.crisisResponseCenter}
           />
@@ -202,11 +226,11 @@ export const appRouter = createBrowserRouter([
       },
       {
         path: `${APP_ROUTE_SEGMENTS.crisisSafety}/${APP_ROUTE_SEGMENTS.supportServices}`,
-        element: <AdminSupportServicesPage />,
+        element: integrationOnly(<AdminSupportServicesPage />),
       },
       {
         path: `${APP_ROUTE_SEGMENTS.crisisSafety}/${APP_ROUTE_SEGMENTS.contentModeration}`,
-        element: (
+        element: contentOnly(
           <AdminOperationsSectionPage
             config={ADMIN_OPERATIONS_CONFIGS.contentModeration}
           />
@@ -214,7 +238,7 @@ export const appRouter = createBrowserRouter([
       },
       {
         path: APP_ROUTE_SEGMENTS.contentManagement,
-        element: (
+        element: contentOnly(
           <Navigate
             to={APP_ROUTE_PATHS.adminContentEducationalContent}
             replace
@@ -223,65 +247,65 @@ export const appRouter = createBrowserRouter([
       },
       {
         path: `${APP_ROUTE_SEGMENTS.contentManagement}/${APP_ROUTE_SEGMENTS.contentLandingPage}`,
-        element: <AdminContentLandingRoutePage />,
+        element: contentOnly(<AdminContentLandingRoutePage />),
       },
       {
         path: `${APP_ROUTE_SEGMENTS.contentManagement}/${APP_ROUTE_SEGMENTS.contentMediaAsset}`,
-        element: <AdminContentMediaAssetRoutePage />,
+        element: contentOnly(<AdminContentMediaAssetRoutePage />),
       },
       {
         path: `${APP_ROUTE_SEGMENTS.contentManagement}/${APP_ROUTE_SEGMENTS.contentKnowledgeSources}`,
-        element: <AdminContentKnowledgeSourcesRoutePage />,
+        element: contentOnly(<AdminContentKnowledgeSourcesRoutePage />),
       },
       {
         path: `${APP_ROUTE_SEGMENTS.contentManagement}/${APP_ROUTE_SEGMENTS.contentResourceLibrary}`,
-        element: <AdminContentResourceLibraryRoutePage />,
+        element: contentOnly(<AdminContentResourceLibraryRoutePage />),
       },
       {
         path: `${APP_ROUTE_SEGMENTS.contentManagement}/${APP_ROUTE_SEGMENTS.contentUploadResource}`,
-        element: <AdminContentUploadResourceRoutePage />,
+        element: contentOnly(<AdminContentUploadResourceRoutePage />),
       },
       {
         path: `${APP_ROUTE_SEGMENTS.contentManagement}/${APP_ROUTE_SEGMENTS.contentEducationalContent}`,
-        element: <AdminContentEducationalContentRoutePage />,
+        element: contentOnly(<AdminContentEducationalContentRoutePage />),
       },
       {
         path: `${APP_ROUTE_SEGMENTS.contentManagement}/${APP_ROUTE_SEGMENTS.microEducationCards}`,
-        element: <AdminContentManagementPage />,
+        element: contentOnly(<AdminContentManagementPage />),
       },
       {
         path: APP_ROUTE_SEGMENTS.insights,
-        element: (
+        element: analyticsOnly(
           <Navigate to={APP_ROUTE_PATHS.adminIncidentInsights} replace />
         ),
       },
       {
         path: `${APP_ROUTE_SEGMENTS.insights}/${APP_ROUTE_SEGMENTS.incidentInsights}`,
-        element: <AdminIntelligenceCenterPage />,
+        element: analyticsOnly(<AdminIntelligenceCenterPage />),
       },
       {
         path: `${APP_ROUTE_SEGMENTS.insights}/${APP_ROUTE_SEGMENTS.heatmaps}`,
-        element: <AdminIntelligenceCenterPage />,
+        element: analyticsOnly(<AdminIntelligenceCenterPage />),
       },
       {
         path: `${APP_ROUTE_SEGMENTS.insights}/${APP_ROUTE_SEGMENTS.trends}`,
-        element: <AdminIntelligenceCenterPage />,
+        element: analyticsOnly(<AdminIntelligenceCenterPage />),
       },
       {
         path: `${APP_ROUTE_SEGMENTS.insights}/${APP_ROUTE_SEGMENTS.incidentTrends}`,
-        element: <AdminInsightsIncidentTrendsPage />,
+        element: analyticsOnly(<AdminInsightsIncidentTrendsPage />),
       },
       {
         path: `${APP_ROUTE_SEGMENTS.insights}/${APP_ROUTE_SEGMENTS.intelligenceCenter}`,
-        element: <AdminIntelligenceCenterPage />,
+        element: analyticsOnly(<AdminIntelligenceCenterPage />),
       },
       {
         path: `${APP_ROUTE_SEGMENTS.insights}/${APP_ROUTE_SEGMENTS.patterns}`,
-        element: <AdminInsightsPatternsPage />,
+        element: analyticsOnly(<AdminInsightsPatternsPage />),
       },
       {
         path: `${APP_ROUTE_SEGMENTS.insights}/${APP_ROUTE_SEGMENTS.platformHealth}`,
-        element: (
+        element: analyticsOnly(
           <AdminOperationsSectionPage
             config={ADMIN_OPERATIONS_CONFIGS.platformHealth}
           />
@@ -289,31 +313,31 @@ export const appRouter = createBrowserRouter([
       },
       {
         path: APP_ROUTE_SEGMENTS.createAdmin,
-        element: <AdminCreateAdminPage />,
+        element: superOnly(<AdminCreateAdminPage />),
       },
       {
         path: APP_ROUTE_SEGMENTS.feedback,
-        element: <AdminFeedbackPage />,
+        element: superOnly(<AdminFeedbackPage />),
       },
       {
         path: APP_ROUTE_SEGMENTS.earnings,
-        element: <AdminEarningsPage />,
+        element: superOnly(<AdminEarningsPage />),
       },
       {
         path: APP_ROUTE_SEGMENTS.subscriptions,
-        element: <AdminSubscriptionsPage />,
+        element: superOnly(<AdminSubscriptionsPage />),
       },
       {
         path: APP_ROUTE_SEGMENTS.notifications,
-        element: <AdminNotificationsPage />,
+        element: superOnly(<AdminNotificationsPage />),
       },
       {
         path: APP_ROUTE_SEGMENTS.settings,
-        element: <AdminSettingsPage />,
+        element: superOnly(<AdminSettingsPage />),
       },
       {
         path: `${APP_ROUTE_SEGMENTS.settings}/${APP_ROUTE_SEGMENTS.platformSettings}`,
-        element: <AdminPlatformSettingsPage />,
+        element: contentOnly(<AdminPlatformSettingsPage />),
       },
       {
         path: `${APP_ROUTE_SEGMENTS.settings}/${APP_ROUTE_SEGMENTS.changePassword}`,
@@ -321,15 +345,15 @@ export const appRouter = createBrowserRouter([
       },
       {
         path: `${APP_ROUTE_SEGMENTS.settings}/${APP_ROUTE_SEGMENTS.privacyPolicy}`,
-        element: <AdminPrivacyPolicyPage />,
+        element: contentOnly(<AdminPrivacyPolicyPage />),
       },
       {
         path: `${APP_ROUTE_SEGMENTS.settings}/${APP_ROUTE_SEGMENTS.termsConditions}`,
-        element: <AdminTermsConditionsPage />,
+        element: contentOnly(<AdminTermsConditionsPage />),
       },
       {
         path: `${APP_ROUTE_SEGMENTS.settings}/${APP_ROUTE_SEGMENTS.aboutUs}`,
-        element: <AdminAboutPanel />,
+        element: contentOnly(<AdminAboutPanel />),
       },
     ],
   },

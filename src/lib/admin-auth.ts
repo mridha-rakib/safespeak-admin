@@ -292,7 +292,7 @@ export async function createAdminUser(input: CreateAdminInput): Promise<AdminUse
     body: {
       email: input.email,
       password: input.password,
-      role: input.role ?? "admin",
+      role: input.role ?? "content_admin",
     },
   });
 

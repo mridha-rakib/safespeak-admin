@@ -1,14 +1,23 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { createAdminUser } from "@/lib/admin-auth";
+import { createAdminUser, type AdminRole } from "@/lib/admin-auth";
+import { CLIENT_ADMIN_ROLES } from "@/lib/admin-rbac";
 import { Eye, EyeOff } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 
 type CreateAdminFormValues = {
   email: string;
+  role: AdminRole;
   password: string;
   confirmPassword: string;
+};
+
+const ROLE_LABELS: Record<(typeof CLIENT_ADMIN_ROLES)[number], string> = {
+  super_admin: "Super Admin",
+  content_admin: "Content Admin",
+  integration_admin: "Integrations Admin",
+  analytics_viewer: "Analytics Viewer",
 };
 
 export function AdminCreateAdminForm() {
@@ -27,6 +36,7 @@ export function AdminCreateAdminForm() {
   } = useForm<CreateAdminFormValues>({
     defaultValues: {
       email: "",
+      role: "content_admin",
       password: "",
       confirmPassword: "",
     },
@@ -44,6 +54,7 @@ export function AdminCreateAdminForm() {
       const user = await createAdminUser({
         email: values.email.trim(),
         password: values.password,
+        role: values.role,
       });
 
       setStatusMessage(`Admin account created for ${user.email}.`);
@@ -90,6 +101,28 @@ export function AdminCreateAdminForm() {
           />
           {errors.email
             ? <p className="text-[12px] font-medium text-[#E73908]">{errors.email.message}</p>
+            : null}
+        </div>
+
+        <div className="space-y-1.5">
+          <label htmlFor="create-admin-role" className="text-[22px] font-medium text-[#1E293B]">
+            Role
+          </label>
+          <select
+            id="create-admin-role"
+            className="h-[44px] w-full rounded-md border border-[#AEBCC9] bg-white px-3 text-[18px] text-[#1E293B] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F67AE]"
+            {...register("role", {
+              required: "Role is required",
+            })}
+          >
+            {CLIENT_ADMIN_ROLES.map(role => (
+              <option key={role} value={role}>
+                {ROLE_LABELS[role]}
+              </option>
+            ))}
+          </select>
+          {errors.role
+            ? <p className="text-[12px] font-medium text-[#E73908]">{errors.role.message}</p>
             : null}
         </div>
 
