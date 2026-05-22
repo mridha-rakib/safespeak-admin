@@ -184,6 +184,65 @@ export type KnowledgeSourceChunkPreview = {
   updatedAt?: string;
 };
 
+export type KnowledgeSourceReadinessStatus =
+  | "ready"
+  | "ready_with_gaps"
+  | "not_ready";
+
+export type KnowledgeSourceReadinessCoverageCell = {
+  sourceCategory: Extract<
+    KnowledgeSourceCategory,
+    "official_legal_source" | "official_support_source"
+  >;
+  jurisdiction: KnowledgeSourceJurisdiction;
+  topic: KnowledgeSourceTopic;
+  totalSources: number;
+  eligibleSources: number;
+  approvedSources: number;
+  pendingReviewSources: number;
+  needsLegalReviewSources: number;
+  needsRefreshSources: number;
+  metadataOnlySources: number;
+  failedIngestionSources: number;
+  noChunkSources: number;
+};
+
+export type KnowledgeSourceReadinessBlocker = {
+  code:
+    | "not_approved"
+    | "legal_review_missing"
+    | "refresh_due_or_missing"
+    | "not_embedded"
+    | "no_chunks"
+    | "official_url_missing_or_unapproved"
+    | "ingestion_failed"
+    | "metadata_only_needs_text";
+  label: string;
+  count: number;
+  sourceIds: string[];
+  sourceTitles: string[];
+};
+
+export type KnowledgeSourceReadiness = {
+  generatedAt: string;
+  summary: {
+    readinessStatus: KnowledgeSourceReadinessStatus;
+    readyForPublicLegalRag: boolean;
+    totalOfficialSources: number;
+    eligibleCitationSources: number;
+    eligibleLegalSources: number;
+    approvedCurrentSources: number;
+    legalReviewedSources: number;
+    pendingReviewSources: number;
+    expiredRefreshSources: number;
+    metadataOnlySources: number;
+    failedIngestionSources: number;
+    blockedSources: number;
+  };
+  coverage: KnowledgeSourceReadinessCoverageCell[];
+  blockers: KnowledgeSourceReadinessBlocker[];
+};
+
 export function getKnowledgeSourceId(source: KnowledgeSourceItem): string {
   return source.id ?? source._id ?? "";
 }
@@ -194,6 +253,14 @@ export async function listKnowledgeSources(): Promise<KnowledgeSourceItem[]> {
   );
 
   return response.data.sources;
+}
+
+export async function getKnowledgeSourceReadiness(): Promise<KnowledgeSourceReadiness> {
+  const response = await adminApiRequest<{ readiness: KnowledgeSourceReadiness }>(
+    "/rag/knowledge-sources/readiness",
+  );
+
+  return response.data.readiness;
 }
 
 export async function createKnowledgeSource(

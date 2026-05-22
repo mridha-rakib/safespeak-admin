@@ -18,6 +18,7 @@ import type {
   KnowledgeSourceItem,
   KnowledgeSourceJurisdiction,
   KnowledgeSourceMetadata,
+  KnowledgeSourceReadiness,
   KnowledgeSourceTopic,
   KnowledgeSourceType,
 } from "@/lib/knowledge-sources";
@@ -27,6 +28,7 @@ import {
   approveKnowledgeSource,
   createKnowledgeSource,
   deleteKnowledgeSource,
+  getKnowledgeSourceReadiness,
   getKnowledgeSourceId,
   ingestKnowledgeSource,
   listKnowledgeSourceChunks,
@@ -657,12 +659,16 @@ function displayStatus(source: KnowledgeSourceItem) {
   return labels[source.status];
 }
 
-function displaySourceCategory(source: KnowledgeSourceItem) {
+function displaySourceCategoryLabel(category: KnowledgeSourceCategory) {
   return (
     SOURCE_CATEGORY_OPTIONS.find(
-      option => option.value === source.sourceCategory,
-    )?.label ?? source.sourceCategory
+      option => option.value === category,
+    )?.label ?? category
   );
+}
+
+function displaySourceCategory(source: KnowledgeSourceItem) {
+  return displaySourceCategoryLabel(source.sourceCategory);
 }
 
 function formatSourceAge(source: KnowledgeSourceItem) {
@@ -836,8 +842,49 @@ function compactGovernancePayload(
   };
 }
 
+function displayReadinessStatus(readiness: KnowledgeSourceReadiness) {
+  switch (readiness.summary.readinessStatus) {
+    case "ready":
+      return "Ready";
+    case "ready_with_gaps":
+      return "Ready With Gaps";
+    default:
+      return "Not Ready";
+  }
+}
+
+function readinessStatusClass(readiness: KnowledgeSourceReadiness) {
+  switch (readiness.summary.readinessStatus) {
+    case "ready":
+      return "border-[#BBF7D0] bg-[#F0FDF4] text-[#166534]";
+    case "ready_with_gaps":
+      return "border-[#FDE68A] bg-[#FFFBEB] text-[#92400E]";
+    default:
+      return "border-[#FECACA] bg-[#FEF2F2] text-[#B42318]";
+  }
+}
+
+function getPriorityCoverageGaps(readiness: KnowledgeSourceReadiness) {
+  return readiness.coverage
+    .filter(cell => cell.eligibleSources === 0 || cell.needsLegalReviewSources > 0 || cell.needsRefreshSources > 0)
+    .sort((a, b) => {
+      const aMissing = a.eligibleSources === 0 ? 1 : 0;
+      const bMissing = b.eligibleSources === 0 ? 1 : 0;
+
+      if (aMissing !== bMissing) {
+        return bMissing - aMissing;
+      }
+
+      return `${a.sourceCategory}:${a.jurisdiction}:${a.topic}`.localeCompare(
+        `${b.sourceCategory}:${b.jurisdiction}:${b.topic}`,
+      );
+    })
+    .slice(0, 6);
+}
+
 export function AdminContentKnowledgeSourcesPage() {
   const [sources, setSources] = useState<KnowledgeSourceItem[]>([]);
+  const [readiness, setReadiness] = useState<KnowledgeSourceReadiness | null>(null);
   const [selectedSourceId, setSelectedSourceId] = useState<string>("");
   const [activeTemplateTab, setActiveTemplateTab] = useState<TemplateTabId>(
     TEMPLATE_TABS[0].id,
@@ -871,8 +918,13 @@ export function AdminContentKnowledgeSourcesPage() {
     setIsLoading(true);
 
     try {
-      const items = await listKnowledgeSources();
+      const [items, readinessResult] = await Promise.all([
+        listKnowledgeSources(),
+        getKnowledgeSourceReadiness(),
+      ]);
+
       setSources(items);
+      setReadiness(readinessResult);
       setSelectedSourceId(
         currentId =>
           currentId
@@ -885,6 +937,7 @@ export function AdminContentKnowledgeSourcesPage() {
       );
     }
     catch (error) {
+      setReadiness(null);
       setStatusMessage(
         getFriendlyError(error, "Could not load knowledge sources."),
       );
@@ -908,6 +961,10 @@ export function AdminContentKnowledgeSourcesPage() {
   const selectedSourceMetadata = useMemo(
     () => getMetadata(selectedSource),
     [selectedSource],
+  );
+  const priorityCoverageGaps = useMemo(
+    () => (readiness ? getPriorityCoverageGaps(readiness) : []),
+    [readiness],
   );
   const queueStats = useMemo(() => {
     const officialSources = sources.filter(isOfficialSource);
@@ -1971,6 +2028,115 @@ export function AdminContentKnowledgeSourcesPage() {
             </p>
           </div>
         </div>
+
+        {readiness
+          ? (
+              <section className="rounded-[10px] border border-[#D8E3EE] bg-[#FAFCFF] p-3">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
+                      Public Legal RAG Readiness
+                    </p>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <span
+                        className={`rounded-full border px-3 py-1 text-[11px] font-bold ${readinessStatusClass(readiness)}`}
+                      >
+                        {displayReadinessStatus(readiness)}
+                      </span>
+                      <span className="text-[12px] text-[#475569]">
+                        {readiness.summary.eligibleLegalSources} eligible legal source
+                        {readiness.summary.eligibleLegalSources === 1 ? "" : "s"} / {readiness.summary.totalOfficialSources} official sources
+                      </span>
+                    </div>
+                  </div>
+                  <div className="grid min-w-0 grid-cols-2 gap-2 text-[11px] sm:grid-cols-4 lg:min-w-[520px]">
+                    <div className="rounded-md border border-[#E4EAF1] bg-white px-3 py-2">
+                      <p className="font-semibold text-[#607B90]">Citation Ready</p>
+                      <p className="mt-1 text-base font-bold text-[#1E293B]">
+                        {readiness.summary.eligibleCitationSources}
+                      </p>
+                    </div>
+                    <div className="rounded-md border border-[#E4EAF1] bg-white px-3 py-2">
+                      <p className="font-semibold text-[#607B90]">Approved Current</p>
+                      <p className="mt-1 text-base font-bold text-[#1E293B]">
+                        {readiness.summary.approvedCurrentSources}
+                      </p>
+                    </div>
+                    <div className="rounded-md border border-[#E4EAF1] bg-white px-3 py-2">
+                      <p className="font-semibold text-[#607B90]">Blocked</p>
+                      <p className="mt-1 text-base font-bold text-[#1E293B]">
+                        {readiness.summary.blockedSources}
+                      </p>
+                    </div>
+                    <div className="rounded-md border border-[#E4EAF1] bg-white px-3 py-2">
+                      <p className="font-semibold text-[#607B90]">Metadata Only</p>
+                      <p className="mt-1 text-base font-bold text-[#1E293B]">
+                        {readiness.summary.metadataOnlySources}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {readiness.blockers.length > 0
+                  ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {readiness.blockers.slice(0, 6).map(blocker => (
+                          <span
+                            key={blocker.code}
+                            className="rounded-full border border-[#FDE68A] bg-[#FFFBEB] px-2.5 py-1 text-[10px] font-semibold text-[#92400E]"
+                            title={blocker.sourceTitles.slice(0, 4).join(", ")}
+                          >
+                            {blocker.label}: {blocker.count}
+                          </span>
+                        ))}
+                      </div>
+                    )
+                  : null}
+
+                {priorityCoverageGaps.length > 0
+                  ? (
+                      <div className="mt-3 overflow-x-auto rounded-md border border-[#E4EAF1] bg-white">
+                        <table className="w-full min-w-[680px] border-collapse text-left">
+                          <thead className="bg-[#F8FBFF] text-[10px] uppercase tracking-wide text-[#607B90]">
+                            <tr>
+                              <th className="px-3 py-2 font-semibold">Coverage Cell</th>
+                              <th className="px-3 py-2 font-semibold">Eligible</th>
+                              <th className="px-3 py-2 font-semibold">Needs Legal</th>
+                              <th className="px-3 py-2 font-semibold">Needs Refresh</th>
+                              <th className="px-3 py-2 font-semibold">No Chunks</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {priorityCoverageGaps.map(cell => (
+                              <tr
+                                key={`${cell.sourceCategory}-${cell.jurisdiction}-${cell.topic}`}
+                                className="border-t border-[#E4EAF1] text-[11px] text-[#1E293B]"
+                              >
+                                <td className="px-3 py-2 font-semibold">
+                                  {displaySourceCategoryLabel(cell.sourceCategory)} / {cell.jurisdiction} / {cell.topic}
+                                </td>
+                                <td className="px-3 py-2 text-[#607B90]">
+                                  {cell.eligibleSources}/{cell.totalSources}
+                                </td>
+                                <td className="px-3 py-2 text-[#607B90]">
+                                  {cell.needsLegalReviewSources}
+                                </td>
+                                <td className="px-3 py-2 text-[#607B90]">
+                                  {cell.needsRefreshSources}
+                                </td>
+                                <td className="px-3 py-2 text-[#607B90]">
+                                  {cell.noChunkSources}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )
+                  : null}
+              </section>
+            )
+          : null}
 
         <div className="overflow-x-auto rounded-[10px] border border-[#D5DEE7]">
           <table className="w-full min-w-full border-collapse text-left lg:min-w-[900px]">
