@@ -1,107 +1,109 @@
+import { listAdminFeedback, type AdminFeedbackRecord } from "@/lib/admin-feedback";
 import { CalendarDays, ChevronDown, Eye } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type FeedbackItem = {
+  recordId: string;
   id: string;
   name: string;
   email: string;
   joinedDate: string;
   phone: string;
   message: string;
+  createdAt?: string;
 };
 
-const FEEDBACK_ITEMS: FeedbackItem[] = [
-  {
-    id: "01",
-    name: "Robert Fox",
-    email: "fox@email",
-    joinedDate: "02-24-2024",
-    phone: "+12313412",
-    message: "Vel et commodo et scelerisque aliquam. Sed libero, non praesent felis, sem eget venenatis neque.",
-  },
-  {
-    id: "02",
-    name: "Robert Fox",
-    email: "fox@email",
-    joinedDate: "02-24-2024",
-    phone: "+12313412",
-    message: "Tempor at nisl eu mauris lectus. Amet lobortis auctor at egestas aenean.",
-  },
-  {
-    id: "03",
-    name: "Robert Fox",
-    email: "fox@email",
-    joinedDate: "02-24-2024",
-    phone: "+12313412",
-    message: "Rhoncus cras nunc lectus morbi dui sem diam.",
-  },
-  {
-    id: "04",
-    name: "Robert Fox",
-    email: "fox@email",
-    joinedDate: "02-24-2024",
-    phone: "+12313412",
-    message: "Sed gravida eget semper vulputate vitae.",
-  },
-  {
-    id: "05",
-    name: "Robert Fox",
-    email: "fox@email",
-    joinedDate: "02-24-2024",
-    phone: "+12313412",
-    message: "Vel et commodo et scelerisque aliquam.",
-  },
-  {
-    id: "06",
-    name: "Robert Fox",
-    email: "fox@email",
-    joinedDate: "02-24-2024",
-    phone: "+12313412",
-    message: "Sed libero, non praesent felis, sem eget venenatis neque.",
-  },
-  {
-    id: "07",
-    name: "Robert Fox",
-    email: "fox@email",
-    joinedDate: "02-24-2024",
-    phone: "+12313412",
-    message: "Tempor at nisl eu mauris lectus.",
-  },
-  {
-    id: "08",
-    name: "Robert Fox",
-    email: "fox@email",
-    joinedDate: "02-24-2024",
-    phone: "+12313412",
-    message: "Amet lobortis auctor at egestas aenean.",
-  },
-  {
-    id: "09",
-    name: "Robert Fox",
-    email: "fox@email",
-    joinedDate: "02-24-2024",
-    phone: "+12313412",
-    message: "Rhoncus cras nunc lectus morbi dui sem diam.",
-  },
-  {
-    id: "10",
-    name: "Robert Fox",
-    email: "fox@email",
-    joinedDate: "02-24-2024",
-    phone: "+12313412",
-    message: "Sed gravida eget semper vulputate vitae.",
-  },
-];
+function formatDate(value?: string) {
+  if (!value) {
+    return "Not available";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleDateString("en-AU", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+}
+
+function toFeedbackItem(record: AdminFeedbackRecord, index: number): FeedbackItem {
+  const recordId = record._id ?? record.id ?? String(index);
+
+  return {
+    recordId,
+    id: String(index + 1).padStart(2, "0"),
+    name: record.name || "SafeSpeak user",
+    email: record.email || "Not provided",
+    joinedDate: record.joinedDate || formatDate(record.createdAt),
+    phone: record.phone || "Not provided",
+    message: record.message || record.subject || "No message provided.",
+    createdAt: record.createdAt,
+  };
+}
+
+function getSortTime(item: FeedbackItem) {
+  if (!item.createdAt) {
+    return 0;
+  }
+
+  const time = Date.parse(item.createdAt);
+
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function getInitials(name: string) {
+  const initials = name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(part => part[0]?.toUpperCase() ?? "")
+    .join("");
+
+  return initials || "SS";
+}
 
 export function AdminFeedbackManagement() {
+  const [feedbackItems, setFeedbackItems] = useState<FeedbackItem[]>([]);
   const [selectedFeedback, setSelectedFeedback] = useState<FeedbackItem | null>(null);
   const [isNewestFirst, setIsNewestFirst] = useState(true);
 
-  const orderedFeedback = [...FEEDBACK_ITEMS].sort((left, right) => {
+  useEffect(() => {
+    let isMounted = true;
+
+    void listAdminFeedback({ limit: 100 })
+      .then((records) => {
+        if (isMounted) {
+          setFeedbackItems(records.map(toFeedbackItem));
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setFeedbackItems([]);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const orderedFeedback = useMemo(() => [...feedbackItems].sort((left, right) => {
+    const sortDirection = isNewestFirst ? -1 : 1;
+    const timeComparison = getSortTime(left) - getSortTime(right);
+
+    if (timeComparison !== 0) {
+      return timeComparison * sortDirection;
+    }
+
     return isNewestFirst
       ? right.id.localeCompare(left.id)
       : left.id.localeCompare(right.id);
-  });
+  }), [feedbackItems, isNewestFirst]);
 
   return (
     <>
@@ -136,12 +138,12 @@ export function AdminFeedbackManagement() {
               </thead>
               <tbody>
                 {orderedFeedback.map(item => (
-                  <tr key={item.id} className="text-[13px] text-[#28495F]">
+                  <tr key={item.recordId} className="text-[13px] text-[#28495F]">
                     <td className="px-3 py-2.5">{item.id}</td>
                     <td className="px-3 py-2.5">
                       <div className="flex items-center gap-2.5">
                         <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#DFEAF4] text-[10px] font-semibold text-[#0F67AE]">
-                          RF
+                          {getInitials(item.name)}
                         </span>
                         {item.name}
                       </div>
@@ -175,7 +177,7 @@ export function AdminFeedbackManagement() {
                 </h3>
                 <div className="mt-3 flex items-center gap-2 border-b border-[#E1EAF3] pb-3">
                   <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-[#DFEAF4] text-[11px] font-semibold text-[#0F67AE]">
-                    {selectedFeedback.name.slice(0, 2).toUpperCase()}
+                    {getInitials(selectedFeedback.name)}
                   </span>
                   <p className="text-[22px] font-semibold text-[#1E293B]">{selectedFeedback.name}</p>
                 </div>
@@ -197,8 +199,6 @@ export function AdminFeedbackManagement() {
                     <dt className="font-semibold text-[#1E3A4F]">Message details</dt>
                     <dd className="rounded border border-[#E2EBF4] bg-[#F9FCFF] p-2.5 text-[13px] leading-[1.4] text-[#486173]">
                       {selectedFeedback.message}
-                      {" "}
-                      Vel et commodo et scelerisque aliquam. Sed libero, non praesent felis, sem eget venenatis neque.
                     </dd>
                   </div>
                 </dl>

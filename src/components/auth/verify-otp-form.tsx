@@ -3,9 +3,10 @@ import { AUTH_CARD_CLASS, AUTH_CARD_CONTENT_CLASS, AUTH_CARD_HEADER_CLASS } from
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { requestAdminPasswordReset, verifyAdminPasswordResetOtp } from "@/lib/admin-auth";
 import { APP_ROUTE_PATHS } from "@/routes/paths";
 import { ArrowLeft } from "lucide-react";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useLocation, useNavigate } from "react-router-dom";
 
@@ -18,6 +19,8 @@ type VerifyOtpValues = {
 
 type VerifyOtpLocationState = {
   email?: string;
+  resetRequestId?: string;
+  expiresAt?: string;
 };
 
 const OTP_FIELDS = ["digit1", "digit2", "digit3", "digit4"] as const;
@@ -29,27 +32,60 @@ export function VerifyOtpForm() {
 
   const locationState = location.state as VerifyOtpLocationState | null;
   const contactEmail = locationState?.email || "contact@gmail.com";
+  const [currentResetRequestId, setCurrentResetRequestId] = useState(
+    locationState?.resetRequestId ?? "",
+  );
+  const [otpStatus, setOtpStatus] = useState("");
 
   const { register, handleSubmit, setValue, getValues } = useForm<VerifyOtpValues>({
     defaultValues: {
-      digit1: "8",
-      digit2: "0",
+      digit1: "",
+      digit2: "",
       digit3: "",
       digit4: "",
     },
     mode: "onChange",
   });
 
-  const onSubmit = (values: VerifyOtpValues) => {
+  const onSubmit = async (values: VerifyOtpValues) => {
     const otpCode = `${values.digit1}${values.digit2}${values.digit3}${values.digit4}`;
-    console.warn("Verify OTP form submitted", { otpCode, contactEmail });
-    navigate(APP_ROUTE_PATHS.resetPassword, {
-      state: { email: contactEmail },
-    });
+
+    if (!currentResetRequestId) {
+      setOtpStatus("Request a new verification code first.");
+      return;
+    }
+
+    try {
+      const result = await verifyAdminPasswordResetOtp({
+        email: contactEmail,
+        resetRequestId: currentResetRequestId,
+        otp: otpCode,
+      });
+
+      navigate(APP_ROUTE_PATHS.resetPassword, {
+        state: {
+          email: contactEmail,
+          resetRequestId: currentResetRequestId,
+          resetToken: result.resetToken,
+          resetTokenExpiresAt: result.resetTokenExpiresAt,
+        },
+      });
+    }
+    catch (error) {
+      setOtpStatus(error instanceof Error ? error.message : "Unable to verify code.");
+    }
   };
 
-  const onResend = () => {
-    console.warn("Resend OTP requested", { contactEmail });
+  const onResend = async () => {
+    try {
+      const resetRequest = await requestAdminPasswordReset({ email: contactEmail });
+
+      setCurrentResetRequestId(resetRequest.resetRequestId);
+      setOtpStatus("Verification code resent.");
+    }
+    catch (error) {
+      setOtpStatus(error instanceof Error ? error.message : "Unable to resend code.");
+    }
   };
 
   const onGoBack = () => {
@@ -152,6 +188,7 @@ export function VerifyOtpForm() {
                   Resend
                 </button>
               </div>
+              <p className="sr-only" aria-live="polite">{otpStatus}</p>
             </div>
           </div>
 

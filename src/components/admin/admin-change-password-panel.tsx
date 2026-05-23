@@ -1,5 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { changeAdminPassword } from "@/lib/admin-auth";
+import { ApiRequestError } from "@/lib/api";
 import { APP_ROUTE_PATHS } from "@/routes/paths";
 import { ArrowLeft, Eye, EyeOff } from "lucide-react";
 import { useState } from "react";
@@ -35,8 +37,23 @@ export function AdminChangePasswordPanel() {
 
   const newPasswordValue = watch("newPassword");
 
-  const onSubmit = () => {
-    setStatusMessage("Password updated successfully.");
+  const onSubmit = async (values: ChangePasswordValues) => {
+    setStatusMessage(null);
+
+    try {
+      await changeAdminPassword({
+        currentPassword: values.currentPassword,
+        newPassword: values.newPassword,
+      });
+      setStatusMessage("Password updated successfully.");
+    }
+    catch (error) {
+      setStatusMessage(
+        error instanceof ApiRequestError
+          ? error.message
+          : "Unable to update password. Please try again.",
+      );
+    }
   };
 
   return (

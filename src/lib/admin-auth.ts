@@ -14,6 +14,8 @@ export interface AdminUser {
   _id?: string;
   email: string;
   fullName: string;
+  contactNo?: string;
+  avatarUrl?: string;
   role: AdminRole;
   status: AdminStatus;
   isEmailVerified?: boolean;
@@ -45,6 +47,45 @@ type CreateAdminInput = {
   email: string;
   password: string;
   role?: AdminRole;
+};
+
+type ChangeAdminPasswordInput = {
+  currentPassword: string;
+  newPassword: string;
+};
+
+type UpdateAdminProfileInput = {
+  fullName: string;
+  email: string;
+  contactNo?: string;
+};
+
+type AdminPasswordResetStartInput = {
+  email: string;
+};
+
+export type AdminPasswordResetStartResult = {
+  resetRequestId: string;
+  expiresAt: string;
+  debugOtp?: string;
+};
+
+type AdminPasswordResetVerifyInput = {
+  email: string;
+  resetRequestId: string;
+  otp: string;
+};
+
+export type AdminPasswordResetVerifyResult = {
+  resetToken: string;
+  resetTokenExpiresAt: string;
+};
+
+type AdminPasswordResetInput = {
+  email: string;
+  resetRequestId: string;
+  resetToken: string;
+  newPassword: string;
 };
 
 type AuthOptions = {
@@ -122,6 +163,24 @@ function getAdminSessionStorage(): Storage | null {
   }
 
   return null;
+}
+
+function updateStoredAdminUser(user: AdminUser, timestamp?: string): void {
+  const session = getAdminAuthSession();
+  const storage = getAdminSessionStorage();
+
+  if (!session || !storage) {
+    return;
+  }
+
+  storage.setItem(
+    ADMIN_AUTH_SESSION_KEY,
+    JSON.stringify({
+      ...session,
+      user,
+      timestamp: timestamp ?? new Date().toISOString(),
+    }),
+  );
 }
 
 function decodeJwtPayload(token: string): { exp?: number } | null {
@@ -297,4 +356,75 @@ export async function createAdminUser(input: CreateAdminInput): Promise<AdminUse
   });
 
   return response.data.user;
+}
+
+export async function changeAdminPassword(input: ChangeAdminPasswordInput): Promise<AdminUser> {
+  const response = await adminApiRequest<{ user: AdminUser }>("/auth/change-password", {
+    method: "POST",
+    body: input,
+  });
+
+  updateStoredAdminUser(response.data.user, response.timestamp);
+
+  return response.data.user;
+}
+
+export async function getCurrentAdminUser(): Promise<AdminUser> {
+  const response = await adminApiRequest<{ user: AdminUser }>("/auth/me");
+
+  updateStoredAdminUser(response.data.user, response.timestamp);
+  return response.data.user;
+}
+
+export async function updateAdminProfile(input: UpdateAdminProfileInput): Promise<AdminUser> {
+  const response = await adminApiRequest<{ user: AdminUser }>("/auth/me", {
+    method: "PATCH",
+    body: input,
+  });
+
+  updateStoredAdminUser(response.data.user, response.timestamp);
+  return response.data.user;
+}
+
+export async function requestAdminPasswordReset(
+  input: AdminPasswordResetStartInput,
+): Promise<AdminPasswordResetStartResult> {
+  const response = await apiRequest<AdminPasswordResetStartResult>("/auth/forgot-password", {
+    method: "POST",
+    body: {
+      email: input.email,
+      audience: "admin",
+    },
+  });
+
+  return response.data;
+}
+
+export async function verifyAdminPasswordResetOtp(
+  input: AdminPasswordResetVerifyInput,
+): Promise<AdminPasswordResetVerifyResult> {
+  const response = await apiRequest<AdminPasswordResetVerifyResult>("/auth/verify-reset-otp", {
+    method: "POST",
+    body: {
+      email: input.email,
+      audience: "admin",
+      resetRequestId: input.resetRequestId,
+      otp: input.otp,
+    },
+  });
+
+  return response.data;
+}
+
+export async function resetAdminPassword(input: AdminPasswordResetInput): Promise<void> {
+  await apiRequest<null>("/auth/reset-password", {
+    method: "POST",
+    body: {
+      email: input.email,
+      audience: "admin",
+      resetRequestId: input.resetRequestId,
+      resetToken: input.resetToken,
+      newPassword: input.newPassword,
+    },
+  });
 }

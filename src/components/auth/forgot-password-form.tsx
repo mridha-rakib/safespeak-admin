@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { requestAdminPasswordReset } from "@/lib/admin-auth";
 import { APP_ROUTE_PATHS } from "@/routes/paths";
 import { ArrowLeft } from "lucide-react";
 import { useEffect } from "react";
@@ -20,6 +21,7 @@ export function ForgotPasswordForm() {
   const {
     register,
     handleSubmit,
+    setError,
     trigger,
     formState: { errors },
   } = useForm<ForgotPasswordValues>({
@@ -33,11 +35,25 @@ export function ForgotPasswordForm() {
     void trigger("email");
   }, [trigger]);
 
-  const onSubmit = (values: ForgotPasswordValues) => {
-    console.warn("Forgot password form submitted", values);
-    navigate(APP_ROUTE_PATHS.verifyOtp, {
-      state: { email: values.email },
-    });
+  const onSubmit = async (values: ForgotPasswordValues) => {
+    try {
+      const email = values.email.trim();
+      const resetRequest = await requestAdminPasswordReset({ email });
+
+      navigate(APP_ROUTE_PATHS.verifyOtp, {
+        state: {
+          email,
+          resetRequestId: resetRequest.resetRequestId,
+          expiresAt: resetRequest.expiresAt,
+        },
+      });
+    }
+    catch (error) {
+      setError("email", {
+        type: "server",
+        message: error instanceof Error ? error.message : "Unable to send verification code",
+      });
+    }
   };
 
   const onGoBack = () => {

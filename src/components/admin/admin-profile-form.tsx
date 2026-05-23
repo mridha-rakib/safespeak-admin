@@ -1,7 +1,8 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { getCurrentAdminUser, updateAdminProfile } from "@/lib/admin-auth";
 import { Camera, Pencil } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 
 type AdminProfileValues = {
@@ -10,14 +11,30 @@ type AdminProfileValues = {
   contactNo: string;
 };
 
+function getInitials(value: string): string {
+  const parts = value.trim().split(/\s+/).filter(Boolean);
+
+  if (parts.length === 0) {
+    return "MA";
+  }
+
+  return parts
+    .slice(0, 2)
+    .map(part => part.charAt(0).toUpperCase())
+    .join("");
+}
+
 export function AdminProfileForm() {
   const [isEditing, setIsEditing] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [avatarLabel, setAvatarLabel] = useState("MA");
+  const [profileHeading, setProfileHeading] = useState("Mr. Admin");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const {
     register,
     handleSubmit,
+    reset,
+    setError,
     formState: { errors },
   } = useForm<AdminProfileValues>({
     defaultValues: {
@@ -27,9 +44,63 @@ export function AdminProfileForm() {
     },
   });
 
-  const onSubmit = (values: AdminProfileValues) => {
-    setStatusMessage(`Profile updated for ${values.userName}.`);
-    setIsEditing(false);
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadProfile = async () => {
+      try {
+        const user = await getCurrentAdminUser();
+
+        if (!isMounted) {
+          return;
+        }
+
+        reset({
+          userName: user.fullName,
+          email: user.email,
+          contactNo: user.contactNo ?? "",
+        });
+        setProfileHeading(user.fullName);
+        setAvatarLabel(getInitials(user.fullName));
+      }
+      catch (error) {
+        if (isMounted) {
+          setStatusMessage(error instanceof Error ? error.message : "Unable to load profile.");
+        }
+      }
+    };
+
+    void loadProfile();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [reset]);
+
+  const onSubmit = async (values: AdminProfileValues) => {
+    try {
+      const user = await updateAdminProfile({
+        fullName: values.userName,
+        email: values.email,
+        contactNo: values.contactNo,
+      });
+
+      reset({
+        userName: user.fullName,
+        email: user.email,
+        contactNo: user.contactNo ?? "",
+      });
+      setProfileHeading(user.fullName);
+      setAvatarLabel(getInitials(user.fullName));
+      setStatusMessage(`Profile updated for ${user.fullName}.`);
+      setIsEditing(false);
+    }
+    catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to update profile.";
+
+      setError(/email/i.test(message) ? "email" : "userName", { type: "server", message });
+      setStatusMessage(message);
+    }
   };
 
   return (
@@ -72,7 +143,7 @@ export function AdminProfileForm() {
             </div>
 
             <div className="min-w-0 flex-1">
-              <h3 className="text-[30px] font-semibold leading-none text-[#34475A] sm:text-[36px] lg:text-[44px]">Mr. Admin</h3>
+              <h3 className="text-[30px] font-semibold leading-none text-[#34475A] sm:text-[36px] lg:text-[44px]">{profileHeading}</h3>
               <p className="mt-2 text-[15px] text-[#607B90]">
                 Manage the core account details used across the SafeSpeak admin workspace.
               </p>

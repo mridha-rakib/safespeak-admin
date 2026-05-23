@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { resetAdminPassword } from "@/lib/admin-auth";
 import { APP_ROUTE_PATHS } from "@/routes/paths";
 import { ArrowLeft } from "lucide-react";
 import { useForm } from "react-hook-form";
@@ -16,6 +17,9 @@ type ResetPasswordValues = {
 
 type ResetPasswordLocationState = {
   email?: string;
+  resetRequestId?: string;
+  resetToken?: string;
+  resetTokenExpiresAt?: string;
 };
 
 export function ResetPasswordForm() {
@@ -27,6 +31,7 @@ export function ResetPasswordForm() {
   const {
     register,
     handleSubmit,
+    setError,
     watch,
     formState: { errors },
   } = useForm<ResetPasswordValues>({
@@ -39,9 +44,30 @@ export function ResetPasswordForm() {
 
   const newPasswordValue = watch("newPassword");
 
-  const onSubmit = (values: ResetPasswordValues) => {
-    console.warn("Reset password submitted", { ...values, contactEmail });
-    navigate(APP_ROUTE_PATHS.login, { replace: true });
+  const onSubmit = async (values: ResetPasswordValues) => {
+    if (!locationState?.email || !locationState.resetRequestId || !locationState.resetToken) {
+      setError("newPassword", {
+        type: "server",
+        message: "Password reset session expired. Request a new code.",
+      });
+      return;
+    }
+
+    try {
+      await resetAdminPassword({
+        email: locationState.email,
+        resetRequestId: locationState.resetRequestId,
+        resetToken: locationState.resetToken,
+        newPassword: values.newPassword,
+      });
+      navigate(APP_ROUTE_PATHS.login, { replace: true });
+    }
+    catch (error) {
+      setError("newPassword", {
+        type: "server",
+        message: error instanceof Error ? error.message : "Unable to reset password.",
+      });
+    }
   };
 
   const onGoBack = () => {

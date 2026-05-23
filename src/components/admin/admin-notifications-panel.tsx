@@ -1,4 +1,11 @@
 import { Button } from "@/components/ui/button";
+import {
+  listAdminNotifications,
+  markAdminNotificationRead,
+  markAdminNotificationsRead,
+  type AdminNotificationCategory as NotificationCategory,
+  type AdminNotificationItem as NotificationItem,
+} from "@/lib/admin-notifications";
 import { cn } from "@/lib/utils";
 import {
   AlertTriangle,
@@ -12,126 +19,10 @@ import {
   ShieldCheck,
   UserPlus,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-type NotificationCategory = "security" | "account" | "usage" | "system";
-
-type NotificationItem = {
-  id: string;
-  title: string;
-  body: string;
-  timestamp: string;
-  dateLabel: string;
-  category: NotificationCategory;
-  unread: boolean;
-  tone: "critical" | "warning" | "info";
-  channel: "In-app" | "Email" | "Push";
-};
-
 type FilterKey = "all" | "unread" | NotificationCategory;
-
-const INITIAL_NOTIFICATIONS: NotificationItem[] = [
-  {
-    id: "01",
-    title: "Profile report escalated",
-    body: "User activity triggered an automated escalation. Review and resolve the case.",
-    timestamp: "Fri, Feb 11 - 12:30 PM",
-    dateLabel: "Today - Feb 11",
-    category: "security",
-    unread: true,
-    tone: "critical",
-    channel: "In-app",
-  },
-  {
-    id: "02",
-    title: "Verification request pending",
-    body: "A new business account submitted documents for manual verification.",
-    timestamp: "Fri, Feb 11 - 12:18 PM",
-    dateLabel: "Today - Feb 11",
-    category: "account",
-    unread: true,
-    tone: "warning",
-    channel: "Email",
-  },
-  {
-    id: "03",
-    title: "Usage spike contained",
-    body: "Real-time guardrails throttled unusually high traffic from an API key.",
-    timestamp: "Fri, Feb 11 - 11:45 AM",
-    dateLabel: "Today - Feb 11",
-    category: "usage",
-    unread: false,
-    tone: "info",
-    channel: "Push",
-  },
-  {
-    id: "04",
-    title: "New user joined",
-    body: "Maya Patel created an account and completed onboarding in 2 minutes.",
-    timestamp: "Fri, Feb 11 - 10:05 AM",
-    dateLabel: "Today - Feb 11",
-    category: "account",
-    unread: true,
-    tone: "info",
-    channel: "In-app",
-  },
-  {
-    id: "05",
-    title: "Profile report resolved",
-    body: "Moderator closed the flagged profile after guideline review.",
-    timestamp: "Thu, Feb 10 - 6:42 PM",
-    dateLabel: "Yesterday - Feb 10",
-    category: "security",
-    unread: false,
-    tone: "info",
-    channel: "Email",
-  },
-  {
-    id: "06",
-    title: "System maintenance scheduled",
-    body: "Planned downtime on Feb 15 from 1:00 AM-2:00 AM UTC. Alerts will be buffered.",
-    timestamp: "Thu, Feb 10 - 4:15 PM",
-    dateLabel: "Yesterday - Feb 10",
-    category: "system",
-    unread: true,
-    tone: "warning",
-    channel: "Email",
-  },
-  {
-    id: "07",
-    title: "Multiple login attempts blocked",
-    body: "Four OTP attempts failed for admin account. MFA enforced and access locked.",
-    timestamp: "Thu, Feb 10 - 9:14 AM",
-    dateLabel: "Yesterday - Feb 10",
-    category: "security",
-    unread: false,
-    tone: "critical",
-    channel: "Push",
-  },
-  {
-    id: "08",
-    title: "Usage threshold alert",
-    body: "Content scans consumed 78% of your weekly allocation. Consider raising limits.",
-    timestamp: "Wed, Feb 09 - 3:08 PM",
-    dateLabel: "Earlier this week - Feb 09",
-    category: "usage",
-    unread: true,
-    tone: "warning",
-    channel: "In-app",
-  },
-  {
-    id: "09",
-    title: "New user joined",
-    body: "Jonas Lee joined your app via SSO and requested editor permissions.",
-    timestamp: "Wed, Feb 09 - 10:22 AM",
-    dateLabel: "Earlier this week - Feb 09",
-    category: "account",
-    unread: false,
-    tone: "info",
-    channel: "Push",
-  },
-];
 
 const FILTERS: { key: FilterKey; label: string }[] = [
   { key: "all", label: "All" },
@@ -164,8 +55,34 @@ function getToneColor(tone: NotificationItem["tone"]) {
 
 export function AdminNotificationsPanel() {
   const navigate = useNavigate();
-  const [items, setItems] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
+  const [items, setItems] = useState<NotificationItem[]>([]);
   const [activeFilter, setActiveFilter] = useState<FilterKey>("all");
+  const [searchQuery, setSearchQuery] = useState("");
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadNotifications = async () => {
+      try {
+        const notifications = await listAdminNotifications();
+
+        if (isMounted) {
+          setItems(notifications);
+        }
+      }
+      catch {
+        if (isMounted) {
+          setItems([]);
+        }
+      }
+    };
+
+    void loadNotifications();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const unreadCount = useMemo(() => items.filter(item => item.unread).length, [items]);
   const criticalCount = useMemo(() => items.filter(item => item.tone === "critical").length, [items]);
@@ -183,14 +100,25 @@ export function AdminNotificationsPanel() {
   );
 
   const groupedEntries = useMemo(() => {
+    const normalizedSearch = searchQuery.trim().toLowerCase();
     const filtered = items.filter((item) => {
       if (activeFilter === "all")
-        return true;
+        return normalizedSearch
+          ? `${item.title} ${item.body}`.toLowerCase().includes(normalizedSearch)
+          : true;
 
       if (activeFilter === "unread")
-        return item.unread;
+        return item.unread && (
+          normalizedSearch
+            ? `${item.title} ${item.body}`.toLowerCase().includes(normalizedSearch)
+            : true
+        );
 
-      return item.category === activeFilter;
+      return item.category === activeFilter && (
+        normalizedSearch
+          ? `${item.title} ${item.body}`.toLowerCase().includes(normalizedSearch)
+          : true
+      );
     });
 
     const groups = filtered.reduce<Record<string, NotificationItem[]>>(
@@ -202,16 +130,20 @@ export function AdminNotificationsPanel() {
     );
 
     return Object.entries(groups);
-  }, [activeFilter, items]);
+  }, [activeFilter, items, searchQuery]);
 
   const markAllRead = () => {
+    const unreadIds = items.filter(item => item.unread).map(item => item.id);
+
     setItems(prev => prev.map(item => ({ ...item, unread: false })));
+    void markAdminNotificationsRead(unreadIds);
   };
 
   const markOneRead = (id: string) => {
     setItems(prev =>
       prev.map(item => (item.id === id ? { ...item, unread: false } : item)),
     );
+    void markAdminNotificationRead(id);
   };
 
   return (
@@ -278,6 +210,8 @@ export function AdminNotificationsPanel() {
               <input
                 type="text"
                 placeholder="Search notifications"
+                value={searchQuery}
+                onChange={event => setSearchQuery(event.target.value)}
                 className="w-full border-none bg-transparent text-sm text-[#0F172A] outline-none placeholder:text-[#8AA0B3]"
               />
             </div>

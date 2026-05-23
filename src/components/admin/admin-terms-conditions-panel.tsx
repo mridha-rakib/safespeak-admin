@@ -1,5 +1,3 @@
-import { Button } from "@/components/ui/button";
-import { APP_ROUTE_PATHS } from "@/routes/paths";
 import {
   AlignCenter,
   AlignJustify,
@@ -15,10 +13,18 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
 
+import type { LegalDocumentContent } from "@/lib/content-pages";
+
+import { Button } from "@/components/ui/button";
+import { getAdminContentPage, saveAdminContentPage } from "@/lib/content-pages";
+import { APP_ROUTE_PATHS } from "@/routes/paths";
+
 type TermsConditionsValues = {
   contentHtml: string;
   image?: FileList;
 };
+
+const TERMS_CONDITIONS_PAGE_KEY = "terms-conditions";
 
 const DEFAULT_TERMS_CONDITIONS = `Iacus nulla eu netus pretium. Pellentesque scelerisque tellus nisl eu nisl sed senectus nunc. Porta sollicitudin vel elit varius nulla sit diam sed. Bibendum elit facilisi nulla viverra augue pellentesque gravida morbi.
 
@@ -71,6 +77,12 @@ export function AdminTermsConditionsPanel() {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const defaultEditorHtml = useMemo(() => toEditorHtml(DEFAULT_TERMS_CONDITIONS), []);
 
+  const { register, setValue, handleSubmit } = useForm<TermsConditionsValues>({
+    defaultValues: {
+      contentHtml: defaultEditorHtml,
+    },
+  });
+
   useEffect(() => {
     if (!editorRef.current) {
       return;
@@ -79,17 +91,56 @@ export function AdminTermsConditionsPanel() {
     editorRef.current.innerHTML = defaultEditorHtml;
   }, [defaultEditorHtml]);
 
-  const { register, setValue, handleSubmit } = useForm<TermsConditionsValues>({
-    defaultValues: {
-      contentHtml: defaultEditorHtml,
-    },
-  });
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadContent = async () => {
+      try {
+        const contentPage = await getAdminContentPage<LegalDocumentContent>(TERMS_CONDITIONS_PAGE_KEY);
+        const contentHtml = contentPage.draft.contentHtml || defaultEditorHtml;
+
+        if (!isMounted) {
+          return;
+        }
+
+        setValue("contentHtml", contentHtml, { shouldDirty: false });
+
+        if (editorRef.current) {
+          editorRef.current.innerHTML = contentHtml;
+        }
+      }
+      catch (error) {
+        if (isMounted) {
+          setStatusMessage(error instanceof Error ? error.message : "Could not load terms & conditions.");
+        }
+      }
+    };
+
+    void loadContent();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [defaultEditorHtml, setValue]);
 
   const { ref: contentHtmlRef, ...contentHtmlField } = register("contentHtml");
   const { ref: imageRef, ...imageField } = register("image");
 
-  const onSubmit = () => {
-    setStatusMessage("Terms & conditions saved.");
+  const onSubmit = async (values: TermsConditionsValues) => {
+    const contentHtml = editorRef.current?.innerHTML ?? values.contentHtml;
+
+    setValue("contentHtml", contentHtml, { shouldDirty: false });
+
+    try {
+      await saveAdminContentPage<LegalDocumentContent>(TERMS_CONDITIONS_PAGE_KEY, {
+        contentHtml,
+        ...(selectedFileName ? { imageOriginalFileName: selectedFileName } : {}),
+      });
+      setStatusMessage("Terms & conditions saved.");
+    }
+    catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Could not save terms & conditions.");
+    }
   };
 
   const syncToolbarState = () => {

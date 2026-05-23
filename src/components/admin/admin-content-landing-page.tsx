@@ -1,5 +1,22 @@
-import { AdminContentManagementShell } from "@/components/admin/admin-content-management-shell";
 import { CheckCircle2, ImageUp } from "lucide-react";
+import { useEffect, useState } from "react";
+
+import type { LandingPageContent } from "@/lib/content-pages";
+
+import { AdminContentManagementShell } from "@/components/admin/admin-content-management-shell";
+import { getAdminContentPage } from "@/lib/content-pages";
+
+const LANDING_PAGE_KEY = "landing-page";
+
+const DEFAULT_LANDING_CONTENT: LandingPageContent = {
+  heroHeadline: "Speak safely, anytime.",
+  subheading: "Secure communication for everyone. Private, encrypted, and designed for peace of mind.",
+  primaryButtonLabel: "Get Started",
+  primaryButtonUrl: "/signup",
+  secondaryButtonLabel: "Learn More",
+  secondaryButtonUrl: "/about",
+  backgroundVisualsEnabled: true,
+};
 
 function ContentField({ label, value }: { label: string; value: string }) {
   return (
@@ -16,6 +33,36 @@ function ContentField({ label, value }: { label: string; value: string }) {
 }
 
 export function AdminContentLandingPage() {
+  const [content, setContent] = useState<LandingPageContent>(DEFAULT_LANDING_CONTENT);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadContent = async () => {
+      try {
+        const contentPage = await getAdminContentPage<LandingPageContent>(LANDING_PAGE_KEY);
+
+        if (isMounted) {
+          setContent({
+            ...DEFAULT_LANDING_CONTENT,
+            ...contentPage.draft,
+          });
+        }
+      }
+      catch {
+        if (isMounted) {
+          setContent(DEFAULT_LANDING_CONTENT);
+        }
+      }
+    };
+
+    void loadContent();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   return (
     <AdminContentManagementShell>
       <section className="w-full min-w-0 rounded-[12px] border border-[#D9E2EC] bg-white">
@@ -32,11 +79,11 @@ export function AdminContentLandingPage() {
         <div className="space-y-4 p-4">
           <div className="space-y-3">
             <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">Text Content</p>
-            <ContentField label="Hero Headline" value="Speak safely, anytime." />
+            <ContentField label="Hero Headline" value={content.heroHeadline} />
             <label className="space-y-1.5">
               <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">Sub-heading</p>
               <textarea
-                value="Secure communication for everyone. Private, encrypted, and designed for peace of mind."
+                value={content.subheading}
                 readOnly
                 rows={3}
                 className="w-full rounded-md border border-[#D8E3EE] bg-white px-3 py-2 text-sm text-[#1E293B]"
@@ -54,16 +101,16 @@ export function AdminContentLandingPage() {
           <div className="space-y-3">
             <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">Calls To Action</p>
             <div className="grid gap-3 md:grid-cols-2">
-              <ContentField label="Primary Button Label" value="Get Started" />
-              <ContentField label="Destination URL" value="/signup" />
-              <ContentField label="Secondary Button Label (Optional)" value="Learn More" />
-              <ContentField label="Destination URL" value="/about" />
+              <ContentField label="Primary Button Label" value={content.primaryButtonLabel} />
+              <ContentField label="Destination URL" value={content.primaryButtonUrl} />
+              <ContentField label="Secondary Button Label (Optional)" value={content.secondaryButtonLabel ?? ""} />
+              <ContentField label="Destination URL" value={content.secondaryButtonUrl ?? ""} />
             </div>
           </div>
 
           <div className="space-y-3">
             <label className="inline-flex items-center gap-2 text-[12px] font-semibold text-[#1E293B]">
-              <input type="checkbox" checked readOnly className="h-3.5 w-3.5 rounded border-[#B7C6D6] text-[#0F67AE]" />
+              <input type="checkbox" checked={content.backgroundVisualsEnabled} readOnly className="h-3.5 w-3.5 rounded border-[#B7C6D6] text-[#0F67AE]" />
               Background Visuals
             </label>
             <div className="space-y-2">
