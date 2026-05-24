@@ -41,6 +41,7 @@ export type AdminContentPage<TContent extends ContentPageContent> = {
   publishedAt?: string;
   createdAt?: string;
   updatedAt?: string;
+  hasUnpublishedChanges?: boolean;
 };
 
 export async function getAdminContentPage<TContent extends ContentPageContent>(
@@ -63,6 +64,23 @@ export async function saveAdminContentPage<TContent extends ContentPageContent>(
       method: "PATCH",
       body: {
         content,
+      },
+    },
+  );
+
+  return response.data.contentPage;
+}
+
+export async function publishAdminContentPage<TContent extends ContentPageContent>(
+  key: ContentPageKey,
+  content?: Partial<TContent>,
+): Promise<AdminContentPage<TContent>> {
+  const response = await adminApiRequest<{ contentPage: AdminContentPage<TContent> }>(
+    `/admin/content-pages/${key}/publish`,
+    {
+      method: "POST",
+      body: {
+        ...(content ? { content } : {}),
       },
     },
   );
