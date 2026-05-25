@@ -189,6 +189,30 @@ export type KnowledgeSourceReadinessStatus =
   | "ready_with_gaps"
   | "not_ready";
 
+export type KnowledgeSourceVectorIndexReadinessStatus =
+  | "ready"
+  | "missing"
+  | "unavailable"
+  | "error";
+
+export type KnowledgeSourceVectorIndexReadiness = {
+  status: KnowledgeSourceVectorIndexReadinessStatus;
+  indexName: string;
+  collectionName: string;
+  embeddingField: "embedding";
+  embeddingModel: string;
+  expectedDimensions?: number;
+  message: string;
+  definition?: unknown;
+};
+
+export type KnowledgeSourceReadinessConfiguration = {
+  openAiApiKeyConfigured: boolean;
+  embeddingModel: string;
+  vectorIndex: KnowledgeSourceVectorIndexReadiness;
+  retrievalReady: boolean;
+};
+
 export type KnowledgeSourceReadinessCoverageCell = {
   sourceCategory: Extract<
     KnowledgeSourceCategory,
@@ -216,7 +240,11 @@ export type KnowledgeSourceReadinessBlocker = {
     | "no_chunks"
     | "official_url_missing_or_unapproved"
     | "ingestion_failed"
-    | "metadata_only_needs_text";
+    | "metadata_only_needs_text"
+    | "openai_api_key_missing"
+    | "vector_index_missing"
+    | "vector_search_unavailable"
+    | "vector_index_check_failed";
   label: string;
   count: number;
   sourceIds: string[];
@@ -228,6 +256,7 @@ export type KnowledgeSourceReadiness = {
   summary: {
     readinessStatus: KnowledgeSourceReadinessStatus;
     readyForPublicLegalRag: boolean;
+    retrievalConfigurationReady: boolean;
     totalOfficialSources: number;
     eligibleCitationSources: number;
     eligibleLegalSources: number;
@@ -239,6 +268,7 @@ export type KnowledgeSourceReadiness = {
     failedIngestionSources: number;
     blockedSources: number;
   };
+  configuration: KnowledgeSourceReadinessConfiguration;
   coverage: KnowledgeSourceReadinessCoverageCell[];
   blockers: KnowledgeSourceReadinessBlocker[];
 };

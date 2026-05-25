@@ -28,8 +28,8 @@ import {
   approveKnowledgeSource,
   createKnowledgeSource,
   deleteKnowledgeSource,
-  getKnowledgeSourceReadiness,
   getKnowledgeSourceId,
+  getKnowledgeSourceReadiness,
   ingestKnowledgeSource,
   listKnowledgeSourceChunks,
   listKnowledgeSources,
@@ -862,6 +862,16 @@ function readinessStatusClass(readiness: KnowledgeSourceReadiness) {
     default:
       return "border-[#FECACA] bg-[#FEF2F2] text-[#B42318]";
   }
+}
+
+function readinessConfigClass(isReady: boolean) {
+  return isReady
+    ? "border-[#BBF7D0] bg-[#F0FDF4] text-[#166534]"
+    : "border-[#FDE68A] bg-[#FFFBEB] text-[#92400E]";
+}
+
+function formatVectorIndexLabel(readiness: KnowledgeSourceReadiness) {
+  return `${readiness.configuration.vectorIndex.indexName} (${readiness.configuration.vectorIndex.status})`;
 }
 
 function getPriorityCoverageGaps(readiness: KnowledgeSourceReadiness) {
@@ -2074,6 +2084,43 @@ export function AdminContentKnowledgeSourcesPage() {
                         {readiness.summary.metadataOnlySources}
                       </p>
                     </div>
+                  </div>
+                </div>
+
+                <div className="mt-3 grid gap-2 text-[11px] lg:grid-cols-3">
+                  <div
+                    className={`rounded-md border px-3 py-2 ${readinessConfigClass(
+                      readiness.configuration.openAiApiKeyConfigured,
+                    )}`}
+                  >
+                    <p className="font-semibold">OpenAI Embeddings</p>
+                    <p className="mt-1">
+                      {readiness.configuration.openAiApiKeyConfigured
+                        ? `Configured: ${readiness.configuration.embeddingModel}`
+                        : "OPENAI_API_KEY is missing"}
+                    </p>
+                  </div>
+                  <div
+                    className={`rounded-md border px-3 py-2 ${readinessConfigClass(
+                      readiness.configuration.vectorIndex.status === "ready",
+                    )}`}
+                  >
+                    <p className="font-semibold">Vector Index</p>
+                    <p className="mt-1">
+                      {formatVectorIndexLabel(readiness)}
+                    </p>
+                  </div>
+                  <div
+                    className={`rounded-md border px-3 py-2 ${readinessConfigClass(
+                      readiness.configuration.retrievalReady,
+                    )}`}
+                  >
+                    <p className="font-semibold">Retrieval Config</p>
+                    <p className="mt-1">
+                      {readiness.configuration.retrievalReady
+                        ? "Ready for live retrieval"
+                        : readiness.configuration.vectorIndex.message}
+                    </p>
                   </div>
                 </div>
 

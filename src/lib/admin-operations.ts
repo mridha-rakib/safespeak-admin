@@ -128,6 +128,10 @@ export type AdminReportDeliveryRecord = {
   expectedNextSteps: string[];
   deliveryArtifacts?: Array<Record<string, unknown>>;
   deliveryMessage?: string;
+  deliveryMode?: "automated" | "manual" | "config_missing";
+  deliveryConfigurationStatus?: "ready" | "manual_action" | "config_missing";
+  deliveryConfigurationIssues?: string[];
+  actuallySent?: boolean;
   externalReference?: string;
   hasExternalReference?: boolean;
   hasDeliveryArtifacts?: boolean;
@@ -274,6 +278,48 @@ export type AdminAnalyticsOverview = {
 export type AdminAnalyticsBucket = {
   _id: Record<string, string | null> | string | null;
   count: number;
+};
+
+export type AdminAnalyticsProtectedCount = {
+  count?: number;
+  suppressed: boolean;
+  label: string;
+  noiseApplied: boolean;
+};
+
+export type AdminAnalyticsProtectedBucket = AdminAnalyticsProtectedCount & {
+  _id?: Record<string, string | null> | string | null;
+};
+
+export type AdminAnalyticsExport = {
+  exportId: string;
+  format: "json" | "csv";
+  generatedAt: string;
+  filters: AnalyticsQuery;
+  privacy: {
+    anonymisedOnly: boolean;
+    consentedReportsOnly: boolean;
+    rawReportsExposed: boolean;
+    piiExposed: boolean;
+    minimumCellSuppression: number;
+    differentialPrivacy: {
+      enabled: boolean;
+      mechanism: string;
+      epsilon: number;
+      sensitivity: number;
+      maxAbsoluteNoise: number;
+      appliedTo: string[];
+      lowCountCellsSuppressedBeforeNoise: boolean;
+      negativeCountsClampedToZero: boolean;
+    };
+  };
+  summary: {
+    reports: AdminAnalyticsProtectedCount;
+  };
+  dimensions: Record<string, AdminAnalyticsProtectedBucket[]>;
+  rows: Array<Record<string, unknown>>;
+  contentType?: string;
+  content?: string;
 };
 
 export type AdminPlatformHealthStatus = "ready" | "needs_config" | "blocked";
@@ -681,4 +727,14 @@ export async function getAdminAnalyticsLanguages(
   );
 
   return response.data.languages;
+}
+
+export async function getAdminAnalyticsExport(
+  query: AnalyticsQuery & { format?: "json" | "csv" } = {},
+): Promise<AdminAnalyticsExport> {
+  const response = await adminApiRequest<{ export: AdminAnalyticsExport }>(
+    `/admin/analytics/export${toQueryString({ format: "json", ...query })}`,
+  );
+
+  return response.data.export;
 }

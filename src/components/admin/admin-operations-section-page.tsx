@@ -5,6 +5,7 @@ import { Link, useSearchParams } from "react-router-dom";
 
 import type {
   AdminAnalyticsBucket,
+  AdminAnalyticsExport,
   AdminAnalyticsOverview,
   AdminAuditLogRecord,
   AdminDestinationRecord,
@@ -22,6 +23,7 @@ import {
   createAdminTaxonomy,
   deleteAdminTaxonomy,
   getAdminAnalyticsCategories,
+  getAdminAnalyticsExport,
   getAdminAnalyticsHeatmap,
   getAdminAnalyticsLanguages,
   getAdminAnalyticsOverview,
@@ -100,6 +102,7 @@ type LivePanelState = {
   analyticsTrends: AdminAnalyticsBucket[];
   analyticsCategories: AdminAnalyticsBucket[];
   analyticsLanguages: AdminAnalyticsBucket[];
+  analyticsExport: AdminAnalyticsExport | null;
   platformHealth: AdminPlatformHealthOverview | null;
 };
 
@@ -630,6 +633,7 @@ const defaultLivePanelState: LivePanelState = {
   analyticsTrends: [],
   analyticsCategories: [],
   analyticsLanguages: [],
+  analyticsExport: null,
   platformHealth: null,
 };
 
@@ -759,6 +763,50 @@ function platformHealthStatusLabel(status: AdminPlatformHealthCheck["status"]) {
   }
 
   return status === "blocked" ? "Blocked" : "Ready";
+}
+
+function deliveryStatusClass(status: string) {
+  if (status === "failed" || status === "config_missing") {
+    return "bg-[#FFF1F0] text-[#B42318]";
+  }
+
+  if (status === "requires_manual_action") {
+    return "bg-[#FFF4E5] text-[#9A3412]";
+  }
+
+  if (status === "submitted" || status === "acknowledged") {
+    return "bg-[#E8F7EE] text-[#0F7A43]";
+  }
+
+  return "bg-[#EEF6FF] text-[#0F67AE]";
+}
+
+function deliveryStatusLabel(status: string) {
+  if (status === "config_missing") {
+    return "Config missing";
+  }
+
+  if (status === "requires_manual_action") {
+    return "Manual action";
+  }
+
+  return status.replace(/_/g, " ");
+}
+
+function deliveryReadinessLabel(item: AdminReportDeliveryRecord) {
+  if (item.deliveryConfigurationStatus === "config_missing") {
+    return "Missing configuration";
+  }
+
+  if (item.deliveryConfigurationStatus === "manual_action") {
+    return "Manual handoff";
+  }
+
+  if (item.deliveryConfigurationStatus === "ready") {
+    return item.actuallySent ? "Sent externally" : "Ready";
+  }
+
+  return item.actuallySent ? "Sent externally" : "Not sent";
 }
 
 function getLivePanelDescription(sectionKey: AdminOperationsSectionKey) {
@@ -904,6 +952,33 @@ export function AdminOperationsSectionPage({
         isLoading: false,
         error: error instanceof Error ? error.message : "Unable to load admin data.",
       }));
+    }
+  };
+
+  const generateProtectedAnalyticsExport = async () => {
+    if (sectionKey !== "analytics") {
+      return;
+    }
+
+    setIsSubmittingLiveChange(true);
+    setLivePanel(prev => ({ ...prev, error: null }));
+
+    try {
+      const analyticsExport = await getAdminAnalyticsExport({ format: "json" });
+
+      setLivePanel(prev => ({
+        ...prev,
+        analyticsExport,
+      }));
+    }
+    catch (error) {
+      setLivePanel(prev => ({
+        ...prev,
+        error: error instanceof Error ? error.message : "Unable to generate protected analytics export.",
+      }));
+    }
+    finally {
+      setIsSubmittingLiveChange(false);
     }
   };
 
@@ -1601,11 +1676,24 @@ export function AdminOperationsSectionPage({
                                         {item.templateKey ?? "default"}
                                       </p>
                                     </div>
-                                    <span className="rounded-full bg-[#EEF6FF] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#0F67AE]">
-                                      {item.status}
+                                    <span
+                                      className={cn(
+                                        "rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em]",
+                                        deliveryStatusClass(item.status),
+                                      )}
+                                    >
+                                      {deliveryStatusLabel(item.status)}
                                     </span>
                                   </div>
-                                  <div className="mt-3 grid gap-2 text-[11px] text-[#52667A] md:grid-cols-3">
+                                  <div className="mt-3 grid gap-2 text-[11px] text-[#52667A] md:grid-cols-4">
+                                    <div className="rounded-lg border border-[#E5ECF3] bg-[#FBFDFF] px-3 py-2">
+                                      <span className="font-semibold text-[#1E293B]">Outcome</span>
+                                      <p>{item.actuallySent ? "Sent externally" : "Not externally sent"}</p>
+                                    </div>
+                                    <div className="rounded-lg border border-[#E5ECF3] bg-[#FBFDFF] px-3 py-2">
+                                      <span className="font-semibold text-[#1E293B]">Readiness</span>
+                                      <p>{deliveryReadinessLabel(item)}</p>
+                                    </div>
                                     <div className="rounded-lg border border-[#E5ECF3] bg-[#FBFDFF] px-3 py-2">
                                       <span className="font-semibold text-[#1E293B]">External ref</span>
                                       <p>{item.externalReference ?? "Not received"}</p>
@@ -1614,11 +1702,24 @@ export function AdminOperationsSectionPage({
                                       <span className="font-semibold text-[#1E293B]">Artifacts</span>
                                       <p>{item.hasDeliveryArtifacts ? "Available" : "None"}</p>
                                     </div>
+                                  </div>
+                                  <div className="mt-2 grid gap-2 text-[11px] text-[#52667A] md:grid-cols-2">
+                                    <div className="rounded-lg border border-[#E5ECF3] bg-[#FBFDFF] px-3 py-2">
+                                      <span className="font-semibold text-[#1E293B]">Delivery mode</span>
+                                      <p>{item.deliveryMode?.replace(/_/g, " ") ?? "Unknown"}</p>
+                                    </div>
                                     <div className="rounded-lg border border-[#E5ECF3] bg-[#FBFDFF] px-3 py-2">
                                       <span className="font-semibold text-[#1E293B]">Consent flags</span>
                                       <p>{item.requiredConsentFlags.join(", ") || "None"}</p>
                                     </div>
                                   </div>
+                                  {item.deliveryConfigurationIssues?.length
+                                    ? (
+                                        <p className="mt-2 rounded-lg border border-[#FAD7A8] bg-[#FFF8ED] px-3 py-2 text-[11px] leading-5 text-[#9A5B12]">
+                                          {item.deliveryConfigurationIssues.join(" ")}
+                                        </p>
+                                      )
+                                    : null}
                                   {item.deliveryMessage
                                     ? <p className="mt-2 text-[11px] leading-5 text-[#607B90]">{item.deliveryMessage}</p>
                                     : null}
@@ -2793,11 +2894,24 @@ export function AdminOperationsSectionPage({
                                         {item.templateKey ?? "default"}
                                       </p>
                                     </div>
-                                    <span className="rounded-full bg-[#EEF6FF] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#0F67AE]">
-                                      {item.status}
+                                    <span
+                                      className={cn(
+                                        "rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em]",
+                                        deliveryStatusClass(item.status),
+                                      )}
+                                    >
+                                      {deliveryStatusLabel(item.status)}
                                     </span>
                                   </div>
-                                  <div className="mt-3 grid gap-2 text-[11px] text-[#52667A] md:grid-cols-3">
+                                  <div className="mt-3 grid gap-2 text-[11px] text-[#52667A] md:grid-cols-4">
+                                    <div className="rounded-lg border border-[#E5ECF3] bg-[#FBFDFF] px-3 py-2">
+                                      <span className="font-semibold text-[#1E293B]">Outcome</span>
+                                      <p>{item.actuallySent ? "Sent externally" : "Not externally sent"}</p>
+                                    </div>
+                                    <div className="rounded-lg border border-[#E5ECF3] bg-[#FBFDFF] px-3 py-2">
+                                      <span className="font-semibold text-[#1E293B]">Readiness</span>
+                                      <p>{deliveryReadinessLabel(item)}</p>
+                                    </div>
                                     <div className="rounded-lg border border-[#E5ECF3] bg-[#FBFDFF] px-3 py-2">
                                       <span className="font-semibold text-[#1E293B]">External ref</span>
                                       <p>{item.externalReference ?? "Not received"}</p>
@@ -2806,11 +2920,24 @@ export function AdminOperationsSectionPage({
                                       <span className="font-semibold text-[#1E293B]">Artifacts</span>
                                       <p>{item.hasDeliveryArtifacts ? "Available" : "None"}</p>
                                     </div>
+                                  </div>
+                                  <div className="mt-2 grid gap-2 text-[11px] text-[#52667A] md:grid-cols-2">
+                                    <div className="rounded-lg border border-[#E5ECF3] bg-[#FBFDFF] px-3 py-2">
+                                      <span className="font-semibold text-[#1E293B]">Delivery mode</span>
+                                      <p>{item.deliveryMode?.replace(/_/g, " ") ?? "Unknown"}</p>
+                                    </div>
                                     <div className="rounded-lg border border-[#E5ECF3] bg-[#FBFDFF] px-3 py-2">
                                       <span className="font-semibold text-[#1E293B]">Consent flags</span>
                                       <p>{item.requiredConsentFlags.join(", ") || "None"}</p>
                                     </div>
                                   </div>
+                                  {item.deliveryConfigurationIssues?.length
+                                    ? (
+                                        <p className="mt-2 rounded-lg border border-[#FAD7A8] bg-[#FFF8ED] px-3 py-2 text-[11px] leading-5 text-[#9A5B12]">
+                                          {item.deliveryConfigurationIssues.join(" ")}
+                                        </p>
+                                      )
+                                    : null}
                                   {item.deliveryMessage
                                     ? <p className="mt-2 text-[11px] leading-5 text-[#607B90]">{item.deliveryMessage}</p>
                                     : null}
@@ -3032,7 +3159,40 @@ export function AdminOperationsSectionPage({
                               {" "}
                               {livePanel.analyticsOverview?.privacy?.minimumCellSuppression ?? "n/a"}
                             </p>
+                            <button
+                              type="button"
+                              disabled={isSubmittingLiveChange}
+                              onClick={() => void generateProtectedAnalyticsExport()}
+                              className="mt-3 rounded-md border border-[#D8E3EE] px-3 py-2 text-[11px] font-semibold text-[#0F67AE] transition hover:bg-[#EEF6FF] disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {isSubmittingLiveChange ? "Generating..." : "Generate Protected Export"}
+                            </button>
                           </div>
+                          {livePanel.analyticsExport
+                            ? (
+                                <div className="rounded-xl border border-[#C7E5D3] bg-[#F0FDF4] px-4 py-3 lg:col-span-2">
+                                  <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#166534]">Protected Export Ready</p>
+                                  <p className="mt-2 text-[13px] font-semibold text-[#1E293B]">
+                                    Export {livePanel.analyticsExport.exportId}
+                                  </p>
+                                  <p className="mt-2 text-[12px] text-[#166534]">
+                                    Differential privacy:
+                                    {" "}
+                                    {livePanel.analyticsExport.privacy.differentialPrivacy.mechanism}
+                                    {" "}
+                                    epsilon
+                                    {" "}
+                                    {livePanel.analyticsExport.privacy.differentialPrivacy.epsilon}
+                                    {"; low-count cells are suppressed before noise is applied."}
+                                  </p>
+                                  <p className="mt-2 text-[12px] text-[#166534]">
+                                    Exported report total:
+                                    {" "}
+                                    {livePanel.analyticsExport.summary.reports.label}
+                                  </p>
+                                </div>
+                              )
+                            : null}
                           <div className="rounded-xl border border-[#E5ECF3] bg-white px-4 py-3">
                             <p className="text-[13px] font-semibold text-[#1E293B]">Top Categories</p>
                             <ul className="mt-2 space-y-2 text-[12px] text-[#607B90]">
