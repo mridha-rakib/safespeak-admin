@@ -276,6 +276,43 @@ export type AdminAnalyticsBucket = {
   count: number;
 };
 
+export type AdminPlatformHealthStatus = "ready" | "needs_config" | "blocked";
+
+export type AdminPlatformHealthCheck = {
+  id: string;
+  label: string;
+  category: "core" | "security" | "ai" | "knowledge" | "storage" | "delivery" | "analytics";
+  status: AdminPlatformHealthStatus;
+  owner: string;
+  metric: string;
+  summary: string;
+  details: string[];
+};
+
+export type AdminPlatformHealthOverview = {
+  generatedAt: string;
+  overallStatus: AdminPlatformHealthStatus;
+  service: {
+    name: string;
+    version: string;
+    environment: string;
+    apiPrefix: string;
+    uptimeSeconds: number;
+    uptimeLabel: string;
+  };
+  stats: Array<{
+    label: string;
+    value: string;
+    helper: string;
+  }>;
+  checks: AdminPlatformHealthCheck[];
+  blockers: AdminPlatformHealthCheck[];
+  warnings: AdminPlatformHealthCheck[];
+  counts: Record<string, number>;
+  configuration: Record<string, boolean | string>;
+  footerNote: string;
+};
+
 type AnalyticsQuery = {
   from?: string;
   to?: string;
@@ -588,6 +625,12 @@ export async function patchAdminPrivacyRequest(
   );
 
   return response.data.privacyRequest;
+}
+
+export async function getAdminPlatformHealthOverview(): Promise<AdminPlatformHealthOverview> {
+  const response = await adminApiRequest<{ platformHealth: AdminPlatformHealthOverview }>("/admin/platform-health");
+
+  return response.data.platformHealth;
 }
 
 export async function getAdminAnalyticsOverview(

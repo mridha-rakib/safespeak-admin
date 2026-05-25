@@ -308,7 +308,8 @@ export const appRouter = createBrowserRouter([
         element: analyticsOnly(
           <AdminOperationsSectionPage
             config={ADMIN_OPERATIONS_CONFIGS.platformHealth}
-          />
+            sectionKey="platformHealth"
+          />,
         ),
       },
       {

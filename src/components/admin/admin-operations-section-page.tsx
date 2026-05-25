@@ -4,10 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
 import type {
-  AdminAuditLogRecord,
   AdminAnalyticsBucket,
   AdminAnalyticsOverview,
+  AdminAuditLogRecord,
   AdminDestinationRecord,
+  AdminPlatformHealthCheck,
+  AdminPlatformHealthOverview,
   AdminPrivacyRequestRecord,
   AdminReportDeliveryRecord,
   AdminSubmissionTemplateRecord,
@@ -24,9 +26,10 @@ import {
   getAdminAnalyticsLanguages,
   getAdminAnalyticsOverview,
   getAdminAnalyticsTrends,
+  getAdminPlatformHealthOverview,
   getAdminTaxonomy,
-  listAdminDestinations,
   listAdminAuditLogs,
+  listAdminDestinations,
   listAdminPrivacyRequests,
   listAdminReportDeliveries,
   listAdminSubmissionTemplates,
@@ -80,7 +83,8 @@ type AdminOperationsSectionKey =
   | "privacyRequests"
   | "deliveries"
   | "auditLogs"
-  | "analytics";
+  | "analytics"
+  | "platformHealth";
 
 type LivePanelState = {
   isLoading: boolean;
@@ -96,6 +100,7 @@ type LivePanelState = {
   analyticsTrends: AdminAnalyticsBucket[];
   analyticsCategories: AdminAnalyticsBucket[];
   analyticsLanguages: AdminAnalyticsBucket[];
+  platformHealth: AdminPlatformHealthOverview | null;
 };
 
 type DestinationDraft = {
@@ -625,6 +630,7 @@ const defaultLivePanelState: LivePanelState = {
   analyticsTrends: [],
   analyticsCategories: [],
   analyticsLanguages: [],
+  platformHealth: null,
 };
 
 async function fetchLivePanelData(sectionKey: AdminOperationsSectionKey): Promise<LivePanelState> {
@@ -679,6 +685,15 @@ async function fetchLivePanelData(sectionKey: AdminOperationsSectionKey): Promis
     };
   }
 
+  if (sectionKey === "platformHealth") {
+    const platformHealth = await getAdminPlatformHealthOverview();
+
+    return {
+      ...defaultLivePanelState,
+      platformHealth,
+    };
+  }
+
   const [
     analyticsOverview,
     analyticsHeatmap,
@@ -724,6 +739,54 @@ function statusClass(status: AdminOperationsModule["status"]) {
   }
 
   return "bg-[#F1F5F9] text-[#334155]";
+}
+
+function platformHealthStatusClass(status: AdminPlatformHealthCheck["status"]) {
+  if (status === "blocked") {
+    return "bg-[#FFF1F0] text-[#B42318]";
+  }
+
+  if (status === "needs_config") {
+    return "bg-[#FFF4E5] text-[#9A3412]";
+  }
+
+  return "bg-[#E8F7EE] text-[#0F7A43]";
+}
+
+function platformHealthStatusLabel(status: AdminPlatformHealthCheck["status"]) {
+  if (status === "needs_config") {
+    return "Needs config";
+  }
+
+  return status === "blocked" ? "Blocked" : "Ready";
+}
+
+function getLivePanelDescription(sectionKey: AdminOperationsSectionKey) {
+  if (sectionKey === "taxonomies") {
+    return "Manage active incident, support, language, and culture taxonomy records.";
+  }
+
+  if (sectionKey === "destinations") {
+    return "Review live destination routing records for agencies and services.";
+  }
+
+  if (sectionKey === "privacyRequests") {
+    return "Update privacy request review state from the live backend queue.";
+  }
+
+  if (sectionKey === "deliveries") {
+    return "Monitor consent-gated delivery attempts without exposing raw payloads.";
+  }
+
+  if (sectionKey === "auditLogs") {
+    return "Review masked admin audit records without raw PII, IP hashes, or user-agent hashes.";
+  }
+
+  if (sectionKey === "platformHealth") {
+    return "Review live system readiness, integration configuration, and operational blockers without exposing secrets.";
+  }
+
+  return "Review anonymised analytics aggregates returned by the backend analytics module.";
 }
 
 export function AdminOperationsSectionPage({
@@ -1346,17 +1409,7 @@ export function AdminOperationsSectionPage({
                     <div>
                       <h4 className="text-[16px] font-semibold text-[#1E293B]">Live Admin Data</h4>
                       <p className="mt-1 text-[12px] text-[#607B90]">
-                        {sectionKey === "taxonomies"
-                          ? "Manage active incident, support, language, and culture taxonomy records."
-                          : sectionKey === "destinations"
-                            ? "Review live destination routing records for agencies and services."
-                          : sectionKey === "privacyRequests"
-                            ? "Update privacy request review state from the live backend queue."
-                            : sectionKey === "deliveries"
-                              ? "Monitor consent-gated delivery attempts without exposing raw payloads."
-                              : sectionKey === "auditLogs"
-                                ? "Review masked admin audit records without raw PII, IP hashes, or user-agent hashes."
-                                : "Review anonymised analytics aggregates returned by the backend analytics module."}
+                        {getLivePanelDescription(sectionKey)}
                       </p>
                     </div>
                     {livePanel.isLoading
@@ -2807,6 +2860,154 @@ export function AdminOperationsSectionPage({
                               </div>
                             </div>
                           ))}
+                        </div>
+                      )
+                    : null}
+
+                  {sectionKey === "platformHealth"
+                    ? (
+                        <div className="mt-4 space-y-4">
+                          {livePanel.platformHealth
+                            ? (
+                                <>
+                                  <div className="grid gap-3 lg:grid-cols-[1.2fr_0.8fr]">
+                                    <div className="rounded-xl border border-[#E5ECF3] bg-white px-4 py-3">
+                                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                        <div>
+                                          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#607B90]">System Readiness</p>
+                                          <p className="mt-2 text-[22px] font-semibold text-[#1E293B]">
+                                            {platformHealthStatusLabel(livePanel.platformHealth.overallStatus)}
+                                          </p>
+                                          <p className="mt-2 text-[12px] leading-5 text-[#607B90]">
+                                            {livePanel.platformHealth.service.name}
+                                            {" "}
+                                            {livePanel.platformHealth.service.version}
+                                            {" • "}
+                                            {livePanel.platformHealth.service.environment}
+                                            {" • "}
+                                            {livePanel.platformHealth.service.uptimeLabel}
+                                            {" uptime"}
+                                          </p>
+                                        </div>
+                                        <span
+                                          className={cn(
+                                            "inline-flex w-fit rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em]",
+                                            platformHealthStatusClass(livePanel.platformHealth.overallStatus),
+                                          )}
+                                        >
+                                          {livePanel.platformHealth.overallStatus.replace(/_/g, " ")}
+                                        </span>
+                                      </div>
+                                      <p className="mt-3 text-[11px] text-[#607B90]">
+                                        Generated
+                                        {" "}
+                                        {new Date(livePanel.platformHealth.generatedAt).toLocaleString()}
+                                        {" "}
+                                        from
+                                        {" "}
+                                        {livePanel.platformHealth.service.apiPrefix}
+                                        .
+                                      </p>
+                                    </div>
+                                    <div className="grid gap-3 sm:grid-cols-2">
+                                      {livePanel.platformHealth.stats.map(item => (
+                                        <div key={item.label} className="rounded-xl border border-[#E5ECF3] bg-white px-4 py-3">
+                                          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#607B90]">{item.label}</p>
+                                          <p className="mt-2 text-[17px] font-semibold text-[#1E293B]">{item.value}</p>
+                                          <p className="mt-1 text-[11px] leading-5 text-[#607B90]">{item.helper}</p>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+
+                                  <div className="grid gap-3 xl:grid-cols-2">
+                                    {livePanel.platformHealth.checks.map(check => (
+                                      <article key={check.id} className="rounded-xl border border-[#E5ECF3] bg-white px-4 py-3">
+                                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                          <div>
+                                            <p className="text-[14px] font-semibold text-[#1E293B]">{check.label}</p>
+                                            <p className="mt-1 text-[12px] text-[#607B90]">
+                                              {check.category}
+                                              {" • "}
+                                              {check.owner}
+                                            </p>
+                                          </div>
+                                          <span
+                                            className={cn(
+                                              "inline-flex w-fit rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em]",
+                                              platformHealthStatusClass(check.status),
+                                            )}
+                                          >
+                                            {platformHealthStatusLabel(check.status)}
+                                          </span>
+                                        </div>
+                                        <p className="mt-2 text-[12px] leading-5 text-[#475569]">{check.summary}</p>
+                                        <div className="mt-3 rounded-lg border border-[#E5ECF3] bg-[#FBFDFF] px-3 py-2">
+                                          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#607B90]">Metric</p>
+                                          <p className="mt-1 text-[13px] font-semibold text-[#1E293B]">{check.metric}</p>
+                                        </div>
+                                        <ul className="mt-3 space-y-1.5 text-[11px] leading-5 text-[#607B90]">
+                                          {check.details.map(detail => (
+                                            <li key={detail}>{detail}</li>
+                                          ))}
+                                        </ul>
+                                      </article>
+                                    ))}
+                                  </div>
+
+                                  <div className="grid gap-3 lg:grid-cols-3">
+                                    <div className="rounded-xl border border-[#E5ECF3] bg-white px-4 py-3">
+                                      <p className="text-[13px] font-semibold text-[#1E293B]">Blockers</p>
+                                      <ul className="mt-2 space-y-2 text-[12px] text-[#607B90]">
+                                        {livePanel.platformHealth.blockers.length
+                                          ? livePanel.platformHealth.blockers.map(item => (
+                                              <li key={item.id}>{item.label}</li>
+                                            ))
+                                          : <li>No blocking checks.</li>}
+                                      </ul>
+                                    </div>
+                                    <div className="rounded-xl border border-[#E5ECF3] bg-white px-4 py-3">
+                                      <p className="text-[13px] font-semibold text-[#1E293B]">Warnings</p>
+                                      <ul className="mt-2 space-y-2 text-[12px] text-[#607B90]">
+                                        {livePanel.platformHealth.warnings.length
+                                          ? livePanel.platformHealth.warnings.map(item => (
+                                              <li key={item.id}>{item.label}</li>
+                                            ))
+                                          : <li>No configuration warnings.</li>}
+                                      </ul>
+                                    </div>
+                                    <div className="rounded-xl border border-[#E5ECF3] bg-white px-4 py-3">
+                                      <p className="text-[13px] font-semibold text-[#1E293B]">Configuration</p>
+                                      <div className="mt-2 flex flex-wrap gap-2">
+                                        {Object.entries(livePanel.platformHealth.configuration).map(([key, value]) => (
+                                          <span
+                                            key={key}
+                                            className="inline-flex items-center rounded-full border border-[#D8E3EE] bg-[#FBFDFF] px-2.5 py-1 text-[11px] text-[#607B90]"
+                                          >
+                                            <span className="font-semibold text-[#1E293B]">
+                                              {formatMetadataLabel(key)}
+                                              :
+                                            </span>
+                                            <span className="ml-1">{String(value)}</span>
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <p className="rounded-lg border border-[#D8E3EE] bg-white px-3 py-3 text-[12px] leading-5 text-[#607B90]">
+                                    {livePanel.platformHealth.footerNote}
+                                  </p>
+                                </>
+                              )
+                            : null}
+                          {!livePanel.platformHealth && !livePanel.isLoading
+                            ? (
+                                <div className="rounded-lg border border-[#D8E3EE] bg-white px-3 py-4 text-[12px] text-[#607B90]">
+                                  Platform health data is not available yet.
+                                </div>
+                              )
+                            : null}
                         </div>
                       )
                     : null}
