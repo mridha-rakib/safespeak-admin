@@ -21,6 +21,7 @@ import type {
   KnowledgeSourceReadiness,
   KnowledgeSourceTopic,
   KnowledgeSourceType,
+  PineconeHealth,
 } from "@/lib/knowledge-sources";
 
 import { AdminContentManagementShell } from "@/components/admin/admin-content-management-shell";
@@ -30,6 +31,7 @@ import {
   deleteKnowledgeSource,
   getKnowledgeSourceId,
   getKnowledgeSourceReadiness,
+  getPineconeHealth,
   ingestKnowledgeSource,
   listKnowledgeSourceChunks,
   listKnowledgeSources,
@@ -57,6 +59,9 @@ const TEMPLATE_TABS = [
     value: `Acknowledge the user's experience, summarise the immediate safety steps, and provide the next best support option.\n\nWhen confidence is low, route the draft to human review before publishing or sharing externally.`,
   },
 ] as const;
+const CHUNK_PREVIEW_PAGE_SIZE = 25;
+const LARGE_DOCUMENT_PAGE_WARNING_THRESHOLD = 100;
+const LARGE_DOCUMENT_CHUNK_WARNING_THRESHOLD = 1000;
 
 type TemplateTabId = (typeof TEMPLATE_TABS)[number]["id"];
 
@@ -91,9 +96,11 @@ const JURISDICTION_OPTIONS: KnowledgeSourceJurisdiction[] = [
 ];
 const TOPIC_OPTIONS: KnowledgeSourceTopic[] = [
   "discrimination",
+  "racial",
   "racial_hatred",
   "online_safety",
   "scam",
+  "migrant",
   "privacy",
   "workplace",
   "dv",
@@ -103,6 +110,8 @@ const TOPIC_OPTIONS: KnowledgeSourceTopic[] = [
   "consent",
   "crisis",
   "education",
+  "local_intelligence",
+  "smart_dialler",
   "other",
 ];
 const SOURCE_TYPE_OPTIONS: KnowledgeSourceType[] = [
@@ -361,6 +370,9 @@ function ingestionClass(status: string) {
   if (status === "Approved For RAG" || status === "Ready For Approval") {
     return "bg-[#DCFCE7] text-[#0F7A43]";
   }
+  if (status === "Ingestion Failed" || status === "Partial Index Failure") {
+    return "bg-[#FEE2E2] text-[#B42318]";
+  }
   if (status === "Rejected" || status === "Expired" || status === "Archived") {
     return "bg-[#FEE2E2] text-[#B42318]";
   }
@@ -384,6 +396,46 @@ function getChunkCount(source: KnowledgeSourceItem) {
   return typeof chunkCount === "number" ? chunkCount : 0;
 }
 
+function getIndexedChunkCount(source: KnowledgeSourceItem) {
+  const indexedChunkCount = getMetadata(source).indexedChunkCount;
+
+  return typeof indexedChunkCount === "number" ? indexedChunkCount : 0;
+}
+
+function hasStoredContent(source: KnowledgeSourceItem) {
+  return Boolean(source.hasStoredContent || source.localFilePath);
+}
+
+function getIndexingProgressLabel(source: KnowledgeSourceItem) {
+  const chunkCount = getChunkCount(source);
+  const indexedChunkCount = getIndexedChunkCount(source);
+
+  if (chunkCount <= 0) {
+    return "";
+  }
+
+  return `${indexedChunkCount}/${chunkCount} indexed`;
+}
+
+function getLargeDocumentWarning(source: KnowledgeSourceItem) {
+  const metadata = getMetadata(source);
+  const pageCount = metadata.extractedPageCount;
+  const chunkCount = getChunkCount(source);
+
+  if (
+    typeof pageCount === "number"
+    && pageCount > LARGE_DOCUMENT_PAGE_WARNING_THRESHOLD
+  ) {
+    return `Large document: ${pageCount} pages. Chunk previews are paginated and indexing runs in batches.`;
+  }
+
+  if (chunkCount > LARGE_DOCUMENT_CHUNK_WARNING_THRESHOLD) {
+    return `Large document: ${chunkCount} chunks. Chunk previews are paginated and indexing runs in batches.`;
+  }
+
+  return metadata.largeDocumentWarning;
+}
+
 function isLegalRagSource(source: KnowledgeSourceItem) {
   return (
     source.sourceCategory === "official_legal_source"
@@ -396,12 +448,25 @@ function getAdminIngestionStatus(source: KnowledgeSourceItem) {
   const metadata = getMetadata(source);
   const pipelineStatus = metadata.ingestionPipeline?.status;
   const chunkCount = getChunkCount(source);
+  const readinessStatus = metadata.searchReadinessStatus;
 
   if (source.deletedAt || source.status === "archived" || source.status === "expired") {
     return "needs_review";
   }
+  if (
+    source.ingestionStatus === "partial_index_failed"
+    || pipelineStatus === "partial_index_failed"
+  ) {
+    return "partial_failed";
+  }
   if (source.ingestionStatus === "failed" || pipelineStatus === "failed") {
     return "failed";
+  }
+  if (readinessStatus === "indexing") {
+    return "indexing";
+  }
+  if (readinessStatus === "indexed_pending_search") {
+    return "pending_search";
   }
   if (source.ingestionStatus === "embedded" && chunkCount > 0) {
     return "indexed";
@@ -426,6 +491,12 @@ function getAdminIngestionStatus(source: KnowledgeSourceItem) {
 }
 
 function getEmbeddingStatus(source: KnowledgeSourceItem) {
+  if (getMetadata(source).searchReadinessStatus === "indexed_pending_search") {
+    return "Indexed; search may take a short moment";
+  }
+  if (source.ingestionStatus === "partial_index_failed") {
+    return `Partial failure (${getIndexingProgressLabel(source)})`;
+  }
   if (getAdminIngestionStatus(source) === "indexed") {
     return "Indexed";
   }
@@ -525,6 +596,9 @@ function getRagEligibilityReasons(source: KnowledgeSourceItem) {
   if (source.ingestionStatus === "failed") {
     reasons.push(source.ingestionError || "PDF extraction failed");
   }
+  if (source.ingestionStatus === "partial_index_failed") {
+    reasons.push(source.ingestionError || "Some chunks failed to index");
+  }
   if (getAdminIngestionStatus(source) !== "indexed") {
     reasons.push("No indexed chunks available");
   }
@@ -582,6 +656,9 @@ function getApprovalBlockReason(source: KnowledgeSourceItem) {
   if (source.ingestionStatus === "failed") {
     return "Fix failed extraction or indexing before approval.";
   }
+  if (source.ingestionStatus === "partial_index_failed") {
+    return "Resolve partial indexing failures before approval.";
+  }
 
   return "";
 }
@@ -618,6 +695,10 @@ function displayStatus(source: KnowledgeSourceItem) {
     return "Ingestion Failed";
   }
 
+  if (getAdminIngestionStatus(source) === "partial_failed") {
+    return "Partial Index Failure";
+  }
+
   if (
     source.status === "rejected"
     || source.status === "expired"
@@ -639,6 +720,10 @@ function displayStatus(source: KnowledgeSourceItem) {
 
   if (getAdminIngestionStatus(source) === "needs_review") {
     return "Needs Extracted Text";
+  }
+
+  if (getAdminIngestionStatus(source) === "pending_search") {
+    return "Indexed Pending Search";
   }
 
   if (source.status === "approved" && isExcludedFromRag(source)) {
@@ -913,7 +998,11 @@ export function AdminContentKnowledgeSourcesPage() {
   const [selectedUploadFile, setSelectedUploadFile] = useState<File | null>(null);
   const [selectedUploadStatus, setSelectedUploadStatus] = useState<DocumentUploadStatus>("idle");
   const [sourceChunks, setSourceChunks] = useState<KnowledgeSourceChunkPreview[]>([]);
+  const [chunkPage, setChunkPage] = useState(1);
+  const [chunkTotalCount, setChunkTotalCount] = useState(0);
+  const [chunkTotalPages, setChunkTotalPages] = useState(0);
   const [isLoadingChunks, setIsLoadingChunks] = useState(false);
+  const [pineconeHealth, setPineconeHealth] = useState<PineconeHealth | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(
     "Loading knowledge sources...",
   );
@@ -928,13 +1017,15 @@ export function AdminContentKnowledgeSourcesPage() {
     setIsLoading(true);
 
     try {
-      const [items, readinessResult] = await Promise.all([
+      const [items, readinessResult, pineconeHealthResult] = await Promise.all([
         listKnowledgeSources(),
         getKnowledgeSourceReadiness(),
+        getPineconeHealth(),
       ]);
 
       setSources(items);
       setReadiness(readinessResult);
+      setPineconeHealth(pineconeHealthResult);
       setSelectedSourceId(
         currentId =>
           currentId
@@ -948,6 +1039,7 @@ export function AdminContentKnowledgeSourcesPage() {
     }
     catch (error) {
       setReadiness(null);
+      setPineconeHealth(null);
       setStatusMessage(
         getFriendlyError(error, "Could not load knowledge sources."),
       );
@@ -1003,6 +1095,9 @@ export function AdminContentKnowledgeSourcesPage() {
     setSelectedUploadFile(null);
     setSelectedUploadStatus("idle");
     setSourceChunks([]);
+    setChunkPage(1);
+    setChunkTotalCount(0);
+    setChunkTotalPages(0);
   }, [activeTemplateTab, selectedSource]);
 
   const saveTemplate = async (publish: boolean) => {
@@ -1272,23 +1367,22 @@ export function AdminContentKnowledgeSourcesPage() {
       return;
     }
 
-    if (!source.rawText && !source.localFilePath) {
+    if (!hasStoredContent(source)) {
       setStatusMessage(
-        "This source has no stored raw text or file path to ingest.",
+        "This source has no stored extracted text, uploaded document, or file path to ingest.",
       );
       return;
     }
 
     try {
       const result = await ingestKnowledgeSource(sourceId, {
-        content: source.rawText,
         localFilePath: source.localFilePath,
         metadata: source.metadata,
       });
       const nextSource = result.source ?? source;
       setSources(currentSources => upsertSource(currentSources, nextSource));
       setStatusMessage(
-        `${nextSource.title} ingested with ${result.chunkCount ?? 0} chunk${result.chunkCount === 1 ? "" : "s"}.`,
+        `${nextSource.title} ingested with ${result.chunkCount ?? 0} chunk${result.chunkCount === 1 ? "" : "s"}. ${getAdminIngestionStatus(nextSource) === "partial_failed" ? "Some chunk batches still need attention." : "Search may take a short moment to become available."}`,
       );
     }
     catch (error) {
@@ -1308,7 +1402,7 @@ export function AdminContentKnowledgeSourcesPage() {
       const nextSource = result.source ?? source;
       setSources(currentSources => upsertSource(currentSources, nextSource));
       setStatusMessage(
-        `${nextSource.title} reindexed with ${result.chunkCount ?? 0} chunk${result.chunkCount === 1 ? "" : "s"}.`,
+        `${nextSource.title} reindexed with ${result.chunkCount ?? 0} chunk${result.chunkCount === 1 ? "" : "s"}. ${getAdminIngestionStatus(nextSource) === "partial_failed" ? "Some chunk batches still need attention." : "Search may take a short moment to become available."}`,
       );
     }
     catch (error) {
@@ -1383,7 +1477,7 @@ export function AdminContentKnowledgeSourcesPage() {
       setStatusMessage(
         result.error
           ? `${nextSource.title} upload finished, but extraction failed.`
-          : `${nextSource.title} uploaded and indexed with ${result.chunkCount ?? getChunkCount(nextSource)} chunk${(result.chunkCount ?? getChunkCount(nextSource)) === 1 ? "" : "s"}.`,
+          : `${nextSource.title} uploaded and indexed with ${result.chunkCount ?? getChunkCount(nextSource)} chunk${(result.chunkCount ?? getChunkCount(nextSource)) === 1 ? "" : "s"}. ${getAdminIngestionStatus(nextSource) === "partial_failed" ? "Some chunk batches still need attention." : "Search may take a short moment to become available."}`,
       );
       setSelectedUploadFile(null);
     }
@@ -1396,7 +1490,7 @@ export function AdminContentKnowledgeSourcesPage() {
     }
   };
 
-  const handleLoadChunks = async () => {
+  const handleLoadChunks = async (page = 1) => {
     if (!selectedSource) {
       setStatusMessage("Select a source before loading chunks.");
       return;
@@ -1412,11 +1506,17 @@ export function AdminContentKnowledgeSourcesPage() {
     setIsLoadingChunks(true);
 
     try {
-      const chunks = await listKnowledgeSourceChunks(sourceId);
-      setSourceChunks(chunks);
+      const chunkPageResult = await listKnowledgeSourceChunks(sourceId, {
+        page,
+        limit: CHUNK_PREVIEW_PAGE_SIZE,
+      });
+      setSourceChunks(chunkPageResult.chunks);
+      setChunkPage(chunkPageResult.page);
+      setChunkTotalCount(chunkPageResult.totalCount);
+      setChunkTotalPages(chunkPageResult.totalPages);
       setStatusMessage(
-        chunks.length > 0
-          ? `Loaded ${chunks.length} chunk preview${chunks.length === 1 ? "" : "s"}.`
+        chunkPageResult.totalCount > 0
+          ? `Loaded chunk preview page ${chunkPageResult.page} of ${Math.max(1, chunkPageResult.totalPages)} (${chunkPageResult.totalCount} total chunks).`
           : "No chunks are available for this source yet.",
       );
     }
@@ -2087,7 +2187,7 @@ export function AdminContentKnowledgeSourcesPage() {
                   </div>
                 </div>
 
-                <div className="mt-3 grid gap-2 text-[11px] lg:grid-cols-3">
+                <div className="mt-3 grid gap-2 text-[11px] lg:grid-cols-4">
                   <div
                     className={`rounded-md border px-3 py-2 ${readinessConfigClass(
                       readiness.configuration.openAiApiKeyConfigured,
@@ -2120,6 +2220,20 @@ export function AdminContentKnowledgeSourcesPage() {
                       {readiness.configuration.retrievalReady
                         ? "Ready for live retrieval"
                         : readiness.configuration.vectorIndex.message}
+                    </p>
+                  </div>
+                  <div
+                    className={`rounded-md border px-3 py-2 ${readinessConfigClass(
+                      Boolean(pineconeHealth?.configured && pineconeHealth.reachable),
+                    )}`}
+                  >
+                    <p className="font-semibold">Pinecone</p>
+                    <p className="mt-1">
+                      {pineconeHealth
+                        ? pineconeHealth.configured
+                          ? `${pineconeHealth.reachable ? "Reachable" : "Not reachable"}: ${pineconeHealth.indexName ?? "index unset"} / ${pineconeHealth.namespace ?? "namespace unset"}`
+                          : "Disabled: PINECONE_API_KEY is missing"
+                        : "Health not loaded"}
                     </p>
                   </div>
                 </div>
@@ -2257,7 +2371,12 @@ export function AdminContentKnowledgeSourcesPage() {
                       >
                         {adminIngestionStatus}
                       </span>
-                      {row.ingestionStatus === "failed" && row.ingestionError ? (
+                      {getIndexingProgressLabel(row) ? (
+                        <p className="mt-1 text-[10px] text-[#607B90]">
+                          {getIndexingProgressLabel(row)}
+                        </p>
+                      ) : null}
+                      {(row.ingestionStatus === "failed" || row.ingestionStatus === "partial_index_failed") && row.ingestionError ? (
                         <p className="mt-1 max-w-[180px] truncate text-[10px] text-[#B42318]">
                           {row.ingestionError}
                         </p>
@@ -2281,11 +2400,11 @@ export function AdminContentKnowledgeSourcesPage() {
                       <div className="flex flex-wrap items-center gap-1">
                         <button
                           type="button"
-                          disabled={isSaving || (!row.rawText && getAdminIngestionStatus(row) !== "indexed")}
+                          disabled={isSaving || !hasStoredContent(row)}
                           title={
-                            row.rawText || getAdminIngestionStatus(row) === "indexed"
-                              ? "Run ingestion from stored extracted text."
-                              : "Upload or paste text before ingestion."
+                            hasStoredContent(row)
+                              ? "Run ingestion from stored extracted text or uploaded document."
+                              : "Upload a document, store extracted text, or add a file path before ingestion."
                           }
                           onClick={(event) => {
                             event.stopPropagation();
@@ -2923,12 +3042,73 @@ export function AdminContentKnowledgeSourcesPage() {
                   </p>
                   <p>
                     <span className="font-semibold text-[#1E293B]">
+                      Extraction:
+                    </span>
+                    {" "}
+                    {typeof selectedSourceMetadata.extractionStatus === "string"
+                      ? selectedSourceMetadata.extractionStatus
+                      : "Not started"}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-[#1E293B]">
+                      Processing stage:
+                    </span>
+                    {" "}
+                    {typeof selectedSourceMetadata.processingStage === "string"
+                      ? selectedSourceMetadata.processingStage
+                      : "Not started"}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-[#1E293B]">
+                      Extracted pages:
+                    </span>
+                    {" "}
+                    {typeof selectedSourceMetadata.extractedPageCount === "number"
+                      ? selectedSourceMetadata.extractedPageCount
+                      : "Unknown"}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-[#1E293B]">
                       Chunk count:
                     </span>
                     {" "}
                     {typeof selectedSourceMetadata.chunkCount === "number"
                       ? selectedSourceMetadata.chunkCount
                       : 0}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-[#1E293B]">
+                      Indexed chunks:
+                    </span>
+                    {" "}
+                    {typeof selectedSourceMetadata.indexedChunkCount === "number"
+                      ? selectedSourceMetadata.indexedChunkCount
+                      : 0}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-[#1E293B]">
+                      Search readiness:
+                    </span>
+                    {" "}
+                    {typeof selectedSourceMetadata.searchReadinessStatus === "string"
+                      ? selectedSourceMetadata.searchReadinessStatus
+                      : "not_indexed"}
+                  </p>
+                  {selectedSourceMetadata.searchReadinessStatus === "indexed_pending_search"
+                    ? (
+                        <p className="lg:col-span-2 text-[#0F67AE]">
+                          Indexed successfully. Search may take a short moment to become available.
+                        </p>
+                      )
+                    : null}
+                  <p>
+                    <span className="font-semibold text-[#1E293B]">
+                      Pinecone:
+                    </span>
+                    {" "}
+                    {selectedSourceMetadata.pineconeIndexName || selectedSourceMetadata.pineconeNamespace
+                      ? `${selectedSourceMetadata.pineconeIndexName ?? "index unset"} / ${selectedSourceMetadata.pineconeNamespace ?? "namespace unset"}`
+                      : "Not configured or not indexed"}
                   </p>
                   <p className="lg:col-span-2">
                     <span className="font-semibold text-[#1E293B]">
@@ -2964,12 +3144,21 @@ export function AdminContentKnowledgeSourcesPage() {
                         )
                       : "None detected"}
                   </p>
-                  {selectedSource.ingestionStatus === "failed" && selectedSource.ingestionError
+                  {(selectedSource.ingestionStatus === "failed" || selectedSource.ingestionStatus === "partial_index_failed") && selectedSource.ingestionError
                     ? (
                         <p className="lg:col-span-2 text-[#B42318]">
                           <span className="font-semibold">Ingestion error:</span>
                           {" "}
                           {selectedSource.ingestionError}
+                        </p>
+                      )
+                    : null}
+                  {selectedSourceMetadata.indexingError || selectedSourceMetadata.processingError
+                    ? (
+                        <p className="lg:col-span-2 text-[#B42318]">
+                          <span className="font-semibold">Indexing / processing error:</span>
+                          {" "}
+                          {String(selectedSourceMetadata.indexingError ?? selectedSourceMetadata.processingError)}
                         </p>
                       )
                     : null}
@@ -3019,6 +3208,11 @@ export function AdminContentKnowledgeSourcesPage() {
                     {" "}
                     {formatDate(selectedSource.ingestedAt)}
                   </p>
+                  <p>
+                    <span className="font-semibold text-[#1E293B]">Indexing progress:</span>
+                    {" "}
+                    {getIndexingProgressLabel(selectedSource) || "Not started"}
+                  </p>
                   <p className="lg:col-span-2">
                     <span className="font-semibold text-[#1E293B]">Uploaded file:</span>
                     {" "}
@@ -3042,11 +3236,16 @@ export function AdminContentKnowledgeSourcesPage() {
                         Extracted Text Preview
                       </h4>
                       <span className="text-[10px] text-[#607B90]">
-                        {selectedSource.rawText ? `${selectedSource.rawText.length} chars` : "Empty"}
+                        {selectedSource.rawTextLength ? `${selectedSource.rawTextLength} chars` : "Empty"}
                       </span>
                     </div>
+                    {getLargeDocumentWarning(selectedSource) ? (
+                      <p className="mt-2 rounded-md border border-[#FDE68A] bg-[#FFFBEB] px-3 py-2 text-[11px] text-[#92400E]">
+                        {getLargeDocumentWarning(selectedSource)}
+                      </p>
+                    ) : null}
                     <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap rounded-md bg-[#F8FBFF] p-3 text-[11px] leading-5 text-[#475569]">
-                      {selectedSource.rawText?.slice(0, 3000) || "No extracted text is available yet."}
+                      {selectedSource.rawTextPreview || "No extracted text preview is available yet."}
                     </pre>
                   </div>
 
@@ -3058,11 +3257,36 @@ export function AdminContentKnowledgeSourcesPage() {
                       <button
                         type="button"
                         disabled={!selectedSource || isLoadingChunks}
-                        onClick={() => void handleLoadChunks()}
+                        onClick={() => void handleLoadChunks(1)}
                         className="h-7 rounded-md border border-[#D8E3EE] px-2 text-[11px] font-semibold text-[#0F67AE] transition hover:bg-[#EEF6FF] disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {isLoadingChunks ? "Loading..." : "Load Chunks"}
                       </button>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between gap-2 text-[10px] text-[#607B90]">
+                      <span>
+                        {chunkTotalCount > 0
+                          ? `Page ${chunkPage} of ${Math.max(1, chunkTotalPages)} · ${chunkTotalCount} total chunks`
+                          : "Chunk previews load 25 at a time."}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={isLoadingChunks || chunkPage <= 1}
+                          onClick={() => void handleLoadChunks(chunkPage - 1)}
+                          className="h-7 rounded-md border border-[#D8E3EE] px-2 text-[10px] font-semibold text-[#334155] transition hover:bg-[#F8FBFF] disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Prev
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isLoadingChunks || chunkPage >= chunkTotalPages}
+                          onClick={() => void handleLoadChunks(chunkPage + 1)}
+                          className="h-7 rounded-md border border-[#D8E3EE] px-2 text-[10px] font-semibold text-[#334155] transition hover:bg-[#F8FBFF] disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Next
+                        </button>
+                      </div>
                     </div>
                     <div className="mt-2 max-h-56 space-y-2 overflow-auto">
                       {sourceChunks.length > 0 ? sourceChunks.map(chunk => (
@@ -3077,7 +3301,20 @@ export function AdminContentKnowledgeSourcesPage() {
                               {chunk.tokenCount} tokens
                             </span>
                           </p>
+                          {chunk.sectionRef || chunk.metadata?.sectionNumber || chunk.metadata?.sectionHeading ? (
+                            <p className="mt-1 font-semibold text-[#334155]">
+                              {[chunk.sectionRef ?? chunk.metadata?.sectionNumber, chunk.metadata?.sectionHeading]
+                                .filter(Boolean)
+                                .join(" - ")}
+                            </p>
+                          ) : null}
                           <p className="mt-1">{chunk.text.slice(0, 700)}</p>
+                          {chunk.metadata?.embeddingStatus ? (
+                            <p className="mt-1 text-[#607B90]">
+                              Embedding: {String(chunk.metadata.embeddingStatus)}
+                              {chunk.metadata.pineconeVectorId ? " / Pinecone vector linked" : ""}
+                            </p>
+                          ) : null}
                           {chunk.citationLabel ? (
                             <p className="mt-1 text-[#607B90]">
                               Citation: {chunk.citationLabel}

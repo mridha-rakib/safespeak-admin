@@ -30,9 +30,11 @@ export type KnowledgeSourceJurisdiction =
 
 export type KnowledgeSourceTopic =
   | "discrimination"
+  | "racial"
   | "racial_hatred"
   | "online_safety"
   | "scam"
+  | "migrant"
   | "privacy"
   | "workplace"
   | "dv"
@@ -42,6 +44,8 @@ export type KnowledgeSourceTopic =
   | "consent"
   | "crisis"
   | "education"
+  | "local_intelligence"
+  | "smart_dialler"
   | "other";
 
 export type KnowledgeSourceType =
@@ -75,12 +79,36 @@ export type KnowledgeSourceMetadata = {
     error?: string;
   };
   detectedLegalType?: string;
+  actName?: string;
+  actNumber?: string;
+  legislationType?: string;
+  country?: string;
+  state?: string;
+  effectiveDate?: string;
+  version?: string | number;
   detectedActNames?: string[];
   detectedSectionRefs?: string[];
   detectedConstitutionalMentions?: string[];
   detectedCourts?: string[];
   constitutionalBasis?: string;
   legislationTags?: string[];
+  extractedPageCount?: number;
+  extractionStatus?: string;
+  processingStage?: string;
+  processingError?: string;
+  pineconeIndexedAt?: string;
+  pineconeNamespace?: string;
+  pineconeIndexName?: string;
+  indexedChunkCount?: number;
+  indexingError?: string;
+  largeDocumentWarning?: string;
+  searchableAt?: string;
+  searchReadinessStatus?:
+    | "not_indexed"
+    | "indexing"
+    | "indexed_pending_search"
+    | "searchable"
+    | "failed";
   [key: string]: unknown;
 };
 
@@ -119,11 +147,15 @@ export type KnowledgeSourceItem = {
     | "fetched"
     | "chunked"
     | "embedded"
+    | "partial_index_failed"
     | "failed";
   ingestionError?: string;
   sha256Hash?: string;
   version: number;
   rawText?: string;
+  rawTextPreview?: string;
+  rawTextLength?: number;
+  hasStoredContent?: boolean;
   fetchedAt?: string;
   metadata?: KnowledgeSourceMetadata;
   createdBy?: KnowledgeSourceActorRef;
@@ -179,9 +211,19 @@ export type KnowledgeSourceChunkPreview = {
   citationLabel?: string;
   citationUrl?: string;
   sectionRef?: string;
+  sectionNumber?: string;
+  sectionHeading?: string;
   metadata?: KnowledgeSourceMetadata;
   createdAt?: string;
   updatedAt?: string;
+};
+
+export type KnowledgeSourceChunkPreviewPage = {
+  page: number;
+  limit: number;
+  totalCount: number;
+  totalPages: number;
+  chunks: KnowledgeSourceChunkPreview[];
 };
 
 export type KnowledgeSourceReadinessStatus =
@@ -273,6 +315,16 @@ export type KnowledgeSourceReadiness = {
   blockers: KnowledgeSourceReadinessBlocker[];
 };
 
+export type PineconeHealth = {
+  configured: boolean;
+  indexName?: string;
+  namespace?: string;
+  embeddingModel?: string;
+  expectedDimension?: number;
+  reachable: boolean;
+  error?: string;
+};
+
 export function getKnowledgeSourceId(source: KnowledgeSourceItem): string {
   return source.id ?? source._id ?? "";
 }
@@ -291,6 +343,14 @@ export async function getKnowledgeSourceReadiness(): Promise<KnowledgeSourceRead
   );
 
   return response.data.readiness;
+}
+
+export async function getPineconeHealth(): Promise<PineconeHealth> {
+  const response = await adminApiRequest<{ health: PineconeHealth }>(
+    "/rag/admin/pinecone/health",
+  );
+
+  return response.data.health;
 }
 
 export async function createKnowledgeSource(
@@ -330,12 +390,22 @@ export async function deleteKnowledgeSource(id: string): Promise<void> {
 
 export async function listKnowledgeSourceChunks(
   id: string,
-): Promise<KnowledgeSourceChunkPreview[]> {
-  const response = await adminApiRequest<{ chunks: KnowledgeSourceChunkPreview[] }>(
-    `/rag/knowledge-sources/${id}/chunks`,
+  options: { page?: number; limit?: number } = {},
+): Promise<KnowledgeSourceChunkPreviewPage> {
+  const searchParams = new URLSearchParams();
+
+  if (typeof options.page === "number") {
+    searchParams.set("page", String(options.page));
+  }
+  if (typeof options.limit === "number") {
+    searchParams.set("limit", String(options.limit));
+  }
+
+  const response = await adminApiRequest<KnowledgeSourceChunkPreviewPage>(
+    `/rag/knowledge-sources/${id}/chunks${searchParams.size > 0 ? `?${searchParams.toString()}` : ""}`,
   );
 
-  return response.data.chunks;
+  return response.data;
 }
 
 export async function approveKnowledgeSource(
