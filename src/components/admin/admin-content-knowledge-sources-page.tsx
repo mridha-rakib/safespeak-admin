@@ -632,33 +632,6 @@ function getApprovalBlockReason(source: KnowledgeSourceItem) {
   if (source.status === "archived" || source.status === "expired") {
     return "Archived sources cannot be approved.";
   }
-  if (!source.title.trim()) {
-    return "Title is required.";
-  }
-  if (!source.publisher.trim()) {
-    return "Publisher is required.";
-  }
-  if (!source.licenseStatus.trim()) {
-    return "License status is required.";
-  }
-  if (isOfficialSource(source) && !source.url?.trim()) {
-    return "Official sources require an authoritative URL.";
-  }
-  if (isOfficialSource(source) && !source.lastUpdated) {
-    return "Official sources require last-updated metadata.";
-  }
-  if (isOfficialSource(source) && !source.nextRefreshAt) {
-    return "Official sources require a future refresh date.";
-  }
-  if (source.sourceCategory === "official_legal_source" && !source.legalReviewed) {
-    return "Legal review must be complete before approval.";
-  }
-  if (source.ingestionStatus === "failed") {
-    return "Fix failed extraction or indexing before approval.";
-  }
-  if (source.ingestionStatus === "partial_index_failed") {
-    return "Resolve partial indexing failures before approval.";
-  }
 
   return "";
 }
@@ -927,6 +900,20 @@ function compactGovernancePayload(
   };
 }
 
+function buildApprovalCandidate(
+  source: KnowledgeSourceItem | undefined,
+  draft: GovernanceDraft,
+): KnowledgeSourceItem | undefined {
+  if (!source) {
+    return undefined;
+  }
+
+  return {
+    ...source,
+    ...compactGovernancePayload(draft),
+  } as KnowledgeSourceItem;
+}
+
 function displayReadinessStatus(readiness: KnowledgeSourceReadiness) {
   switch (readiness.summary.readinessStatus) {
     case "ready":
@@ -1064,6 +1051,10 @@ export function AdminContentKnowledgeSourcesPage() {
     () => getMetadata(selectedSource),
     [selectedSource],
   );
+  const approvalCandidate = useMemo(
+    () => buildApprovalCandidate(selectedSource, governanceDraft),
+    [governanceDraft, selectedSource],
+  );
   const priorityCoverageGaps = useMemo(
     () => (readiness ? getPriorityCoverageGaps(readiness) : []),
     [readiness],
@@ -1131,6 +1122,7 @@ export function AdminContentKnowledgeSourcesPage() {
         [activeTemplateTab]: templateDraft,
       };
       const updated = await updateKnowledgeSource(sourceId, {
+        ...compactGovernancePayload(governanceDraft),
         metadata: {
           ...metadata,
           templates,
@@ -3366,11 +3358,11 @@ export function AdminContentKnowledgeSourcesPage() {
               disabled={
                 !selectedSource
                 || isSaving
-                || Boolean(selectedSource && getApprovalBlockReason(selectedSource))
+                || Boolean(approvalCandidate && getApprovalBlockReason(approvalCandidate))
               }
               title={
-                selectedSource
-                  ? getApprovalBlockReason(selectedSource) || "Save template metadata and approve."
+                approvalCandidate
+                  ? getApprovalBlockReason(approvalCandidate) || "Save template metadata and approve."
                   : "Select a source first."
               }
               onClick={() => void saveTemplate(true)}
