@@ -138,7 +138,7 @@ const LICENSE_STATUS_OPTIONS = [
 
 type CreateSourceFormState = {
   title: string;
-  adminCategory: (typeof CATEGORY_OPTIONS)[number];
+  adminCategory: (typeof CATEGORY_OPTIONS)[number] | (string & {});
   description: string;
   sourceCategory: KnowledgeSourceCategory;
   publisher: string;
@@ -1656,44 +1656,70 @@ export function AdminContentKnowledgeSourcesPage() {
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
                         Category
                       </p>
-                      <select
-                        value={createForm.adminCategory}
-                        onChange={(event) => {
-                          const adminCategory = event.target
-                            .value as CreateSourceFormState["adminCategory"];
-                          setCreateForm(current => ({
-                            ...current,
-                            adminCategory,
-                            sourceCategory:
-                          adminCategory === "Scam Pattern"
-                            ? "admin_content"
-                            : adminCategory === "Support"
-                              ? "official_support_source"
-                              : "official_legal_source",
-                            topic:
-                          adminCategory === "Scam Pattern"
-                            ? "scam"
-                            : adminCategory === "Support"
-                              ? "support"
-                              : current.topic,
-                            sourceType:
-                          adminCategory === "Scam Pattern"
-                            ? "Report"
-                            : adminCategory === "Support"
-                              ? "SupportResource"
-                              : adminCategory === "Regulation"
-                                ? "Regulation"
-                                : "Act",
-                          }));
-                        }}
-                        className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
-                      >
-                        {CATEGORY_OPTIONS.map(category => (
-                          <option key={category} value={category}>
-                            {category}
-                          </option>
-                        ))}
-                      </select>
+                      <div className="flex flex-col gap-2">
+                        <select
+                          value={
+                            (CATEGORY_OPTIONS as readonly string[]).includes(createForm.adminCategory)
+                              ? createForm.adminCategory
+                              : "Other"
+                          }
+                          onChange={(event) => {
+                            const val = event.target.value;
+                            if (val === "Other") {
+                              setCreateForm(current => ({
+                                ...current,
+                                adminCategory: "" as any,
+                              }));
+                            } else {
+                              setCreateForm(current => ({
+                                ...current,
+                                adminCategory: val as any,
+                                sourceCategory:
+                              val === "Scam Pattern"
+                                ? "admin_content"
+                                : val === "Support"
+                                  ? "official_support_source"
+                                  : "official_legal_source",
+                                topic:
+                              val === "Scam Pattern"
+                                ? "scam"
+                                : val === "Support"
+                                  ? "support"
+                                  : current.topic,
+                                sourceType:
+                              val === "Scam Pattern"
+                                ? "Report"
+                                : val === "Support"
+                                  ? "SupportResource"
+                                  : val === "Regulation"
+                                    ? "Regulation"
+                                    : "Act",
+                              }));
+                            }
+                          }}
+                          className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
+                        >
+                          {CATEGORY_OPTIONS.map(category => (
+                            <option key={category} value={category}>
+                              {category}
+                            </option>
+                          ))}
+                          <option value="Other">Other (Specify...)</option>
+                        </select>
+                        {(!(CATEGORY_OPTIONS as readonly string[]).includes(createForm.adminCategory) || createForm.adminCategory === "") && (
+                          <input
+                            type="text"
+                            placeholder="Enter custom category"
+                            value={createForm.adminCategory === "Other" ? "" : createForm.adminCategory}
+                            onChange={event =>
+                              setCreateForm(current => ({
+                                ...current,
+                                adminCategory: event.target.value as any,
+                              }))}
+                            className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
+                          />
+                        )}
+                      </div>
                     </label>
                   </div>
 
@@ -1702,22 +1728,43 @@ export function AdminContentKnowledgeSourcesPage() {
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
                         Source Category *
                       </p>
-                      <select
-                        value={createForm.sourceCategory}
-                        onChange={event =>
-                          setCreateForm(current => ({
-                            ...current,
-                            sourceCategory: event.target
-                              .value as KnowledgeSourceCategory,
-                          }))}
-                        className={`h-9 w-full rounded-md border bg-white px-3 text-sm text-[#334155] outline-none transition ${fieldBorder(createErrors.sourceCategory)}`}
-                      >
-                        {SOURCE_CATEGORY_OPTIONS.map(option => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
+                      <div className="flex flex-col gap-2">
+                        <select
+                          value={
+                            SOURCE_CATEGORY_OPTIONS.some(opt => opt.value === createForm.sourceCategory)
+                              ? createForm.sourceCategory
+                              : "Other"
+                          }
+                          onChange={(event) => {
+                            const val = event.target.value;
+                            setCreateForm(current => ({
+                              ...current,
+                              sourceCategory: val === "Other" ? "" : val as KnowledgeSourceCategory,
+                            }));
+                          }}
+                          className={`h-9 w-full rounded-md border bg-white px-3 text-sm text-[#334155] outline-none transition ${fieldBorder(createErrors.sourceCategory)}`}
+                        >
+                          {SOURCE_CATEGORY_OPTIONS.map(option => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                          <option value="Other">Other (Specify...)</option>
+                        </select>
+                        {(!SOURCE_CATEGORY_OPTIONS.some(opt => opt.value === createForm.sourceCategory) || createForm.sourceCategory === "") && (
+                          <input
+                            type="text"
+                            placeholder="Enter custom source category"
+                            value={createForm.sourceCategory}
+                            onChange={event =>
+                              setCreateForm(current => ({
+                                ...current,
+                                sourceCategory: event.target.value as KnowledgeSourceCategory,
+                              }))}
+                            className={`h-9 w-full rounded-md border bg-white px-3 text-sm text-[#334155] outline-none transition ${fieldBorder(createErrors.sourceCategory)}`}
+                          />
+                        )}
+                      </div>
                       <FieldError message={createErrors.sourceCategory} />
                     </label>
                     <label className="space-y-1">
@@ -1757,62 +1804,127 @@ export function AdminContentKnowledgeSourcesPage() {
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
                         Jurisdiction
                       </p>
-                      <select
-                        value={createForm.jurisdiction}
-                        onChange={event =>
-                          setCreateForm(current => ({
-                            ...current,
-                            jurisdiction: event.target
-                              .value as KnowledgeSourceJurisdiction,
-                          }))}
-                        className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
-                      >
-                        {JURISDICTION_OPTIONS.map(option => (
-                          <option key={option} value={option}>
-                            {option}
-                          </option>
-                        ))}
-                      </select>
+                      <div className="flex flex-col gap-2">
+                        <select
+                          value={
+                            JURISDICTION_OPTIONS.includes(createForm.jurisdiction)
+                              ? createForm.jurisdiction
+                              : "Other"
+                          }
+                          onChange={(event) => {
+                            const val = event.target.value;
+                            setCreateForm(current => ({
+                              ...current,
+                              jurisdiction: val === "Other" ? "" : val as KnowledgeSourceJurisdiction,
+                            }));
+                          }}
+                          className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
+                        >
+                          {JURISDICTION_OPTIONS.map(option => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                          <option value="Other">Other (Specify...)</option>
+                        </select>
+                        {(!JURISDICTION_OPTIONS.includes(createForm.jurisdiction) || createForm.jurisdiction === "") && (
+                          <input
+                            type="text"
+                            placeholder="Enter custom jurisdiction"
+                            value={createForm.jurisdiction}
+                            onChange={event =>
+                              setCreateForm(current => ({
+                                ...current,
+                                jurisdiction: event.target.value as KnowledgeSourceJurisdiction,
+                              }))}
+                            className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
+                          />
+                        )}
+                      </div>
                     </label>
                     <label className="space-y-1">
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
                         Topic
                       </p>
-                      <select
-                        value={createForm.topic}
-                        onChange={event =>
-                          setCreateForm(current => ({
-                            ...current,
-                            topic: event.target.value as KnowledgeSourceTopic,
-                          }))}
-                        className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
-                      >
-                        {TOPIC_OPTIONS.map(option => (
-                          <option key={option} value={option}>
-                            {option}
-                          </option>
-                        ))}
-                      </select>
+                      <div className="flex flex-col gap-2">
+                        <select
+                          value={
+                            TOPIC_OPTIONS.includes(createForm.topic) && createForm.topic !== "other"
+                              ? createForm.topic
+                              : "other"
+                          }
+                          onChange={(event) => {
+                            const val = event.target.value;
+                            setCreateForm(current => ({
+                              ...current,
+                              topic: val as KnowledgeSourceTopic,
+                            }));
+                          }}
+                          className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
+                        >
+                          {TOPIC_OPTIONS.map(option => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                          <option value="other">Other (Specify...)</option>
+                        </select>
+                        {(!TOPIC_OPTIONS.includes(createForm.topic) || createForm.topic === "other") && (
+                          <input
+                            type="text"
+                            placeholder="Enter custom topic"
+                            value={createForm.topic === "other" ? "" : createForm.topic}
+                            onChange={event =>
+                              setCreateForm(current => ({
+                                ...current,
+                                topic: event.target.value as KnowledgeSourceTopic,
+                              }))}
+                            className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
+                          />
+                        )}
+                      </div>
                     </label>
                     <label className="space-y-1">
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
                         Source Type *
                       </p>
-                      <select
-                        value={createForm.sourceType}
-                        onChange={event =>
-                          setCreateForm(current => ({
-                            ...current,
-                            sourceType: event.target.value as KnowledgeSourceType,
-                          }))}
-                        className={`h-9 w-full rounded-md border bg-white px-3 text-sm text-[#334155] outline-none transition ${fieldBorder(createErrors.sourceType)}`}
-                      >
-                        {SOURCE_TYPE_OPTIONS.map(option => (
-                          <option key={option} value={option}>
-                            {option}
-                          </option>
-                        ))}
-                      </select>
+                      <div className="flex flex-col gap-2">
+                        <select
+                          value={
+                            SOURCE_TYPE_OPTIONS.includes(createForm.sourceType)
+                              ? createForm.sourceType
+                              : "Other"
+                          }
+                          onChange={(event) => {
+                            const val = event.target.value;
+                            setCreateForm(current => ({
+                              ...current,
+                              sourceType: val === "Other" ? "" : val as KnowledgeSourceType,
+                            }));
+                          }}
+                          className={`h-9 w-full rounded-md border bg-white px-3 text-sm text-[#334155] outline-none transition ${fieldBorder(createErrors.sourceType)}`}
+                        >
+                          {SOURCE_TYPE_OPTIONS.map(option => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                          <option value="Other">Other (Specify...)</option>
+                        </select>
+                        {(!SOURCE_TYPE_OPTIONS.includes(createForm.sourceType) || createForm.sourceType === "") && (
+                          <input
+                            type="text"
+                            placeholder="Enter custom source type"
+                            value={createForm.sourceType}
+                            onChange={event =>
+                              setCreateForm(current => ({
+                                ...current,
+                                sourceType: event.target.value as KnowledgeSourceType,
+                              }))}
+                            className={`h-9 w-full rounded-md border bg-white px-3 text-sm text-[#334155] outline-none transition ${fieldBorder(createErrors.sourceType)}`}
+                          />
+                        )}
+                      </div>
                       <FieldError message={createErrors.sourceType} />
                     </label>
                     <label className="space-y-1">
@@ -2576,23 +2688,44 @@ export function AdminContentKnowledgeSourcesPage() {
               <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
                 Source Category
               </p>
-              <select
-                value={governanceDraft.sourceCategory}
-                disabled={!selectedSource}
-                onChange={event =>
-                  setGovernanceDraft(current => ({
-                    ...current,
-                    sourceCategory: event.target
-                      .value as KnowledgeSourceCategory,
-                  }))}
-                className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE] disabled:text-[#94A3B8]"
-              >
-                {SOURCE_CATEGORY_OPTIONS.map(option => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+              <div className="flex flex-col gap-2">
+                <select
+                  value={
+                    SOURCE_CATEGORY_OPTIONS.some(opt => opt.value === governanceDraft.sourceCategory)
+                      ? governanceDraft.sourceCategory
+                      : "Other"
+                  }
+                  disabled={!selectedSource}
+                  onChange={(event) => {
+                    const val = event.target.value;
+                    setGovernanceDraft(current => ({
+                      ...current,
+                      sourceCategory: val === "Other" ? "" : val as KnowledgeSourceCategory,
+                    }));
+                  }}
+                  className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE] disabled:text-[#94A3B8]"
+                >
+                  {SOURCE_CATEGORY_OPTIONS.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                  <option value="Other">Other (Specify...)</option>
+                </select>
+                {selectedSource && (!SOURCE_CATEGORY_OPTIONS.some(opt => opt.value === governanceDraft.sourceCategory) || governanceDraft.sourceCategory === "") && (
+                  <input
+                    type="text"
+                    placeholder="Enter custom source category"
+                    value={governanceDraft.sourceCategory}
+                    onChange={event =>
+                      setGovernanceDraft(current => ({
+                        ...current,
+                        sourceCategory: event.target.value as KnowledgeSourceCategory,
+                      }))}
+                    className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
+                  />
+                )}
+              </div>
             </label>
             <label className="space-y-1">
               <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
@@ -2631,65 +2764,130 @@ export function AdminContentKnowledgeSourcesPage() {
               <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
                 Jurisdiction
               </p>
-              <select
-                value={governanceDraft.jurisdiction}
-                disabled={!selectedSource}
-                onChange={event =>
-                  setGovernanceDraft(current => ({
-                    ...current,
-                    jurisdiction: event.target
-                      .value as KnowledgeSourceJurisdiction,
-                  }))}
-                className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE] disabled:text-[#94A3B8]"
-              >
-                {JURISDICTION_OPTIONS.map(option => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
+              <div className="flex flex-col gap-2">
+                <select
+                  value={
+                    JURISDICTION_OPTIONS.includes(governanceDraft.jurisdiction)
+                      ? governanceDraft.jurisdiction
+                      : "Other"
+                  }
+                  disabled={!selectedSource}
+                  onChange={(event) => {
+                    const val = event.target.value;
+                    setGovernanceDraft(current => ({
+                      ...current,
+                      jurisdiction: val === "Other" ? "" : val as KnowledgeSourceJurisdiction,
+                    }));
+                  }}
+                  className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE] disabled:text-[#94A3B8]"
+                >
+                  {JURISDICTION_OPTIONS.map(option => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                  <option value="Other">Other (Specify...)</option>
+                </select>
+                {selectedSource && (!JURISDICTION_OPTIONS.includes(governanceDraft.jurisdiction) || governanceDraft.jurisdiction === "") && (
+                  <input
+                    type="text"
+                    placeholder="Enter custom jurisdiction"
+                    value={governanceDraft.jurisdiction}
+                    onChange={event =>
+                      setGovernanceDraft(current => ({
+                        ...current,
+                        jurisdiction: event.target.value as KnowledgeSourceJurisdiction,
+                      }))}
+                    className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
+                  />
+                )}
+              </div>
             </label>
             <label className="space-y-1">
               <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
                 Topic
               </p>
-              <select
-                value={governanceDraft.topic}
-                disabled={!selectedSource}
-                onChange={event =>
-                  setGovernanceDraft(current => ({
-                    ...current,
-                    topic: event.target.value as KnowledgeSourceTopic,
-                  }))}
-                className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE] disabled:text-[#94A3B8]"
-              >
-                {TOPIC_OPTIONS.map(option => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
+              <div className="flex flex-col gap-2">
+                <select
+                  value={
+                    TOPIC_OPTIONS.includes(governanceDraft.topic) && governanceDraft.topic !== "other"
+                      ? governanceDraft.topic
+                      : "other"
+                  }
+                  disabled={!selectedSource}
+                  onChange={(event) => {
+                    const val = event.target.value;
+                    setGovernanceDraft(current => ({
+                      ...current,
+                      topic: val as KnowledgeSourceTopic,
+                    }));
+                  }}
+                  className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE] disabled:text-[#94A3B8]"
+                >
+                  {TOPIC_OPTIONS.map(option => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                  <option value="other">Other (Specify...)</option>
+                </select>
+                {selectedSource && (!TOPIC_OPTIONS.includes(governanceDraft.topic) || governanceDraft.topic === "other") && (
+                  <input
+                    type="text"
+                    placeholder="Enter custom topic"
+                    value={governanceDraft.topic === "other" ? "" : governanceDraft.topic}
+                    onChange={event =>
+                      setGovernanceDraft(current => ({
+                        ...current,
+                        topic: event.target.value as KnowledgeSourceTopic,
+                      }))}
+                    className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
+                  />
+                )}
+              </div>
             </label>
             <label className="space-y-1">
               <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
                 Source Type
               </p>
-              <select
-                value={governanceDraft.sourceType}
-                disabled={!selectedSource}
-                onChange={event =>
-                  setGovernanceDraft(current => ({
-                    ...current,
-                    sourceType: event.target.value as KnowledgeSourceType,
-                  }))}
-                className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE] disabled:text-[#94A3B8]"
-              >
-                {SOURCE_TYPE_OPTIONS.map(option => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
+              <div className="flex flex-col gap-2">
+                <select
+                  value={
+                    SOURCE_TYPE_OPTIONS.includes(governanceDraft.sourceType)
+                      ? governanceDraft.sourceType
+                      : "Other"
+                  }
+                  disabled={!selectedSource}
+                  onChange={(event) => {
+                    const val = event.target.value;
+                    setGovernanceDraft(current => ({
+                      ...current,
+                      sourceType: val === "Other" ? "" : val as KnowledgeSourceType,
+                    }));
+                  }}
+                  className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE] disabled:text-[#94A3B8]"
+                >
+                  {SOURCE_TYPE_OPTIONS.map(option => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                  <option value="Other">Other (Specify...)</option>
+                </select>
+                {selectedSource && (!SOURCE_TYPE_OPTIONS.includes(governanceDraft.sourceType) || governanceDraft.sourceType === "") && (
+                  <input
+                    type="text"
+                    placeholder="Enter custom source type"
+                    value={governanceDraft.sourceType}
+                    onChange={event =>
+                      setGovernanceDraft(current => ({
+                        ...current,
+                        sourceType: event.target.value as KnowledgeSourceType,
+                      }))}
+                    className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
+                  />
+                )}
+              </div>
             </label>
             <label className="space-y-1">
               <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
