@@ -12,7 +12,8 @@ export type KnowledgeSourceCategory =
   | "internal_product_rule"
   | "official_legal_source"
   | "official_support_source"
-  | "admin_content";
+  | "admin_content"
+  | (string & {});
 
 export type KnowledgeSourceJurisdiction =
   | "Cth"
@@ -26,7 +27,8 @@ export type KnowledgeSourceJurisdiction =
   | "ACT"
   | "AU"
   | "Global"
-  | "Internal";
+  | "Internal"
+  | (string & {});
 
 export type KnowledgeSourceTopic =
   | "discrimination"
@@ -46,7 +48,8 @@ export type KnowledgeSourceTopic =
   | "education"
   | "local_intelligence"
   | "smart_dialler"
-  | "other";
+  | "other"
+  | (string & {});
 
 export type KnowledgeSourceType =
   | "Act"
@@ -59,7 +62,8 @@ export type KnowledgeSourceType =
   | "ProductRequirement"
   | "SupportResource"
   | "FAQ"
-  | "WebPage";
+  | "WebPage"
+  | (string & {});
 
 export type KnowledgeSourceMetadata = {
   adminCategory?: string;
