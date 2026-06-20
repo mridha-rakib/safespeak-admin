@@ -1,4 +1,15 @@
 import { adminApiRequest } from "@/lib/admin-auth";
+import { getAiAgentApiBaseUrl, type ApiRequestOptions } from "@/lib/api";
+
+function knowledgeApiRequest<TData>(
+  path: string,
+  options: Omit<ApiRequestOptions, "token"> = {},
+) {
+  return adminApiRequest<TData>(path, {
+    ...options,
+    baseUrl: getAiAgentApiBaseUrl(),
+  });
+}
 
 export type KnowledgeSourceStatus =
   | "draft"
@@ -334,7 +345,7 @@ export function getKnowledgeSourceId(source: KnowledgeSourceItem): string {
 }
 
 export async function listKnowledgeSources(): Promise<KnowledgeSourceItem[]> {
-  const response = await adminApiRequest<{ sources: KnowledgeSourceItem[] }>(
+  const response = await knowledgeApiRequest<{ sources: KnowledgeSourceItem[] }>(
     "/rag/knowledge-sources",
   );
 
@@ -342,7 +353,7 @@ export async function listKnowledgeSources(): Promise<KnowledgeSourceItem[]> {
 }
 
 export async function getKnowledgeSourceReadiness(): Promise<KnowledgeSourceReadiness> {
-  const response = await adminApiRequest<{ readiness: KnowledgeSourceReadiness }>(
+  const response = await knowledgeApiRequest<{ readiness: KnowledgeSourceReadiness }>(
     "/rag/knowledge-sources/readiness",
   );
 
@@ -350,7 +361,7 @@ export async function getKnowledgeSourceReadiness(): Promise<KnowledgeSourceRead
 }
 
 export async function getPineconeHealth(): Promise<PineconeHealth> {
-  const response = await adminApiRequest<{ health: PineconeHealth }>(
+  const response = await knowledgeApiRequest<{ health: PineconeHealth }>(
     "/rag/admin/pinecone/health",
   );
 
@@ -360,7 +371,7 @@ export async function getPineconeHealth(): Promise<PineconeHealth> {
 export async function createKnowledgeSource(
   input: KnowledgeSourceInput,
 ): Promise<KnowledgeSourceItem> {
-  const response = await adminApiRequest<{ source: KnowledgeSourceItem }>(
+  const response = await knowledgeApiRequest<{ source: KnowledgeSourceItem }>(
     "/rag/knowledge-sources",
     {
       method: "POST",
@@ -375,7 +386,7 @@ export async function updateKnowledgeSource(
   id: string,
   input: Partial<KnowledgeSourceInput>,
 ): Promise<KnowledgeSourceItem> {
-  const response = await adminApiRequest<{ source: KnowledgeSourceItem }>(
+  const response = await knowledgeApiRequest<{ source: KnowledgeSourceItem }>(
     `/rag/knowledge-sources/${id}`,
     {
       method: "PATCH",
@@ -387,7 +398,7 @@ export async function updateKnowledgeSource(
 }
 
 export async function deleteKnowledgeSource(id: string): Promise<void> {
-  await adminApiRequest<null>(`/rag/knowledge-sources/${id}`, {
+  await knowledgeApiRequest<null>(`/rag/knowledge-sources/${id}`, {
     method: "DELETE",
   });
 }
@@ -405,7 +416,7 @@ export async function listKnowledgeSourceChunks(
     searchParams.set("limit", String(options.limit));
   }
 
-  const response = await adminApiRequest<KnowledgeSourceChunkPreviewPage>(
+  const response = await knowledgeApiRequest<KnowledgeSourceChunkPreviewPage>(
     `/rag/knowledge-sources/${id}/chunks${searchParams.size > 0 ? `?${searchParams.toString()}` : ""}`,
   );
 
@@ -415,7 +426,7 @@ export async function listKnowledgeSourceChunks(
 export async function approveKnowledgeSource(
   id: string,
 ): Promise<KnowledgeSourceItem> {
-  const response = await adminApiRequest<{ source: KnowledgeSourceItem }>(
+  const response = await knowledgeApiRequest<{ source: KnowledgeSourceItem }>(
     `/rag/knowledge-sources/${id}/approve`,
     {
       method: "POST",
@@ -429,7 +440,7 @@ export async function rejectKnowledgeSource(
   id: string,
   reason: string,
 ): Promise<KnowledgeSourceItem> {
-  const response = await adminApiRequest<{ source: KnowledgeSourceItem }>(
+  const response = await knowledgeApiRequest<{ source: KnowledgeSourceItem }>(
     `/rag/knowledge-sources/${id}/reject`,
     {
       method: "POST",
@@ -449,7 +460,7 @@ export async function ingestKnowledgeSource(
     sha256Hash?: string;
     extractedLegalMetadata?: Record<string, unknown>;
   }> {
-  const response = await adminApiRequest<{
+  const response = await knowledgeApiRequest<{
     result: {
       source?: KnowledgeSourceItem;
       chunkCount?: number;
@@ -486,7 +497,7 @@ export async function uploadKnowledgeSourceDocument(
     String(options.ingestImmediately ?? true),
   );
 
-  const response = await adminApiRequest<{
+  const response = await knowledgeApiRequest<{
     result: {
       source?: KnowledgeSourceItem;
       uploadedFile?: KnowledgeSourceMetadata["uploadedFile"];
@@ -517,7 +528,7 @@ export async function refreshKnowledgeSource(
     message?: string;
     reviewStatus?: string;
   }> {
-  const response = await adminApiRequest<{
+  const response = await knowledgeApiRequest<{
     result: {
       source?: KnowledgeSourceItem;
       chunkCount?: number;
@@ -539,7 +550,7 @@ export async function reindexKnowledgeSource(id: string): Promise<{
   source?: KnowledgeSourceItem;
   chunkCount?: number;
 }> {
-  const response = await adminApiRequest<{
+  const response = await knowledgeApiRequest<{
     result: {
       source?: KnowledgeSourceItem;
       chunkCount?: number;
