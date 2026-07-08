@@ -96,9 +96,6 @@ async function run() {
   }
 
   if (command === "dev") {
-    // Keep a ref'ed handle alive so npm/PowerShell don't detach from the
-    // wrapper before the spawned Vite process is done.
-    const keepAlive = setInterval(() => {}, 1 << 30);
     const child = spawn(process.execPath, [viteCliPath, ...viteArgs], {
       stdio: "inherit",
       env: {
@@ -106,31 +103,25 @@ async function run() {
         ESBUILD_BINARY_PATH: ensureEsbuildBinaryPath(),
       },
     });
+    const exitCode = await new Promise((resolve, reject) => {
+      child.on("exit", (code, signal) => {
+        if (signal) {
+          process.kill(process.pid, signal);
+          return;
+        }
 
-    const cleanup = (code) => {
-      clearInterval(keepAlive);
-      process.exit(code ?? 0);
-    };
+        resolve(code ?? 0);
+      });
 
-    child.on("exit", (code, signal) => {
-      if (signal) {
-        clearInterval(keepAlive);
-        process.kill(process.pid, signal);
-        return;
-      }
-
-      cleanup(code);
-    });
-
-    child.on("error", (error) => {
-      clearInterval(keepAlive);
+      child.on("error", reject);
+    }).catch((error) => {
       console.error(
         `[SafeSpeak admin] Failed to start dev server: ${error instanceof Error ? error.message : String(error)}`
       );
-      process.exit(1);
+      return 1;
     });
 
-    return;
+    process.exit(exitCode);
   }
 
   const child = spawn(process.execPath, [viteCliPath, ...viteArgs], {
