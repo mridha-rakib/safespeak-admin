@@ -59,7 +59,7 @@ async function findAvailablePort(startPort, maxAttempts = 25) {
   );
 }
 
-function run() {
+async function run() {
   let viteCliPath;
 
   try {
@@ -74,25 +74,31 @@ function run() {
   const scriptArgs = process.argv.slice(2);
   const hasExplicitPort = scriptArgs.includes("--port");
   const requestedPort = getRequestedPort();
+  const command = scriptArgs[0] && !scriptArgs[0].startsWith("-")
+    ? scriptArgs[0]
+    : "dev";
+  const viteArgs = [...scriptArgs];
+  process.env.ESBUILD_BINARY_PATH = ensureEsbuildBinaryPath();
 
-  const start = async () => {
-    const viteArgs = [...scriptArgs];
+  if (!hasExplicitPort && requestedPort !== null) {
+    const resolvedPort = await findAvailablePort(requestedPort);
 
-    if (!hasExplicitPort && requestedPort !== null) {
-      const resolvedPort = await findAvailablePort(requestedPort);
-
-      if (resolvedPort !== requestedPort) {
-        console.log(
-          `[SafeSpeak admin] Port ${requestedPort} is busy, using ${resolvedPort} instead.`
-        );
-      }
-
+    if (resolvedPort !== requestedPort) {
       console.log(
-        `[SafeSpeak admin] Starting on http://localhost:${resolvedPort}.`
+        `[SafeSpeak admin] Port ${requestedPort} is busy, using ${resolvedPort} instead.`
       );
-      viteArgs.push("--port", String(resolvedPort));
     }
 
+    console.log(
+      `[SafeSpeak admin] Starting on http://localhost:${resolvedPort}.`
+    );
+    viteArgs.push("--port", String(resolvedPort));
+  }
+
+  if (command === "dev") {
+    // Keep a ref'ed handle alive so npm/PowerShell don't detach from the
+    // wrapper before the spawned Vite process is done.
+    const keepAlive = setInterval(() => {}, 1 << 30);
     const child = spawn(process.execPath, [viteCliPath, ...viteArgs], {
       stdio: "inherit",
       env: {
@@ -101,22 +107,50 @@ function run() {
       },
     });
 
+    const cleanup = (code) => {
+      clearInterval(keepAlive);
+      process.exit(code ?? 0);
+    };
+
     child.on("exit", (code, signal) => {
       if (signal) {
+        clearInterval(keepAlive);
         process.kill(process.pid, signal);
         return;
       }
 
-      process.exit(code ?? 1);
+      cleanup(code);
     });
-  };
 
-  start().catch((error) => {
-    console.error(
-      `[SafeSpeak admin] Failed to start dev server: ${error instanceof Error ? error.message : String(error)}`
-    );
-    process.exit(1);
+    child.on("error", (error) => {
+      clearInterval(keepAlive);
+      console.error(
+        `[SafeSpeak admin] Failed to start dev server: ${error instanceof Error ? error.message : String(error)}`
+      );
+      process.exit(1);
+    });
+
+    return;
+  }
+
+  const child = spawn(process.execPath, [viteCliPath, ...viteArgs], {
+    stdio: "inherit",
+    env: process.env,
+  });
+
+  child.on("exit", (code, signal) => {
+    if (signal) {
+      process.kill(process.pid, signal);
+      return;
+    }
+
+    process.exit(code ?? 1);
   });
 }
 
-run();
+run().catch((error) => {
+  console.error(
+    `[SafeSpeak admin] Failed to start dev server: ${error instanceof Error ? error.message : String(error)}`
+  );
+  process.exit(1);
+});
