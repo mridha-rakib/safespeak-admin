@@ -1,7 +1,7 @@
-import { spawn } from "node:child_process";
 import path from "node:path";
 import { createRequire } from "node:module";
 import net from "node:net";
+import { pathToFileURL } from "node:url";
 
 import { ensureEsbuildBinaryPath } from "./esbuild-binary-path.mjs";
 
@@ -95,48 +95,8 @@ async function run() {
     viteArgs.push("--port", String(resolvedPort));
   }
 
-  if (command === "dev") {
-    const child = spawn(process.execPath, [viteCliPath, ...viteArgs], {
-      stdio: "inherit",
-      env: {
-        ...process.env,
-        ESBUILD_BINARY_PATH: ensureEsbuildBinaryPath(),
-      },
-    });
-    const exitCode = await new Promise((resolve, reject) => {
-      child.on("exit", (code, signal) => {
-        if (signal) {
-          process.kill(process.pid, signal);
-          return;
-        }
-
-        resolve(code ?? 0);
-      });
-
-      child.on("error", reject);
-    }).catch((error) => {
-      console.error(
-        `[SafeSpeak admin] Failed to start dev server: ${error instanceof Error ? error.message : String(error)}`
-      );
-      return 1;
-    });
-
-    process.exit(exitCode);
-  }
-
-  const child = spawn(process.execPath, [viteCliPath, ...viteArgs], {
-    stdio: "inherit",
-    env: process.env,
-  });
-
-  child.on("exit", (code, signal) => {
-    if (signal) {
-      process.kill(process.pid, signal);
-      return;
-    }
-
-    process.exit(code ?? 1);
-  });
+  process.argv = [process.execPath, viteCliPath, ...viteArgs];
+  await import(pathToFileURL(viteCliPath).href);
 }
 
 run().catch((error) => {
