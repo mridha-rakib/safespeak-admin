@@ -2,6 +2,7 @@ import { adminApiRequest } from "@/lib/admin-auth";
 import { getApiBaseUrl } from "@/lib/api";
 
 export type MicroEducationStatus = "draft" | "published";
+export type MicroEducationCategoryStatus = "draft" | "published";
 export type MicroEducationTone = "blue" | "orange" | "green" | "amber" | "violet" | "teal";
 export type MicroEducationChip = "harassment" | "rights" | "safety" | "mentalHealth";
 export type MicroEducationDuration = "quick" | "deep";
@@ -19,6 +20,8 @@ export type MicroEducationItem = {
   detailBody: string;
   detailTakeaway: string;
   imageAlt?: string;
+  categoryId?: string;
+  category?: MicroEducationCategory;
   tone: MicroEducationTone;
   chips: MicroEducationChip[];
   duration: MicroEducationDuration;
@@ -34,6 +37,32 @@ export type MicroEducationItem = {
   updatedAt?: string;
 };
 
+export type MicroEducationCategory = {
+  id: string;
+  name: string;
+  description?: string;
+  backgroundColor: string;
+  textColor: string;
+  iconName?: string;
+  imageUrl?: string;
+  status: MicroEducationCategoryStatus;
+  sortOrder: number;
+  cardCount?: number;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type MicroEducationCategoryInput = {
+  name: string;
+  description?: string;
+  backgroundColor: string;
+  textColor: string;
+  iconName?: string;
+  imageUrl?: string;
+  status: MicroEducationCategoryStatus;
+  sortOrder: number;
+};
+
 export type MicroEducationInput = {
   title: string;
   summary: string;
@@ -45,6 +74,7 @@ export type MicroEducationInput = {
   detailBody: string;
   detailTakeaway: string;
   imageAlt?: string;
+  categoryId?: string;
   tone: MicroEducationTone;
   chips: MicroEducationChip[];
   duration: MicroEducationDuration;
@@ -84,6 +114,49 @@ export async function listAdminMicroEducation(): Promise<MicroEducationItem[]> {
   return response.data.items;
 }
 
+export async function listAdminMicroEducationCategories(): Promise<MicroEducationCategory[]> {
+  const response = await adminApiRequest<{ categories: MicroEducationCategory[] }>(
+    "/admin/microeducation/categories",
+  );
+
+  return response.data.categories;
+}
+
+export async function createMicroEducationCategory(
+  input: MicroEducationCategoryInput,
+): Promise<MicroEducationCategory> {
+  const response = await adminApiRequest<{ category: MicroEducationCategory }>(
+    "/admin/microeducation/categories",
+    {
+      method: "POST",
+      body: input,
+    },
+  );
+
+  return response.data.category;
+}
+
+export async function updateMicroEducationCategory(
+  id: string,
+  input: Partial<MicroEducationCategoryInput>,
+): Promise<MicroEducationCategory> {
+  const response = await adminApiRequest<{ category: MicroEducationCategory }>(
+    `/admin/microeducation/categories/${id}`,
+    {
+      method: "PATCH",
+      body: input,
+    },
+  );
+
+  return response.data.category;
+}
+
+export async function deleteMicroEducationCategory(id: string): Promise<void> {
+  await adminApiRequest<null>(`/admin/microeducation/categories/${id}`, {
+    method: "DELETE",
+  });
+}
+
 export async function createMicroEducationItem(input: MicroEducationInput): Promise<MicroEducationItem> {
   const response = await adminApiRequest<{ item: MicroEducationItem }>("/admin/microeducation", {
     method: "POST",
@@ -112,5 +185,9 @@ export async function deleteMicroEducationItem(id: string): Promise<void> {
 }
 
 export function getMicroEducationImageUrl(item: Pick<MicroEducationItem, "imagePath">): string | undefined {
-  return item.imagePath ? `${getApiBaseUrl()}${item.imagePath}` : undefined;
+  if (!item.imagePath) {
+    return undefined;
+  }
+
+  return /^https?:\/\//i.test(item.imagePath) ? item.imagePath : `${getApiBaseUrl()}${item.imagePath}`;
 }

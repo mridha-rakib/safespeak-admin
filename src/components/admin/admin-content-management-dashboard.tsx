@@ -13,10 +13,16 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
+  createMicroEducationCategory,
   createMicroEducationItem,
+  deleteMicroEducationCategory,
   deleteMicroEducationItem,
   getMicroEducationImageUrl,
+  listAdminMicroEducationCategories,
   listAdminMicroEducation,
+  type MicroEducationCategory,
+  type MicroEducationCategoryInput,
+  type MicroEducationCategoryStatus,
   type MicroEducationChip,
   type MicroEducationDuration,
   type MicroEducationFormat,
@@ -24,6 +30,7 @@ import {
   type MicroEducationItem,
   type MicroEducationStatus,
   type MicroEducationTone,
+  updateMicroEducationCategory,
   updateMicroEducationItem,
 } from "@/lib/microeducation";
 import {
@@ -76,6 +83,11 @@ const statusOptions: Array<{ label: string; value: MicroEducationStatus }> = [
   { label: "Published", value: "published" },
 ];
 
+const categoryStatusOptions: Array<{ label: string; value: MicroEducationCategoryStatus }> = [
+  { label: "Draft", value: "draft" },
+  { label: "Published", value: "published" },
+];
+
 const resourceStatusOptions: Array<{ label: string; value: ResourceStatus }> = [
   { label: "Draft", value: "draft" },
   { label: "Published", value: "published" },
@@ -103,6 +115,7 @@ const defaultEditorValues: MicroEducationInput = {
   detailBody: "",
   detailTakeaway: "",
   imageAlt: "",
+  categoryId: "",
   tone: "blue",
   chips: ["safety"],
   duration: "quick",
@@ -110,6 +123,17 @@ const defaultEditorValues: MicroEducationInput = {
   status: "draft",
   sortOrder: 0,
   views: 0,
+};
+
+const defaultCategoryValues: MicroEducationCategoryInput = {
+  name: "",
+  description: "",
+  backgroundColor: "#01579B",
+  textColor: "#FFFFFF",
+  iconName: "shield",
+  imageUrl: "",
+  status: "draft",
+  sortOrder: 0,
 };
 
 const defaultResourceValues: ResourceInput = {
@@ -137,32 +161,44 @@ function sortMicroCards(items: MicroEducationItem[]) {
   return [...items].sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title));
 }
 
+function sortCategories(items: MicroEducationCategory[]) {
+  return [...items].sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
+}
+
 function sortResources(items: ResourceItem[]) {
   return [...items].sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
 }
 
 export function AdminContentManagementDashboard() {
+  const [categories, setCategories] = useState<MicroEducationCategory[]>([]);
   const [microCards, setMicroCards] = useState<MicroEducationItem[]>([]);
   const [resources, setResources] = useState<ResourceItem[]>([]);
+  const [isLoadingCategories, setIsLoadingCategories] = useState(true);
   const [isLoadingCards, setIsLoadingCards] = useState(true);
   const [isLoadingResources, setIsLoadingResources] = useState(true);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [isEditorModalOpen, setIsEditorModalOpen] = useState(false);
   const [isResourceModalOpen, setIsResourceModalOpen] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<MicroEducationCategory | null>(null);
   const [editingCard, setEditingCard] = useState<MicroEducationItem | null>(null);
   const [editingResource, setEditingResource] = useState<ResourceItem | null>(null);
+  const [categoryValues, setCategoryValues] = useState<MicroEducationCategoryInput>(defaultCategoryValues);
   const [editorValues, setEditorValues] = useState<MicroEducationInput>(defaultEditorValues);
   const [editorImageFile, setEditorImageFile] = useState<File | null>(null);
   const [resourceValues, setResourceValues] = useState<ResourceInput>(defaultResourceValues);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [categoryError, setCategoryError] = useState<string | null>(null);
   const [editorError, setEditorError] = useState<string | null>(null);
   const [resourceError, setResourceError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [cardSearch, setCardSearch] = useState("");
+  const [isSavingCategory, setIsSavingCategory] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isSavingResource, setIsSavingResource] = useState(false);
+  const [deletingCategoryId, setDeletingCategoryId] = useState<string | null>(null);
   const [deletingCardId, setDeletingCardId] = useState<string | null>(null);
   const [deletingResourceId, setDeletingResourceId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -186,6 +222,29 @@ export function AdminContentManagementDashboard() {
 
   useEffect(() => {
     let isMounted = true;
+
+    const loadCategories = async () => {
+      setIsLoadingCategories(true);
+      setCategoryError(null);
+
+      try {
+        const items = await listAdminMicroEducationCategories();
+
+        if (isMounted) {
+          setCategories(sortCategories(items));
+        }
+      }
+      catch (error) {
+        if (isMounted) {
+          setCategoryError(error instanceof Error ? error.message : "Could not load micro-education categories.");
+        }
+      }
+      finally {
+        if (isMounted) {
+          setIsLoadingCategories(false);
+        }
+      }
+    };
 
     const loadCards = async () => {
       setIsLoadingCards(true);
@@ -233,6 +292,7 @@ export function AdminContentManagementDashboard() {
       }
     };
 
+    void loadCategories();
     void loadCards();
     void loadResources();
 
@@ -255,6 +315,122 @@ export function AdminContentManagementDashboard() {
         || card.tag.toLowerCase().includes(normalizedSearch);
     });
   }, [cardSearch, microCards]);
+
+  const defaultCategoryId = categories[0]?.id ?? "";
+
+  const resolveCategoryIdFromName = (value: string) => {
+    const normalizedValue = value.trim().toLowerCase();
+
+    if (!normalizedValue) {
+      return defaultCategoryId;
+    }
+
+    return categories.find(category =>
+      category.id === value || category.name.trim().toLowerCase() === normalizedValue
+    )?.id ?? defaultCategoryId;
+  };
+
+  const openCategoryModal = (category?: MicroEducationCategory) => {
+    setEditingCategory(category ?? null);
+    setCategoryError(null);
+    setStatusMessage(null);
+    setCategoryValues(
+      category
+        ? {
+            name: category.name,
+            description: category.description ?? "",
+            backgroundColor: category.backgroundColor,
+            textColor: category.textColor,
+            iconName: category.iconName ?? "",
+            imageUrl: category.imageUrl ?? "",
+            status: category.status,
+            sortOrder: category.sortOrder,
+          }
+        : {
+            ...defaultCategoryValues,
+            sortOrder: categories.length,
+          },
+    );
+    setIsCategoryModalOpen(true);
+  };
+
+  const closeCategoryModal = () => {
+    setIsCategoryModalOpen(false);
+    setEditingCategory(null);
+    setCategoryError(null);
+    setIsSavingCategory(false);
+  };
+
+  const setCategoryValue = <TKey extends keyof MicroEducationCategoryInput>(
+    key: TKey,
+    value: MicroEducationCategoryInput[TKey],
+  ) => {
+    setCategoryValues(prev => ({ ...prev, [key]: value }));
+  };
+
+  const saveCategoryValues = async () => {
+    const name = categoryValues.name.trim();
+
+    if (!name) {
+      setCategoryError("Category name is required.");
+      return;
+    }
+
+    setIsSavingCategory(true);
+    setCategoryError(null);
+
+    const payload: MicroEducationCategoryInput = {
+      ...categoryValues,
+      name,
+      description: categoryValues.description?.trim() || undefined,
+      iconName: categoryValues.iconName?.trim() || undefined,
+      imageUrl: categoryValues.imageUrl?.trim() || undefined,
+      sortOrder: Number.isFinite(categoryValues.sortOrder) ? categoryValues.sortOrder : 0,
+    };
+
+    try {
+      const savedCategory = editingCategory
+        ? await updateMicroEducationCategory(editingCategory.id, payload)
+        : await createMicroEducationCategory(payload);
+
+      setCategories(prevCategories => sortCategories(
+        editingCategory
+          ? prevCategories.map(category => (category.id === savedCategory.id ? savedCategory : category))
+          : [savedCategory, ...prevCategories],
+      ));
+      setStatusMessage(editingCategory ? "Category updated." : "New category created.");
+      closeCategoryModal();
+    }
+    catch (error) {
+      setCategoryError(error instanceof Error ? error.message : "Could not save this category.");
+    }
+    finally {
+      setIsSavingCategory(false);
+    }
+  };
+
+  const deleteCategory = async (category: MicroEducationCategory) => {
+    const confirmed = window.confirm(`Delete "${category.name}"? Cards assigned to it must be moved first.`);
+
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingCategoryId(category.id);
+    setCategoryError(null);
+
+    try {
+      await deleteMicroEducationCategory(category.id);
+      setCategories(prevCategories => prevCategories.filter(item => item.id !== category.id));
+      setStatusMessage("Category deleted.");
+    }
+    catch (error) {
+      setCategoryError(error instanceof Error ? error.message : "Could not delete this category.");
+    }
+    finally {
+      setDeletingCategoryId(null);
+    }
+  };
 
   const parseCsvLine = (line: string): string[] => {
     const values: string[] = [];
@@ -354,6 +530,7 @@ export function AdminContentManagementDashboard() {
             detailBody: card.detailBody || card.summary,
             detailTakeaway: card.detailTakeaway || card.summary,
             imageAlt: card.imageAlt ?? "",
+            categoryId: card.categoryId ?? card.category?.id ?? defaultCategoryId,
             tone: card.tone,
             chips: card.chips.length ? card.chips : ["safety"],
             duration: card.duration,
@@ -362,8 +539,9 @@ export function AdminContentManagementDashboard() {
             sortOrder: card.sortOrder,
             views: card.views,
           }
-        : {
+          : {
             ...defaultEditorValues,
+            categoryId: defaultCategoryId,
             sortOrder: microCards.length,
           },
     );
@@ -432,6 +610,11 @@ export function AdminContentManagementDashboard() {
       return;
     }
 
+    if (!editorValues.categoryId) {
+      setEditorError("Category is required. Create a category before saving this card.");
+      return;
+    }
+
     setIsSaving(true);
     setEditorError(null);
 
@@ -447,6 +630,7 @@ export function AdminContentManagementDashboard() {
       detailBody,
       detailTakeaway,
       imageAlt: editorValues.imageAlt?.trim() || title,
+      categoryId: editorValues.categoryId,
       chips: editorValues.chips.length ? editorValues.chips : ["safety"],
       sortOrder: Number.isFinite(editorValues.sortOrder) ? editorValues.sortOrder : 0,
       views: Number.isFinite(editorValues.views ?? 0) ? editorValues.views : 0,
@@ -463,6 +647,8 @@ export function AdminContentManagementDashboard() {
           ? prevCards.map(card => (card.id === savedCard.id ? savedCard : card))
           : [savedCard, ...prevCards],
       ));
+      const updatedCategories = await listAdminMicroEducationCategories();
+      setCategories(sortCategories(updatedCategories));
       setStatusMessage(editingCard ? "Micro-card updated." : "New micro-card draft created.");
       closeEditorModal();
     }
@@ -487,6 +673,8 @@ export function AdminContentManagementDashboard() {
     try {
       await deleteMicroEducationItem(card.id);
       setMicroCards(prevCards => prevCards.filter(item => item.id !== card.id));
+      const updatedCategories = await listAdminMicroEducationCategories();
+      setCategories(sortCategories(updatedCategories));
       setStatusMessage("Micro-card deleted.");
     }
     catch (error) {
@@ -684,6 +872,7 @@ export function AdminContentManagementDashboard() {
             detailBody: detailBodyRaw || summary,
             detailTakeaway: detailTakeawayRaw || summary,
             imageAlt: imageAltRaw || title,
+            categoryId: resolveCategoryIdFromName(tagIndex >= 0 ? row[tagIndex]?.trim() ?? "" : ""),
             tone: toneOptions.some(option => option.value === toneRaw) ? (toneRaw as MicroEducationTone) : "blue",
             chips: chips.length ? chips : ["safety"],
             duration: durationOptions.some(option => option.value === durationRaw)
@@ -721,6 +910,92 @@ export function AdminContentManagementDashboard() {
         <div className="rounded-[6px] bg-[#01579B] px-4 py-3">
           <h2 className="text-[24px] font-semibold leading-none text-white">Content Management</h2>
         </div>
+
+        <section className="rounded-[12px] border border-[#D9E2EC] bg-white p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-[26px] font-semibold leading-tight text-[#0F172A]">Micro-Education Categories</h3>
+              <p className="mt-1 text-sm text-[#64748B]">Manage the category cards users see before opening micro-cards.</p>
+              {categoryError
+                ? <p className="mt-2 text-sm font-medium text-[#D14343]">{categoryError}</p>
+                : null}
+            </div>
+            <button
+              type="button"
+              onClick={() => openCategoryModal()}
+              className="inline-flex h-10 items-center gap-1.5 rounded-full bg-[#0F67AE] px-4 text-sm font-semibold text-white transition hover:bg-[#0B578F]"
+            >
+              <Plus className="h-4 w-4" />
+              New Category
+            </button>
+          </div>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {isLoadingCategories
+              ? (
+                  <div className="rounded-[10px] border border-dashed border-[#D5DEE7] bg-[#FCFDFE] px-4 py-10 text-center text-sm text-[#64748B]">
+                    Loading categories...
+                  </div>
+                )
+              : null}
+            {!isLoadingCategories && categories.map(category => (
+              <article key={category.id} className="overflow-hidden rounded-[10px] border border-[#D5DEE7] bg-[#FCFDFE]">
+                <div
+                  className="min-h-[126px] p-4"
+                  style={{ backgroundColor: category.backgroundColor, color: category.textColor }}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide opacity-80">
+                        {category.status === "published" ? "Published" : "Draft"}
+                      </p>
+                      <h4 className="mt-2 text-xl font-bold leading-tight">{category.name}</h4>
+                      {category.description ? (
+                        <p className="mt-2 line-clamp-2 text-xs leading-5 opacity-85">{category.description}</p>
+                      ) : null}
+                    </div>
+                    <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] bg-white/20 text-xs font-bold">
+                      {(category.iconName || category.name).slice(0, 2).toUpperCase()}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between border-t border-[#E4EAF1] p-3">
+                  <div className="text-[11px] text-[#64748B]">
+                    <span className="font-semibold">{category.cardCount ?? 0}</span>
+                    {" cards | Order "}
+                    {category.sortOrder}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => openCategoryModal(category)}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[#4A6780] transition hover:bg-[#EEF3F8]"
+                      aria-label={`Edit ${category.name}`}
+                    >
+                      <Edit3 className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void deleteCategory(category)}
+                      disabled={deletingCategoryId === category.id}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[#D14343] transition hover:bg-[#FFF1F2] disabled:opacity-60"
+                      aria-label={`Delete ${category.name}`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              </article>
+            ))}
+            {!isLoadingCategories && categories.length === 0
+              ? (
+                  <div className="rounded-[10px] border border-dashed border-[#D5DEE7] bg-[#FCFDFE] px-4 py-10 text-center text-sm text-[#64748B]">
+                    Create a category before publishing micro-cards.
+                  </div>
+                )
+              : null}
+          </div>
+        </section>
 
         <section className="rounded-[12px] border border-[#D9E2EC] bg-white p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -797,7 +1072,9 @@ export function AdminContentManagementDashboard() {
                     <span>{updatedLabel(card)}</span>
                   </div>
                   <div className="flex items-center justify-between border-t border-[#E4EAF1] pt-2">
-                    <span className="text-[11px] font-medium text-[#64748B]">{card.tag}</span>
+                    <span className="text-[11px] font-medium text-[#64748B]">
+                      {card.category?.name ?? categories.find(category => category.id === card.categoryId)?.name ?? "Uncategorized"}
+                    </span>
                     <div className="flex items-center gap-1">
                       <button
                         type="button"
@@ -937,6 +1214,131 @@ export function AdminContentManagementDashboard() {
           </div>
         </section>
       </div>
+
+      {isCategoryModalOpen
+        ? (
+            <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[#111827]/50 p-4 py-6">
+              <div className="flex w-full max-w-[720px] flex-col overflow-hidden rounded-[12px] border border-[#D8E3EE] bg-white shadow-[0_24px_60px_rgba(15,23,42,0.28)]">
+                <div className="border-b border-[#E5EAF1] px-6 py-5 sm:px-8">
+                  <h3 className="text-[26px] font-semibold leading-none text-[#0F172A] sm:text-[32px]">
+                    {editingCategory ? "Edit Category" : "Create Category"}
+                  </h3>
+                  <p className="mt-2 max-w-[620px] text-sm leading-6 text-[#64748B]">
+                    Configure the category card shown before users open micro-education cards.
+                  </p>
+                </div>
+
+                <div className="grid gap-4 px-6 py-5 sm:grid-cols-2 sm:px-8">
+                  <label className="space-y-1.5 sm:col-span-2">
+                    <span className="text-sm font-semibold text-[#334155]">Name</span>
+                    <input
+                      value={categoryValues.name}
+                      onChange={event => setCategoryValue("name", event.target.value)}
+                      className="h-10 w-full rounded-[6px] border border-[#D5DEE7] px-3 text-sm text-[#0F172A] outline-none transition focus:border-[#4BA3D9]"
+                    />
+                  </label>
+                  <label className="space-y-1.5 sm:col-span-2">
+                    <span className="text-sm font-semibold text-[#334155]">Description</span>
+                    <textarea
+                      value={categoryValues.description ?? ""}
+                      onChange={event => setCategoryValue("description", event.target.value)}
+                      className="min-h-20 w-full rounded-[6px] border border-[#D5DEE7] px-3 py-2 text-sm text-[#0F172A] outline-none transition focus:border-[#4BA3D9]"
+                    />
+                  </label>
+                  <label className="space-y-1.5">
+                    <span className="text-sm font-semibold text-[#334155]">Background Color</span>
+                    <input
+                      type="color"
+                      value={categoryValues.backgroundColor}
+                      onChange={event => setCategoryValue("backgroundColor", event.target.value)}
+                      className="h-10 w-full rounded-[6px] border border-[#D5DEE7] bg-white px-2 py-1"
+                    />
+                  </label>
+                  <label className="space-y-1.5">
+                    <span className="text-sm font-semibold text-[#334155]">Text Color</span>
+                    <input
+                      type="color"
+                      value={categoryValues.textColor}
+                      onChange={event => setCategoryValue("textColor", event.target.value)}
+                      className="h-10 w-full rounded-[6px] border border-[#D5DEE7] bg-white px-2 py-1"
+                    />
+                  </label>
+                  <label className="space-y-1.5">
+                    <span className="text-sm font-semibold text-[#334155]">Icon Name</span>
+                    <input
+                      value={categoryValues.iconName ?? ""}
+                      onChange={event => setCategoryValue("iconName", event.target.value)}
+                      placeholder="shield"
+                      className="h-10 w-full rounded-[6px] border border-[#D5DEE7] px-3 text-sm text-[#0F172A] outline-none transition focus:border-[#4BA3D9]"
+                    />
+                  </label>
+                  <label className="space-y-1.5">
+                    <span className="text-sm font-semibold text-[#334155]">Image URL</span>
+                    <input
+                      value={categoryValues.imageUrl ?? ""}
+                      onChange={event => setCategoryValue("imageUrl", event.target.value)}
+                      placeholder="Optional"
+                      className="h-10 w-full rounded-[6px] border border-[#D5DEE7] px-3 text-sm text-[#0F172A] outline-none transition focus:border-[#4BA3D9]"
+                    />
+                  </label>
+                  <label className="space-y-1.5">
+                    <span className="text-sm font-semibold text-[#334155]">Status</span>
+                    <select
+                      value={categoryValues.status}
+                      onChange={event => setCategoryValue("status", event.target.value as MicroEducationCategoryStatus)}
+                      className="h-10 w-full rounded-[6px] border border-[#D5DEE7] px-3 text-sm text-[#0F172A] outline-none transition focus:border-[#4BA3D9]"
+                    >
+                      {categoryStatusOptions.map(option => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="space-y-1.5">
+                    <span className="text-sm font-semibold text-[#334155]">Sort Order</span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={categoryValues.sortOrder}
+                      onChange={event => setCategoryValue("sortOrder", Number.parseInt(event.target.value, 10) || 0)}
+                      className="h-10 w-full rounded-[6px] border border-[#D5DEE7] px-3 text-sm text-[#0F172A] outline-none transition focus:border-[#4BA3D9]"
+                    />
+                  </label>
+                  <div className="sm:col-span-2">
+                    <div
+                      className="rounded-[10px] p-4"
+                      style={{ backgroundColor: categoryValues.backgroundColor, color: categoryValues.textColor }}
+                    >
+                      <p className="text-[11px] font-semibold uppercase tracking-wide opacity-80">Preview</p>
+                      <h4 className="mt-2 text-xl font-bold">{categoryValues.name || "Category name"}</h4>
+                      <p className="mt-1 text-xs opacity-85">{categoryValues.description || "Category description appears here."}</p>
+                    </div>
+                  </div>
+                  {categoryError
+                    ? <p className="text-sm font-medium text-[#D14343] sm:col-span-2">{categoryError}</p>
+                    : null}
+                </div>
+
+                <div className="flex flex-wrap justify-end gap-2 border-t border-[#E5EAF1] px-6 py-4 sm:px-8">
+                  <button
+                    type="button"
+                    onClick={closeCategoryModal}
+                    className="inline-flex h-10 items-center justify-center rounded-full border border-[#C9D8E8] px-4 text-sm font-semibold text-[#1E3A5F] transition hover:bg-[#F3F7FB]"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void saveCategoryValues()}
+                    disabled={isSavingCategory}
+                    className="inline-flex h-10 items-center justify-center rounded-full bg-[#0F67AE] px-5 text-sm font-semibold text-white transition hover:bg-[#0B578F] disabled:opacity-60"
+                  >
+                    {isSavingCategory ? "Saving..." : "Save Category"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )
+        : null}
 
       {isResourceModalOpen
         ? (
@@ -1174,6 +1576,24 @@ export function AdminContentManagementDashboard() {
                       </button>
                     ) : null}
                   </div>
+                  <label className="space-y-1.5">
+                    <span className="text-sm font-semibold text-[#334155]">Category</span>
+                    <select
+                      value={editorValues.categoryId ?? ""}
+                      onChange={event => setEditorValue("categoryId", event.target.value)}
+                      className="h-10 w-full rounded-[6px] border border-[#D5DEE7] px-3 text-sm text-[#0F172A] outline-none transition focus:border-[#4BA3D9]"
+                    >
+                      <option value="" disabled>
+                        Select category
+                      </option>
+                      {categories.map(category => (
+                        <option key={category.id} value={category.id}>
+                          {category.name}
+                          {category.status === "draft" ? " (Draft)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                   <label className="space-y-1.5">
                     <span className="text-sm font-semibold text-[#334155]">Tag</span>
                     <input
