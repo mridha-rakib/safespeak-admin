@@ -32,16 +32,28 @@ function getRequestedPort() {
   return null;
 }
 
-function isPortAvailable(port) {
-  return new Promise((resolve) => {
-    const server = net.createServer();
+async function isPortAvailable(port) {
+  const checkHost = (host) => {
+    return new Promise((resolve) => {
+      const server = net.createServer();
 
-    server.unref();
-    server.on("error", () => resolve(false));
-    server.listen({ port, host: "127.0.0.1" }, () => {
-      server.close(() => resolve(true));
+      server.unref();
+      server.on("error", (err) => {
+        if (err.code === "EADDRINUSE") {
+          resolve(false);
+        } else {
+          resolve(true);
+        }
+      });
+      server.listen({ port, host }, () => {
+        server.close(() => resolve(true));
+      });
     });
-  });
+  };
+
+  const hosts = ["127.0.0.1", "::1", "0.0.0.0", "::"];
+  const results = await Promise.all(hosts.map((host) => checkHost(host)));
+  return results.every((res) => res === true);
 }
 
 async function findAvailablePort(startPort, maxAttempts = 25) {
