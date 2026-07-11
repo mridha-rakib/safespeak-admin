@@ -5,6 +5,16 @@ export type MicroEducationStatus = "draft" | "published";
 export type MicroEducationCategoryStatus = "draft" | "published";
 export type MicroEducationTone = "blue" | "orange" | "green" | "amber" | "violet" | "teal";
 export type MicroEducationChip = "harassment" | "rights" | "safety" | "mentalHealth";
+export type MicroEducationIncidentCategory =
+  | "domestic_violence"
+  | "workplace_bullying"
+  | "racism_discrimination"
+  | "online_abuse"
+  | "scam_fraud"
+  | "theft_property"
+  | "harassment"
+  | "mental_health_distress"
+  | "general_support";
 export type MicroEducationDuration = "quick" | "deep";
 export type MicroEducationFormat = "video" | "interactive" | "guide";
 
@@ -24,6 +34,8 @@ export type MicroEducationItem = {
   category?: MicroEducationCategory;
   tone: MicroEducationTone;
   chips: MicroEducationChip[];
+  incidentCategories?: MicroEducationIncidentCategory[];
+  matchKeywords?: string[];
   duration: MicroEducationDuration;
   format: MicroEducationFormat;
   status: MicroEducationStatus;
@@ -77,6 +89,8 @@ export type MicroEducationInput = {
   categoryId?: string;
   tone: MicroEducationTone;
   chips: MicroEducationChip[];
+  incidentCategories?: MicroEducationIncidentCategory[];
+  matchKeywords?: string[];
   duration: MicroEducationDuration;
   format: MicroEducationFormat;
   status: MicroEducationStatus;
@@ -112,6 +126,21 @@ export async function listAdminMicroEducation(): Promise<MicroEducationItem[]> {
   const response = await adminApiRequest<{ items: MicroEducationItem[] }>("/admin/microeducation");
 
   return response.data.items;
+}
+
+export async function generateMicroEducationCard(input: {
+  topic: string;
+  audience?: string;
+  language?: string;
+  tone?: MicroEducationTone;
+  categoryId?: string;
+}): Promise<MicroEducationInput> {
+  const response = await adminApiRequest<{ card: MicroEducationInput }>(
+    "/admin/microeducation/generate",
+    { method: "POST", body: input },
+  );
+
+  return response.data.card;
 }
 
 export async function listAdminMicroEducationCategories(): Promise<MicroEducationCategory[]> {

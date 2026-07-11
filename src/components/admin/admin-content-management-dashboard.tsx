@@ -7,6 +7,7 @@ import {
   Phone,
   Plus,
   Search,
+  Sparkles,
   Trash2,
   Upload,
 } from "lucide-react";
@@ -17,6 +18,7 @@ import {
   createMicroEducationItem,
   deleteMicroEducationCategory,
   deleteMicroEducationItem,
+  generateMicroEducationCard,
   getMicroEducationImageUrl,
   listAdminMicroEducationCategories,
   listAdminMicroEducation,
@@ -197,6 +199,8 @@ export function AdminContentManagementDashboard() {
   const [cardSearch, setCardSearch] = useState("");
   const [isSavingCategory, setIsSavingCategory] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isGeneratingCard, setIsGeneratingCard] = useState(false);
+  const [generationTopic, setGenerationTopic] = useState("");
   const [isSavingResource, setIsSavingResource] = useState(false);
   const [deletingCategoryId, setDeletingCategoryId] = useState<string | null>(null);
   const [deletingCardId, setDeletingCardId] = useState<string | null>(null);
@@ -512,6 +516,7 @@ export function AdminContentManagementDashboard() {
   const openEditorModal = (card?: MicroEducationItem) => {
     setEditingCard(card ?? null);
     setEditorError(null);
+    setGenerationTopic(card?.title ?? "");
     setStatusMessage(null);
     setEditorImageFile(null);
     if (editorImageInputRef.current) {
@@ -553,9 +558,42 @@ export function AdminContentManagementDashboard() {
     setEditingCard(null);
     setEditorImageFile(null);
     setEditorError(null);
+    setGenerationTopic("");
     setIsSaving(false);
     if (editorImageInputRef.current) {
       editorImageInputRef.current.value = "";
+    }
+  };
+
+  const generateCardWithAi = async () => {
+    const topic = generationTopic.trim() || editorValues.title.trim();
+
+    if (topic.length < 3) {
+      setEditorError("Enter a topic before generating a micro-card.");
+      return;
+    }
+
+    setIsGeneratingCard(true);
+    setEditorError(null);
+
+    try {
+      const generated = await generateMicroEducationCard({
+        topic,
+        tone: editorValues.tone,
+        categoryId: editorValues.categoryId || undefined,
+      });
+      setEditorValues({
+        ...generated,
+        categoryId: generated.categoryId || editorValues.categoryId || defaultCategoryId,
+        imageFile: null,
+      });
+      setStatusMessage("AI generated a complete micro-card. Review it before saving.");
+    }
+    catch (error) {
+      setEditorError(error instanceof Error ? error.message : "Could not generate the micro-card.");
+    }
+    finally {
+      setIsGeneratingCard(false);
     }
   };
 
@@ -1454,6 +1492,23 @@ export function AdminContentManagementDashboard() {
                   <p className="mt-2 max-w-[620px] text-sm leading-6 text-[#64748B]">
                     Manage the data that appears in the user micro-education view.
                   </p>
+                  <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                    <input
+                      value={generationTopic}
+                      onChange={event => setGenerationTopic(event.target.value)}
+                      placeholder="Topic for AI generation, e.g. documenting workplace bullying"
+                      className="h-10 min-w-0 flex-1 rounded-[6px] border border-[#D5DEE7] px-3 text-sm text-[#0F172A] outline-none transition focus:border-[#4BA3D9]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void generateCardWithAi()}
+                      disabled={isGeneratingCard}
+                      className="inline-flex h-10 items-center justify-center gap-2 rounded-[6px] bg-[#0F766E] px-4 text-sm font-semibold text-white transition enabled:hover:bg-[#0B5F59] disabled:cursor-not-allowed disabled:bg-[#9FB9D1]"
+                    >
+                      <Sparkles className="h-4 w-4" />
+                      {isGeneratingCard ? "Generating..." : "Generate with AI"}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="grid max-h-[calc(100vh-220px)] gap-4 overflow-y-auto px-6 py-5 sm:grid-cols-2 sm:px-8">
