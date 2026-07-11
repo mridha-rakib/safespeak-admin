@@ -78,8 +78,7 @@ export function getApiBaseUrl(explicit?: string): string {
 
 export function getAiAgentApiBaseUrl(): string {
   return normalizeApiBaseUrl(
-    import.meta.env.VITE_AI_AGENT_API_BASE_URL ??
-      DEFAULT_AI_AGENT_API_BASE_URL,
+    import.meta.env.VITE_AI_AGENT_API_BASE_URL ?? DEFAULT_AI_AGENT_API_BASE_URL,
   );
 }
 
