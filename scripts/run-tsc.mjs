@@ -12,7 +12,7 @@ function run() {
     tscCliPath = path.join(path.dirname(typescriptPackageJsonPath), "bin", "tsc");
   }
   catch {
-    console.error("TypeScript is not installed yet. Run `bun install` before building.");
+    console.error("TypeScript is not installed yet. Run `npm install` before building.");
     process.exit(1);
   }
 

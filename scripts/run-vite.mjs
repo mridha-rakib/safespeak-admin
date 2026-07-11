@@ -79,7 +79,7 @@ async function run() {
     viteCliPath = path.join(path.dirname(vitePackageJsonPath), "bin", "vite.js");
   }
   catch {
-    console.error("Vite is not installed yet. Run `bun install` before starting the dev server.");
+    console.error("Vite is not installed yet. Run `npm install` before starting the dev server.");
     process.exit(1);
   }
 
