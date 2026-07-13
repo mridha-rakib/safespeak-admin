@@ -9,6 +9,7 @@ import {
   CheckCircle,
   CheckCircle2,
   ChevronDown,
+  Clock3,
   CloudUpload,
   Cpu,
   Database,
@@ -64,17 +65,20 @@ const TEMPLATE_TABS = [
   {
     id: "riskPhrasing",
     label: "Risk Phrasing",
-    value: `Based on recent reports of {Scam_Type}, we have identified a high probability of fraudulent activity.\n\nThis pattern typically involves long-term emotional manipulation followed by requests for cryptocurrency transfers.\n\nRecommendation: Cease all communication immediately. Do not transfer any funds. The platform advises users to report this profile.`,
+    legacyValue: `Based on recent reports of {Scam_Type}, we have identified a high probability of fraudulent activity.\n\nThis pattern typically involves long-term emotional manipulation followed by requests for cryptocurrency transfers.\n\nRecommendation: Cease all communication immediately. Do not transfer any funds. The platform advises users to report this profile.`,
+    placeholder: "Add the saved risk wording you want the AI to use when this source is retrieved.",
   },
   {
     id: "disclaimerPhrasing",
     label: "Disclaimer Phrasing",
-    value: `SafeSpeak provides guidance and referral support, not legal advice.\n\nBefore sharing information with a partner organization, confirm the user's consent status and review any jurisdiction-specific requirements.\n\nUse plain, non-judgmental language in every explanation.`,
+    legacyValue: `SafeSpeak provides guidance and referral support, not legal advice.\n\nBefore sharing information with a partner organization, confirm the user's consent status and review any jurisdiction-specific requirements.\n\nUse plain, non-judgmental language in every explanation.`,
+    placeholder: "Add the disclaimer wording you want returned with this source.",
   },
   {
     id: "generalResponses",
     label: "General Responses",
-    value: `Acknowledge the user's experience, summarise the immediate safety steps, and provide the next best support option.\n\nWhen confidence is low, route the draft to human review before publishing or sharing externally.`,
+    legacyValue: `Acknowledge the user's experience, summarise the immediate safety steps, and provide the next best support option.\n\nWhen confidence is low, route the draft to human review before publishing or sharing externally.`,
+    placeholder: "Add general response guidance for answers grounded in this source.",
   },
 ] as const;
 type TemplateTabId = (typeof TEMPLATE_TABS)[number]["id"];
@@ -315,9 +319,64 @@ function getIndexingProgressLabel(source: KnowledgeSourceItem) {
   return `${indexedChunkCount}/${chunkCount} indexed`;
 }
 
-function isLegalRagSource(source: KnowledgeSourceItem) {
+function isRagFullyReady(source: KnowledgeSourceItem) {
+  return (
+    getAdminIngestionStatus(source) === "indexed"
+    && getChunkCount(source) > 0
+    && source.status === "approved"
+    && !isExcludedFromRag(source)
+  );
+}
+
+function getExtractionConfidenceLabel(source: KnowledgeSourceItem) {
+  const chunkCount = getChunkCount(source);
+
+  if (isRagFullyReady(source)) {
+    return `RAG ready: extracted, chunked, indexed, and approved (${chunkCount} chunks)`;
+  }
+
+  if (getAdminIngestionStatus(source) === "indexed" && chunkCount > 0) {
+    return `RAG data created: extracted and indexed (${chunkCount} chunks). Waiting for approval.`;
+  }
+
+  if (source.ingestionStatus === "failed") {
+    return "Extraction failed. RAG data was not created.";
+  }
+
+  if (source.ingestionStatus === "partial_index_failed") {
+    return "Partial indexing failure. RAG data is incomplete.";
+  }
+
+  if (source.ingestionStatus === "chunked" && chunkCount > 0) {
+    return `Text extracted and chunked (${chunkCount} chunks). Indexing still needs to finish.`;
+  }
+
+  if (source.ingestionStatus === "metadata_only") {
+    return "Registry saved, but document extraction/indexing has not completed yet.";
+  }
+
+  return "RAG preparation is still in progress.";
+}
+
+function getChunkSummaryLabel(source: KnowledgeSourceItem) {
+  const chunkCount = getChunkCount(source);
+  const indexedChunkCount = getIndexedChunkCount(source);
+
+  if (chunkCount <= 0) {
+    return "No RAG chunks yet";
+  }
+
+  if (indexedChunkCount > 0) {
+    return `${indexedChunkCount} indexed chunks ready`;
+  }
+
+  return `${chunkCount} chunks created`;
+}
+
+function isLiveRagSource(source: KnowledgeSourceItem) {
   return (
     source.sourceCategory === "official_legal_source"
+    || source.sourceCategory === "official_support_source"
     || source.sourceType === "Act"
     || source.sourceType === "Regulation"
   );
@@ -406,7 +465,7 @@ function getRagEligibilityReasons(source: KnowledgeSourceItem) {
   if (source.status !== "approved") {
     reasons.push("Not approved yet");
   }
-  if (!source.legalReviewed) {
+  if (source.sourceCategory === "official_legal_source" && !source.legalReviewed) {
     reasons.push("Legal review incomplete");
   }
   if (source.ingestionStatus === "failed") {
@@ -421,8 +480,8 @@ function getRagEligibilityReasons(source: KnowledgeSourceItem) {
   if (getChunkCount(source) <= 0) {
     reasons.push("No indexed chunks available");
   }
-  if (!isLegalRagSource(source)) {
-    reasons.push("Source category is not legal");
+  if (!isLiveRagSource(source)) {
+    reasons.push("Source category is not enabled for live RAG");
   }
   if (isOfficialSource(source) && isRefreshDue(source)) {
     reasons.push("Source refresh is due");
@@ -459,6 +518,10 @@ function getApprovalBlockReason(source: KnowledgeSourceItem) {
 
 function displayCategory(source: KnowledgeSourceItem) {
   const metadataCategory = getMetadata(source).adminCategory;
+
+  if (source.sourceCategory === "official_support_source") {
+    return "Guidance";
+  }
 
   if (typeof metadataCategory === "string" && metadataCategory.trim()) {
     return metadataCategory;
@@ -568,6 +631,17 @@ function buildSourceMetadata(
   draft?: GovernanceDraft,
   templates?: TemplateDraftState,
 ): KnowledgeSourceMetadata {
+  const cleanedTemplates = Object.fromEntries(
+    TEMPLATE_TABS.map((tab) => {
+      const value = templates?.[tab.id] ?? "";
+      const trimmedValue = value.trim();
+      return [
+        tab.id,
+        trimmedValue && trimmedValue !== tab.legacyValue ? trimmedValue : undefined,
+      ];
+    }).filter(([, value]) => typeof value === "string" && value.length > 0),
+  );
+
   return {
     adminCategory:
       draft?.sourceType === "Regulation"
@@ -575,9 +649,7 @@ function buildSourceMetadata(
         : draft?.sourceCategory === "admin_content"
           ? "Scam Pattern"
           : "Legislation",
-    templates: Object.fromEntries(
-      TEMPLATE_TABS.map(tab => [tab.id, templates?.[tab.id] ?? tab.value]),
-    ),
+    templates: cleanedTemplates,
     customTopic: draft?.customTopic?.trim() || undefined,
   };
 }
@@ -595,12 +667,17 @@ function getTemplateValue(
   tabId: TemplateTabId,
 ) {
   const templateValue = getMetadata(source).templates?.[tabId];
+  const tab = TEMPLATE_TABS.find(item => item.id === tabId);
 
-  if (typeof templateValue === "string") {
+  if (
+    typeof templateValue === "string"
+    && templateValue.trim()
+    && templateValue.trim() !== tab?.legacyValue
+  ) {
     return templateValue;
   }
 
-  return TEMPLATE_TABS.find(tab => tab.id === tabId)?.value ?? "";
+  return "";
 }
 
 function upsertSource(
@@ -1007,6 +1084,43 @@ export function AdminContentKnowledgeSourcesPage() {
     },
     [isCreateOpen, selectedSourceId, sources],
   );
+  const persistedUploadedFile = useMemo(
+    () => getMetadata(selectedSource).uploadedFile,
+    [selectedSource],
+  );
+  const persistedUploadStatus = useMemo(() => {
+    if (!selectedSource || !persistedUploadedFile) {
+      return null;
+    }
+
+    const metadata = getMetadata(selectedSource);
+
+    if (selectedSource.ingestionStatus === "embedded" || getIndexedChunkCount(selectedSource) > 0) {
+      return {
+        label: "Uploaded and indexed",
+        tone: "indexed" as const,
+      };
+    }
+
+    if (metadata.extractionStatus === "pending_upload_ingest") {
+      return {
+        label: "Uploaded and waiting for ingest",
+        tone: "pending" as const,
+      };
+    }
+
+    if (selectedSource.ingestionStatus === "failed") {
+      return {
+        label: "Uploaded, but indexing failed",
+        tone: "failed" as const,
+      };
+    }
+
+    return {
+      label: "Uploaded document saved",
+      tone: "saved" as const,
+    };
+  }, [persistedUploadedFile, selectedSource]);
   
   const priorityCoverageGaps = useMemo(
     () => (readiness ? getPriorityCoverageGaps(readiness) : []),
@@ -1832,6 +1946,8 @@ export function AdminContentKnowledgeSourcesPage() {
                     const category = displayCategory(row);
                     const adminIngestionStatus = getAdminIngestionStatus(row);
                     const approvalBlockReason = getApprovalBlockReason(row);
+                    const ragReady = isRagFullyReady(row);
+                    const chunkCount = getChunkCount(row);
 
                     return (
                       <tr
@@ -1878,6 +1994,14 @@ export function AdminContentKnowledgeSourcesPage() {
                               />
                               {adminIngestionStatus}
                             </span>
+                            <p
+                              className={cn(
+                                "max-w-[190px] text-[9px] font-semibold ml-1 leading-relaxed",
+                                ragReady ? "text-emerald-600" : "text-slate-500",
+                              )}
+                            >
+                              {getExtractionConfidenceLabel(row)}
+                            </p>
                             {getIndexingProgressLabel(row) && (
                               <p className="text-[9px] font-medium text-slate-400 ml-1">
                                 {getIndexingProgressLabel(row)}
@@ -1903,20 +2027,32 @@ export function AdminContentKnowledgeSourcesPage() {
                           </span>
                         </td>
                         <td className="px-4 py-3.5 text-slate-500 font-medium">
-                          <span
-                            className={cn(
-                              "inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold border",
-                              getApprovalStatusBadgeClass(row.status),
-                            )}
-                          >
-                            {row.status}
-                          </span>
+                          <div className="space-y-1">
+                            <span
+                              className={cn(
+                                "inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold border",
+                                getApprovalStatusBadgeClass(row.status),
+                              )}
+                            >
+                              {row.status}
+                            </span>
+                            <p className={cn("text-[9px] font-semibold", ragReady ? "text-emerald-600" : "text-slate-400")}>
+                              {ragReady ? "Live RAG is active" : row.status === "approved" ? "Approved, but check ingestion readiness" : "Not live for AI yet"}
+                            </p>
+                          </div>
                         </td>
                         <td className="px-4 py-3.5 text-slate-500 font-medium">
                           {formatDate(row.ingestedAt)}
                         </td>
-                        <td className="px-4 py-3.5 text-slate-500 font-bold">
-                          {getChunkCount(row)}
+                        <td className="px-4 py-3.5">
+                          <div className="space-y-1">
+                            <p className={cn("font-bold", chunkCount > 0 ? "text-slate-700" : "text-slate-400")}>
+                              {chunkCount}
+                            </p>
+                            <p className={cn("text-[9px] font-semibold", chunkCount > 0 ? "text-emerald-600" : "text-slate-400")}>
+                              {getChunkSummaryLabel(row)}
+                            </p>
+                          </div>
                         </td>
                         <td className="px-4 py-3.5 text-right" onClick={(e) => e.stopPropagation()}>
                           <div className="inline-flex items-center gap-1.5">
@@ -2492,12 +2628,59 @@ export function AdminContentKnowledgeSourcesPage() {
                         )}
                       </div>
                     </div>
+                  ) : persistedUploadedFile ? (
+                    <div className="flex flex-col gap-2 rounded-xl border border-blue-100 bg-blue-50/30 p-3.5">
+                      <div className="flex items-start gap-2.5">
+                        <FileText className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                          <p
+                            className="text-xs font-bold text-slate-800 truncate"
+                            title={persistedUploadedFile.originalFileName ?? "Uploaded document"}
+                          >
+                            {persistedUploadedFile.originalFileName ?? "Uploaded document"}
+                          </p>
+                          <p className="text-[10px] text-slate-500 font-medium mt-0.5">
+                            {`${formatFileSize(persistedUploadedFile.fileSizeBytes)} · ${persistedUploadedFile.mimeType || "binary"}`}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="mt-1 flex items-center justify-between gap-2 border-t border-blue-100/50 pt-2">
+                        <p className="text-[10px] font-medium">
+                          {persistedUploadStatus?.tone === "indexed" ? (
+                            <span className="flex items-center gap-1 text-emerald-600 font-semibold">
+                              <Check className="h-3 w-3 text-emerald-500" />
+                              {persistedUploadStatus.label}
+                            </span>
+                          ) : persistedUploadStatus?.tone === "pending" ? (
+                            <span className="flex items-center gap-1 text-amber-600 font-semibold">
+                              <Clock3 className="h-3 w-3 text-amber-500" />
+                              {persistedUploadStatus.label}
+                            </span>
+                          ) : persistedUploadStatus?.tone === "failed" ? (
+                            <span className="flex items-center gap-1 text-rose-600 font-semibold">
+                              <X className="h-3 w-3 text-rose-500" />
+                              {persistedUploadStatus.label}
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1 text-blue-600 font-semibold">
+                              <Check className="h-3 w-3 text-blue-500" />
+                              {persistedUploadStatus?.label ?? "Uploaded document saved"}
+                            </span>
+                          )}
+                        </p>
+
+                        {persistedUploadedFile.uploadedAt ? (
+                          <span className="text-[10px] text-slate-400">
+                            {`Saved ${new Date(persistedUploadedFile.uploadedAt).toLocaleDateString()}`}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
                   ) : (
                     <div className="rounded-lg border border-slate-100 bg-slate-50/50 p-2.5 text-center">
                       <p className="text-[10px] text-slate-500 font-medium truncate">
-                        {selectedSource && getMetadata(selectedSource).uploadedFile?.originalFileName
-                          ? `Active File: ${getMetadata(selectedSource).uploadedFile?.originalFileName}`
-                          : selectedSource
+                        {selectedSource
                           ? "No document uploaded for this RAG source."
                           : "No file selected."}
                       </p>
@@ -2639,7 +2822,10 @@ export function AdminContentKnowledgeSourcesPage() {
                       [activeTemplateTab]: event.target.value,
                     }))}
                   disabled={!selectedSource && !isCreateOpen}
-                  placeholder="Based on recent reports..."
+                  placeholder={
+                    TEMPLATE_TABS.find(tab => tab.id === activeTemplateTab)?.placeholder
+                    ?? "Add template text."
+                  }
                   className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm leading-relaxed text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/10 disabled:bg-slate-50 disabled:text-slate-400"
                 />
               </div>
