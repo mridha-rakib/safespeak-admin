@@ -141,6 +141,8 @@ export type KnowledgeSourceItem = {
   description?: string;
   sourceCategory: KnowledgeSourceCategory;
   jurisdiction: KnowledgeSourceJurisdiction;
+  sourceAuthority?: string;
+  authority?: string;
   topic: KnowledgeSourceTopic;
   sourceType: KnowledgeSourceType;
   language: string;
@@ -149,9 +151,11 @@ export type KnowledgeSourceItem = {
   publisher: string;
   licenseStatus: string;
   lastUpdated?: string;
+  sourceDate?: string;
   lastVerifiedAt?: string;
   nextReviewAt?: string;
   nextRefreshAt?: string;
+  refreshCadence?: string;
   legalReviewed: boolean;
   legalReviewedBy?: KnowledgeSourceActorRef;
   legalReviewedAt?: string;
@@ -189,6 +193,8 @@ export type KnowledgeSourceInput = {
   description?: string;
   sourceCategory: KnowledgeSourceCategory;
   jurisdiction: KnowledgeSourceJurisdiction;
+  sourceAuthority?: string;
+  authority?: string;
   topic: KnowledgeSourceTopic;
   sourceType: KnowledgeSourceType;
   language?: string;
@@ -197,9 +203,11 @@ export type KnowledgeSourceInput = {
   publisher: string;
   licenseStatus: string;
   lastUpdated?: string;
+  sourceDate?: string;
   lastVerifiedAt?: string;
   nextReviewAt?: string;
   nextRefreshAt?: string;
+  refreshCadence?: string;
   legalReviewed?: boolean;
   reviewNotes?: string;
   status?: KnowledgeSourceStatus;

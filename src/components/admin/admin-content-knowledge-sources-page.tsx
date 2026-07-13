@@ -1,20 +1,37 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ArrowLeft,
+  Activity,
   AlertCircle,
+  AlertTriangle,
+  ArrowLeft,
+  Calendar,
+  Check,
+  CheckCircle,
   CheckCircle2,
+  ChevronDown,
+  CloudUpload,
+  Cpu,
+  Database,
+  ExternalLink,
   FileText,
   FileUp,
+  Layers,
+  MoreHorizontal,
   Plus,
   RefreshCcw,
   RotateCcw,
+  Scale,
+  Server,
+  Settings,
+  ShieldAlert,
+  Sparkles,
   Trash2,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { cn } from "@/lib/utils";
 
 import type {
   KnowledgeSourceCategory,
-  KnowledgeSourceChunkPreview,
   KnowledgeSourceInput,
   KnowledgeSourceItem,
   KnowledgeSourceJurisdiction,
@@ -34,7 +51,6 @@ import {
   getKnowledgeSourceReadiness,
   getPineconeHealth,
   ingestKnowledgeSource,
-  listKnowledgeSourceChunks,
   listKnowledgeSources,
   refreshKnowledgeSource,
   reindexKnowledgeSource,
@@ -42,6 +58,7 @@ import {
   updateKnowledgeSource,
   uploadKnowledgeSourceDocument,
 } from "@/lib/knowledge-sources";
+import { ApiRequestError } from "@/lib/api";
 
 const TEMPLATE_TABS = [
   {
@@ -60,24 +77,15 @@ const TEMPLATE_TABS = [
     value: `Acknowledge the user's experience, summarise the immediate safety steps, and provide the next best support option.\n\nWhen confidence is low, route the draft to human review before publishing or sharing externally.`,
   },
 ] as const;
-const CHUNK_PREVIEW_PAGE_SIZE = 25;
-const LARGE_DOCUMENT_PAGE_WARNING_THRESHOLD = 100;
-const LARGE_DOCUMENT_CHUNK_WARNING_THRESHOLD = 1000;
-
 type TemplateTabId = (typeof TEMPLATE_TABS)[number]["id"];
+type TemplateDraftState = Record<TemplateTabId, string>;
 
-const CATEGORY_OPTIONS = [
-  "Legislation",
-  "Support",
-  "Scam Pattern",
-  "Regulation",
-] as const;
 const SOURCE_CATEGORY_OPTIONS: Array<{
   value: KnowledgeSourceCategory;
   label: string;
 }> = [
-  { value: "official_legal_source", label: "Official legal source" },
-  { value: "official_support_source", label: "Official support source" },
+  { value: "official_legal_source", label: "Official legal source / legislation" },
+  { value: "official_support_source", label: "Government guidance / official guidance source" },
   { value: "internal_product_rule", label: "Internal SafeSpeak rule" },
   { value: "admin_content", label: "Admin content" },
 ];
@@ -128,6 +136,7 @@ const SOURCE_TYPE_OPTIONS: KnowledgeSourceType[] = [
   "FAQ",
   "WebPage",
 ];
+const KNOWLEDGE_SOURCE_DRAFT_STORAGE_KEY = "safespeak_knowledge_source_draft_id";
 const LICENSE_STATUS_OPTIONS = [
   "Government copyright",
   "Public domain",
@@ -136,44 +145,6 @@ const LICENSE_STATUS_OPTIONS = [
   "Agency permission required",
   "Internal use",
 ] as const;
-
-type CreateSourceFormState = {
-  title: string;
-  adminCategory: (typeof CATEGORY_OPTIONS)[number] | (string & {});
-  description: string;
-  sourceCategory: KnowledgeSourceCategory;
-  publisher: string;
-  licenseStatus: string;
-  url: string;
-  jurisdiction: KnowledgeSourceJurisdiction;
-  topic: KnowledgeSourceTopic;
-  sourceType: KnowledgeSourceType;
-  lastUpdated: string;
-  nextRefreshAt: string;
-  nextReviewAt: string;
-  reviewNotes: string;
-  legalReviewed: boolean;
-  ingestImmediately: boolean;
-  rawContent: string;
-  documentFile: File | null;
-  constitutionalBasis: string;
-  legislationTags: string;
-};
-
-type CreateSourceValidationErrors = Partial<
-  Record<
-    | "title"
-    | "sourceCategory"
-    | "publisher"
-    | "licenseStatus"
-    | "url"
-    | "lastUpdated"
-    | "nextRefreshAt"
-    | "sourceType"
-    | "document",
-    string
-  >
->;
 
 type DocumentUploadStatus =
   | "idle"
@@ -190,6 +161,8 @@ type GovernanceDraft = Pick<
   | "description"
   | "sourceCategory"
   | "jurisdiction"
+  | "sourceAuthority"
+  | "authority"
   | "topic"
   | "sourceType"
   | "language"
@@ -198,11 +171,15 @@ type GovernanceDraft = Pick<
   | "publisher"
   | "licenseStatus"
   | "lastUpdated"
+  | "sourceDate"
   | "nextReviewAt"
   | "nextRefreshAt"
+  | "refreshCadence"
   | "legalReviewed"
   | "reviewNotes"
->;
+> & {
+  customTopic?: string;
+};
 
 function toDateInputValue(value?: string): string {
   if (!value) {
@@ -234,36 +211,49 @@ function todayInputValue(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-function createDefaultCreateForm(): CreateSourceFormState {
-  const lastUpdated = todayInputValue();
-
-  return {
-    title: "",
-    adminCategory: "Regulation",
-    description: "",
-    sourceCategory: "official_legal_source",
-    publisher: "",
-    licenseStatus: "Government copyright",
-    url: "",
-    jurisdiction: "AU",
-    topic: "other",
-    sourceType: "Guideline",
-    lastUpdated,
-    nextRefreshAt: addDaysInputValue(lastUpdated, 90),
-    nextReviewAt: "",
-    reviewNotes: "",
-    legalReviewed: false,
-    ingestImmediately: true,
-    rawContent: "",
-    documentFile: null,
-    constitutionalBasis: "",
-    legislationTags: "",
-  };
-}
-
 function getFriendlyError(error: unknown, fallback: string) {
   if (!(error instanceof Error)) {
     return fallback;
+  }
+
+  if (error instanceof ApiRequestError && Array.isArray(error.errors) && error.errors.length > 0) {
+    const details = error.errors
+      .map((item) => {
+        if (!item || typeof item !== "object") {
+          return "";
+        }
+
+        const record = item as {
+          field?: unknown;
+          message?: unknown;
+          loc?: unknown;
+          msg?: unknown;
+        };
+        const location = Array.isArray(record.loc)
+          ? record.loc
+            .filter(part => typeof part === "string" || typeof part === "number")
+            .map(part => String(part))
+            .join(".")
+          : undefined;
+        const field
+          = typeof record.field === "string"
+            ? record.field
+            : location || "field";
+        const message
+          = typeof record.message === "string"
+            ? record.message
+            : typeof record.msg === "string"
+              ? record.msg
+              : "Invalid value";
+
+        return `${field}: ${message}`;
+      })
+      .filter(Boolean)
+      .join(" | ");
+
+    if (details) {
+      return details;
+    }
   }
 
   if (/jwt expired|token|authentication/i.test(error.message)) {
@@ -288,99 +278,6 @@ function formatFileSize(bytes?: number) {
   }
 
   return `${value.toFixed(value >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
-}
-
-function getFileLabel(file: File | null) {
-  if (!file) {
-    return "";
-  }
-
-  return `${file.name} · ${formatFileSize(file.size)} · ${file.type || "unknown type"}`;
-}
-
-function validateCreateSourceForm(
-  form: CreateSourceFormState,
-): CreateSourceValidationErrors {
-  const errors: CreateSourceValidationErrors = {};
-  const isOfficial = form.sourceCategory.startsWith("official_");
-
-  if (!form.title.trim()) {
-    errors.title = "Source name is required.";
-  }
-  if (!form.sourceCategory) {
-    errors.sourceCategory = "Source category is required.";
-  }
-  if (!form.sourceType) {
-    errors.sourceType = "Source type is required.";
-  }
-  if (!form.publisher.trim()) {
-    errors.publisher = "Publisher is required.";
-  }
-  if (!form.licenseStatus.trim()) {
-    errors.licenseStatus = "License status is required.";
-  }
-  if (isOfficial && !form.url.trim()) {
-    errors.url = "Official legal/support sources require an authoritative URL.";
-  }
-  if (isOfficial && !form.lastUpdated) {
-    errors.lastUpdated = "Official sources require a last-updated date.";
-  }
-  if (isOfficial && !form.nextRefreshAt) {
-    errors.nextRefreshAt = "Official sources require a refresh date.";
-  }
-  if (
-    form.ingestImmediately
-    && !form.documentFile
-    && !form.rawContent.trim()
-  ) {
-    errors.document = "Add a document or paste source text before immediate ingestion.";
-  }
-
-  return errors;
-}
-
-function hasValidationErrors(errors: CreateSourceValidationErrors) {
-  return Object.values(errors).some(Boolean);
-}
-
-function fieldBorder(error?: string) {
-  return error
-    ? "border-[#D14343] focus:border-[#D14343]"
-    : "border-[#D8E3EE] focus:border-[#0F67AE]";
-}
-
-function FieldError({ message }: { message?: string }) {
-  if (!message) {
-    return null;
-  }
-
-  return <p className="text-[11px] font-medium text-[#B42318]">{message}</p>;
-}
-
-function categoryClass(category: string) {
-  if (category === "Legislation") {
-    return "bg-[#E5ECFF] text-[#3B5BCC]";
-  }
-  if (category === "Scam Pattern") {
-    return "bg-[#FFE8EA] text-[#D14343]";
-  }
-  return "bg-[#EFE3FF] text-[#7C3AED]";
-}
-
-function ingestionClass(status: string) {
-  if (status === "Approved For RAG" || status === "Ready For Approval") {
-    return "bg-[#DCFCE7] text-[#0F7A43]";
-  }
-  if (status === "Ingestion Failed" || status === "Partial Index Failure") {
-    return "bg-[#FEE2E2] text-[#B42318]";
-  }
-  if (status === "Rejected" || status === "Expired" || status === "Archived") {
-    return "bg-[#FEE2E2] text-[#B42318]";
-  }
-  if (status === "Needs Refresh" || status === "Needs Legal Review") {
-    return "bg-[#FFE8EA] text-[#B42318]";
-  }
-  return "bg-[#FFF0D9] text-[#B45309]";
 }
 
 function getMetadata(source?: KnowledgeSourceItem): KnowledgeSourceMetadata {
@@ -416,25 +313,6 @@ function getIndexingProgressLabel(source: KnowledgeSourceItem) {
   }
 
   return `${indexedChunkCount}/${chunkCount} indexed`;
-}
-
-function getLargeDocumentWarning(source: KnowledgeSourceItem) {
-  const metadata = getMetadata(source);
-  const pageCount = metadata.extractedPageCount;
-  const chunkCount = getChunkCount(source);
-
-  if (
-    typeof pageCount === "number"
-    && pageCount > LARGE_DOCUMENT_PAGE_WARNING_THRESHOLD
-  ) {
-    return `Large document: ${pageCount} pages. Chunk previews are paginated and indexing runs in batches.`;
-  }
-
-  if (chunkCount > LARGE_DOCUMENT_CHUNK_WARNING_THRESHOLD) {
-    return `Large document: ${chunkCount} chunks. Chunk previews are paginated and indexing runs in batches.`;
-  }
-
-  return metadata.largeDocumentWarning;
 }
 
 function isLegalRagSource(source: KnowledgeSourceItem) {
@@ -491,26 +369,6 @@ function getAdminIngestionStatus(source: KnowledgeSourceItem) {
   return "pending";
 }
 
-function getEmbeddingStatus(source: KnowledgeSourceItem) {
-  if (getMetadata(source).searchReadinessStatus === "indexed_pending_search") {
-    return "Indexed; search may take a short moment";
-  }
-  if (source.ingestionStatus === "partial_index_failed") {
-    return `Partial failure (${getIndexingProgressLabel(source)})`;
-  }
-  if (getAdminIngestionStatus(source) === "indexed") {
-    return "Indexed";
-  }
-  if (source.ingestionStatus === "failed") {
-    return "Failed";
-  }
-  if (getChunkCount(source) > 0) {
-    return "Chunks available";
-  }
-
-  return "Not indexed";
-}
-
 function isRefreshDue(source: KnowledgeSourceItem) {
   if (!isOfficialSource(source)) {
     return false;
@@ -537,49 +395,6 @@ function isReviewDue(source: KnowledgeSourceItem) {
 
 function isExcludedFromRag(source: KnowledgeSourceItem) {
   return getRagEligibilityReasons(source).length > 0;
-}
-
-function getRagEligibilityChecks(source: KnowledgeSourceItem) {
-  const hasChunks = source.ingestionStatus === "embedded" && getChunkCount(source) > 0;
-  const legalReviewSatisfied =
-    source.sourceCategory !== "official_legal_source" || source.legalReviewed;
-  const refreshCurrent = !isOfficialSource(source) || !isRefreshDue(source);
-  const reviewCurrent = !isReviewDue(source);
-  const legalCategory = isLegalRagSource(source);
-  const indexed = getAdminIngestionStatus(source) === "indexed";
-
-  return [
-    {
-      label: "Source approved",
-      passed: source.status === "approved",
-      nextStep: "Click Save & Approve for RAG after registry details are complete.",
-    },
-    {
-      label: "Indexed chunks available",
-      passed: indexed && hasChunks,
-      nextStep: "Upload and ingest a document, then re-index so searchable chunks are created.",
-    },
-    {
-      label: "Legal review complete",
-      passed: legalReviewSatisfied,
-      nextStep: "Mark legal review complete and save registry details.",
-    },
-    {
-      label: "Refresh date current",
-      passed: refreshCurrent,
-      nextStep: "Set a future refresh date or refresh the source.",
-    },
-    {
-      label: "Review date current",
-      passed: reviewCurrent,
-      nextStep: "Set a future review date or clear the expired review due date.",
-    },
-    {
-      label: "Legal source category",
-      passed: legalCategory,
-      nextStep: "Use Official legal source with Act or Regulation for legal RAG eligibility.",
-    },
-  ];
 }
 
 function getRagEligibilityReasons(source: KnowledgeSourceItem) {
@@ -619,19 +434,24 @@ function getRagEligibilityReasons(source: KnowledgeSourceItem) {
   return Array.from(new Set(reasons));
 }
 
-function getRagNextStep(source: KnowledgeSourceItem) {
-  return (
-    getRagEligibilityChecks(source).find(check => !check.passed)?.nextStep
-    ?? "Eligible for frontend RAG citations. This uses retrieval, not model training."
-  );
-}
-
 function getApprovalBlockReason(source: KnowledgeSourceItem) {
   if (source.status === "approved") {
     return "Already approved.";
   }
   if (source.status === "archived" || source.status === "expired") {
     return "Archived sources cannot be approved.";
+  }
+  if (getAdminIngestionStatus(source) !== "indexed") {
+    return "Finish extraction and indexing before approval.";
+  }
+  if (source.sourceCategory === "official_legal_source" && !source.legalReviewed) {
+    return "Legal review must be completed before approval.";
+  }
+  if (isOfficialSource(source) && isRefreshDue(source)) {
+    return "Refresh the source before approval.";
+  }
+  if (isReviewDue(source)) {
+    return "Review due date has expired.";
   }
 
   return "";
@@ -726,47 +546,6 @@ function displaySourceCategoryLabel(category: KnowledgeSourceCategory) {
   );
 }
 
-function displaySourceCategory(source: KnowledgeSourceItem) {
-  return displaySourceCategoryLabel(source.sourceCategory);
-}
-
-function formatSourceAge(source: KnowledgeSourceItem) {
-  const value = source.ingestedAt ?? source.updatedAt ?? source.createdAt;
-
-  if (!value) {
-    return "Unknown";
-  }
-
-  const time = new Date(value).getTime();
-
-  if (Number.isNaN(time)) {
-    return "Unknown";
-  }
-
-  const diffMs = Date.now() - time;
-  const minute = 60 * 1000;
-  const hour = 60 * minute;
-  const day = 24 * hour;
-
-  if (diffMs < minute) {
-    return "Just now";
-  }
-
-  if (diffMs < hour) {
-    return `${Math.max(1, Math.round(diffMs / minute))} mins ago`;
-  }
-
-  if (diffMs < day) {
-    return `${Math.round(diffMs / hour)} hour${Math.round(diffMs / hour) === 1 ? "" : "s"} ago`;
-  }
-
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(new Date(time));
-}
-
 function formatDate(value?: string) {
   if (!value) {
     return "Not set";
@@ -785,44 +564,30 @@ function formatDate(value?: string) {
   }).format(new Date(time));
 }
 
-function formatRefreshDue(source: KnowledgeSourceItem) {
-  if (!source.nextRefreshAt) {
-    return source.sourceCategory.startsWith("official_")
-      ? "Required"
-      : "Not required";
-  }
-
-  const time = new Date(source.nextRefreshAt).getTime();
-
-  if (Number.isNaN(time)) {
-    return "Invalid date";
-  }
-
-  if (time <= Date.now()) {
-    return "Refresh due";
-  }
-
-  return formatDate(source.nextRefreshAt);
-}
-
-function parseCommaSeparatedValues(value: string): string[] {
-  return value
-    .split(",")
-    .map(item => item.trim())
-    .filter(Boolean);
-}
-
 function buildSourceMetadata(
-  form: CreateSourceFormState,
+  draft?: GovernanceDraft,
+  templates?: TemplateDraftState,
 ): KnowledgeSourceMetadata {
   return {
-    adminCategory: form.adminCategory,
-    constitutionalBasis: form.constitutionalBasis.trim() || undefined,
-    legislationTags: parseCommaSeparatedValues(form.legislationTags),
+    adminCategory:
+      draft?.sourceType === "Regulation"
+        ? "Regulation"
+        : draft?.sourceCategory === "admin_content"
+          ? "Scam Pattern"
+          : "Legislation",
     templates: Object.fromEntries(
-      TEMPLATE_TABS.map(tab => [tab.id, tab.value]),
+      TEMPLATE_TABS.map(tab => [tab.id, templates?.[tab.id] ?? tab.value]),
     ),
+    customTopic: draft?.customTopic?.trim() || undefined,
   };
+}
+
+function buildTemplateDrafts(
+  source?: KnowledgeSourceItem,
+): TemplateDraftState {
+  return Object.fromEntries(
+    TEMPLATE_TABS.map(tab => [tab.id, getTemplateValue(source, tab.id)]),
+  ) as TemplateDraftState;
 }
 
 function getTemplateValue(
@@ -864,55 +629,59 @@ function upsertSource(
 function buildGovernanceDraft(
   source: KnowledgeSourceItem | undefined,
 ): GovernanceDraft {
+  const lastUpdated = todayInputValue();
+
   return {
     title: source?.title ?? "",
     description: source?.description ?? "",
     sourceCategory: source?.sourceCategory ?? "official_legal_source",
     jurisdiction: source?.jurisdiction ?? "AU",
-    topic: source?.topic ?? "discrimination",
-    sourceType: source?.sourceType ?? "Act",
+    sourceAuthority: source?.sourceAuthority ?? source?.publisher ?? "",
+    authority: source?.authority ?? source?.sourceAuthority ?? source?.publisher ?? "",
+    topic: source?.topic ?? "other",
+    sourceType: source?.sourceType ?? "Guideline",
     language: source?.language ?? "en",
     url: source?.url ?? "",
     localFilePath: source?.localFilePath ?? "",
     publisher: source?.publisher ?? "",
     licenseStatus: source?.licenseStatus ?? "Government copyright",
-    lastUpdated: toDateInputValue(source?.lastUpdated),
+    lastUpdated: toDateInputValue(source?.lastUpdated) || lastUpdated,
+    sourceDate: toDateInputValue(source?.sourceDate) || toDateInputValue(source?.lastUpdated) || lastUpdated,
     nextReviewAt: toDateInputValue(source?.nextReviewAt),
-    nextRefreshAt: toDateInputValue(source?.nextRefreshAt),
+    nextRefreshAt: toDateInputValue(source?.nextRefreshAt) || addDaysInputValue(lastUpdated, 90),
+    refreshCadence: source?.refreshCadence ?? "quarterly",
     legalReviewed: source?.legalReviewed ?? false,
     reviewNotes: source?.reviewNotes ?? "",
+    customTopic: typeof source?.metadata?.customTopic === "string" ? source.metadata.customTopic : "",
   };
 }
 
 function compactGovernancePayload(
   draft: GovernanceDraft,
 ): Partial<KnowledgeSourceInput> {
+  const {
+    customTopic: _customTopic,
+    ...payloadDraft
+  } = draft;
+  const publisher = draft.publisher?.trim() || undefined;
+  const sourceAuthority = draft.sourceAuthority?.trim() || publisher;
+
   return {
-    ...draft,
+    ...payloadDraft,
     description: draft.description?.trim() || undefined,
     url: draft.url?.trim() || undefined,
     localFilePath: draft.localFilePath?.trim() || undefined,
-    publisher: draft.publisher?.trim() || undefined,
+    publisher,
+    sourceAuthority,
+    authority: draft.authority?.trim() || sourceAuthority,
     licenseStatus: draft.licenseStatus?.trim() || undefined,
     lastUpdated: draft.lastUpdated || undefined,
+    sourceDate: draft.sourceDate || draft.lastUpdated || undefined,
     nextReviewAt: draft.nextReviewAt || undefined,
     nextRefreshAt: draft.nextRefreshAt || undefined,
+    refreshCadence: draft.refreshCadence?.trim() || "quarterly",
     reviewNotes: draft.reviewNotes?.trim() || undefined,
   };
-}
-
-function buildApprovalCandidate(
-  source: KnowledgeSourceItem | undefined,
-  draft: GovernanceDraft,
-): KnowledgeSourceItem | undefined {
-  if (!source) {
-    return undefined;
-  }
-
-  return {
-    ...source,
-    ...compactGovernancePayload(draft),
-  } as KnowledgeSourceItem;
 }
 
 function displayReadinessStatus(readiness: KnowledgeSourceReadiness) {
@@ -924,27 +693,6 @@ function displayReadinessStatus(readiness: KnowledgeSourceReadiness) {
     default:
       return "Not Ready";
   }
-}
-
-function readinessStatusClass(readiness: KnowledgeSourceReadiness) {
-  switch (readiness.summary.readinessStatus) {
-    case "ready":
-      return "border-[#BBF7D0] bg-[#F0FDF4] text-[#166534]";
-    case "ready_with_gaps":
-      return "border-[#FDE68A] bg-[#FFFBEB] text-[#92400E]";
-    default:
-      return "border-[#FECACA] bg-[#FEF2F2] text-[#B42318]";
-  }
-}
-
-function readinessConfigClass(isReady: boolean) {
-  return isReady
-    ? "border-[#BBF7D0] bg-[#F0FDF4] text-[#166534]"
-    : "border-[#FDE68A] bg-[#FFFBEB] text-[#92400E]";
-}
-
-function formatVectorIndexLabel(readiness: KnowledgeSourceReadiness) {
-  return `${readiness.configuration.vectorIndex.indexName} (${readiness.configuration.vectorIndex.status})`;
 }
 
 function getPriorityCoverageGaps(readiness: KnowledgeSourceReadiness) {
@@ -965,6 +713,133 @@ function getPriorityCoverageGaps(readiness: KnowledgeSourceReadiness) {
     .slice(0, 6);
 }
 
+function formatVectorIndexLabel(readiness: KnowledgeSourceReadiness) {
+  return `${readiness.configuration.vectorIndex.indexName} (${readiness.configuration.vectorIndex.status})`;
+}
+
+function getReadinessBadgeClass(status: string) {
+  if (status === "ready") {
+    return "bg-emerald-50 border-emerald-100 text-emerald-700";
+  }
+  if (status === "ready_with_gaps") {
+    return "bg-amber-50 border-amber-100 text-amber-700";
+  }
+  return "bg-rose-50 border-rose-100 text-rose-700";
+}
+
+function getReadinessDotClass(status: string) {
+  if (status === "ready") {
+    return "bg-emerald-500 animate-pulse";
+  }
+  if (status === "ready_with_gaps") {
+    return "bg-amber-500 animate-pulse";
+  }
+  return "bg-rose-500 animate-ping";
+}
+
+function getStatusBannerClass(message: string) {
+  if (message.includes("expired") || message.includes("Error") || message.includes("Could not") || message.includes("required") || message.includes("title is required")) {
+    return "bg-rose-50 border-rose-100 text-rose-700";
+  }
+  if (message.includes("Loading")) {
+    return "bg-blue-50 border-blue-100 text-blue-700 animate-pulse";
+  }
+  return "bg-emerald-50 border-emerald-100 text-emerald-700";
+}
+
+function getIngestionStatusBadgeClass(status: string) {
+  if (status === "indexed") {
+    return "bg-emerald-50 border-emerald-100 text-emerald-700";
+  }
+  if (status === "failed" || status === "partial_failed") {
+    return "bg-rose-50 border-rose-100 text-rose-700";
+  }
+  return "bg-amber-50 border-amber-100 text-amber-700";
+}
+
+function getIngestionStatusDotClass(status: string) {
+  if (status === "indexed") {
+    return "bg-emerald-500";
+  }
+  if (status === "failed" || status === "partial_failed") {
+    return "bg-rose-500 animate-pulse";
+  }
+  return "bg-amber-500 animate-pulse";
+}
+
+function getApprovalStatusBadgeClass(status: string) {
+  if (status === "approved") {
+    return "bg-emerald-100 border-emerald-200 text-emerald-800 bg-[#E8FDF0]";
+  }
+  if (status === "pending_review") {
+    return "bg-[#EEF6FF] border-blue-100 text-blue-700";
+  }
+  if (status === "draft") {
+    return "bg-slate-100 border-slate-200 text-slate-600";
+  }
+  return "bg-rose-50 border-rose-100 text-rose-700";
+}
+
+function getStatusIcon(message: string) {
+  if (message.includes("expired") || message.includes("Error") || message.includes("Could not") || message.includes("required") || message.includes("title is required")) {
+    return <AlertCircle className="h-3.5 w-3.5 shrink-0 text-rose-500" />;
+  }
+  if (message.includes("Loading")) {
+    return <RefreshCcw className="h-3.5 w-3.5 shrink-0 animate-spin text-blue-500" />;
+  }
+  return <CheckCircle className="h-3.5 w-3.5 shrink-0 text-emerald-500" />;
+}
+
+function getCategoryBadgeClass(category: string) {
+  if (category === "Legislation") {
+    return "bg-blue-50 border-blue-100 text-blue-700";
+  }
+  if (category === "Scam Pattern") {
+    return "bg-rose-50 border-rose-100 text-rose-700";
+  }
+  if (category === "Regulation") {
+    return "bg-purple-50 border-purple-100 text-purple-700";
+  }
+  return "bg-slate-50 border-slate-100 text-slate-700";
+}
+
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value);
+  }
+
+  if (Array.isArray(value)) {
+    return `[${value.map(item => stableStringify(item)).join(",")}]`;
+  }
+
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter(([, entryValue]) => entryValue !== undefined)
+    .sort(([left], [right]) => left.localeCompare(right));
+
+  return `{${entries.map(([key, entryValue]) => `${JSON.stringify(key)}:${stableStringify(entryValue)}`).join(",")}}`;
+}
+
+function getStoredDraftSourceId() {
+  if (typeof window === "undefined") {
+    return "";
+  }
+
+  return window.localStorage.getItem(KNOWLEDGE_SOURCE_DRAFT_STORAGE_KEY) ?? "";
+}
+
+function setStoredDraftSourceId(sourceId: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  if (!sourceId) {
+    window.localStorage.removeItem(KNOWLEDGE_SOURCE_DRAFT_STORAGE_KEY);
+    return;
+  }
+
+  window.localStorage.setItem(KNOWLEDGE_SOURCE_DRAFT_STORAGE_KEY, sourceId);
+}
+
 export function AdminContentKnowledgeSourcesPage() {
   const [sources, setSources] = useState<KnowledgeSourceItem[]>([]);
   const [readiness, setReadiness] = useState<KnowledgeSourceReadiness | null>(null);
@@ -972,47 +847,101 @@ export function AdminContentKnowledgeSourcesPage() {
   const [activeTemplateTab, setActiveTemplateTab] = useState<TemplateTabId>(
     TEMPLATE_TABS[0].id,
   );
-  const [templateDraft, setTemplateDraft] = useState<string>(
-    TEMPLATE_TABS[0].value,
+  const [templateDrafts, setTemplateDrafts] = useState<TemplateDraftState>(
+    buildTemplateDrafts(),
   );
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [createForm, setCreateForm] = useState<CreateSourceFormState>(() =>
-    createDefaultCreateForm(),
-  );
-  const [createErrors, setCreateErrors] = useState<CreateSourceValidationErrors>({});
   const [governanceDraft, setGovernanceDraft] = useState<GovernanceDraft>(() =>
     buildGovernanceDraft(undefined),
   );
   const [selectedUploadFile, setSelectedUploadFile] = useState<File | null>(null);
   const [selectedUploadStatus, setSelectedUploadStatus] = useState<DocumentUploadStatus>("idle");
-  const [sourceChunks, setSourceChunks] = useState<KnowledgeSourceChunkPreview[]>([]);
-  const [chunkPage, setChunkPage] = useState(1);
-  const [chunkTotalCount, setChunkTotalCount] = useState(0);
-  const [chunkTotalPages, setChunkTotalPages] = useState(0);
-  const [isLoadingChunks, setIsLoadingChunks] = useState(false);
   const [pineconeHealth, setPineconeHealth] = useState<PineconeHealth | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(
     "Loading knowledge sources...",
   );
-  const [templateActionMessage, setTemplateActionMessage] = useState<{
-    tone: "success" | "error";
-    text: string;
-  } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [lastSavedDraftFingerprint, setLastSavedDraftFingerprint] = useState<string>("");
+  const [activeDropdownId, setActiveDropdownId] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const templateDraft = templateDrafts[activeTemplateTab] ?? "";
+
+  const insertVariable = (variable: string) => {
+    const textarea = document.getElementById("template-textarea") as HTMLTextAreaElement;
+    if (!textarea) {
+      setTemplateDrafts(current => ({
+        ...current,
+        [activeTemplateTab]: (current[activeTemplateTab] ?? "") + variable,
+      }));
+      return;
+    }
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = textarea.value;
+    const before = text.substring(0, start);
+    const after = text.substring(end, text.length);
+    const newText = before + variable + after;
+    setTemplateDrafts(current => ({
+      ...current,
+      [activeTemplateTab]: newText,
+    }));
+    setTimeout(() => {
+      textarea.focus();
+      textarea.selectionStart = textarea.selectionEnd = start + variable.length;
+    }, 0);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files?.[0]) {
+      setSelectedUploadFile(e.dataTransfer.files[0]);
+      setSelectedUploadStatus("selected");
+    }
+  };
 
   const openCreateSourceForm = () => {
+    const storedDraftId = getStoredDraftSourceId();
+    const resumableDraft = (storedDraftId
+      ? sources.find(source =>
+          getKnowledgeSourceId(source) === storedDraftId && source.status === "draft",
+        )
+      : undefined)
+      ?? sources.find(source => source.status === "draft");
+
     setIsCreateOpen(true);
-    setCreateErrors({});
+
+    if (resumableDraft) {
+      const resumableDraftId = getKnowledgeSourceId(resumableDraft);
+      setSelectedSourceId(resumableDraftId);
+      setStoredDraftSourceId(resumableDraftId);
+      setStatusMessage(`Loaded saved draft: ${resumableDraft.title}`);
+      return;
+    }
+
+    setSelectedSourceId("");
+    setGovernanceDraft(buildGovernanceDraft(undefined));
+    setTemplateDrafts(buildTemplateDrafts());
+    setSelectedUploadFile(null);
     setSelectedUploadStatus("idle");
-    setStatusMessage("Add the document details and upload a file for RAG.");
+    setStatusMessage("Add the registry details and upload the source document for RAG.");
   };
 
   const closeCreateSourceForm = (message = "Returned to knowledge sources.") => {
     setIsCreateOpen(false);
-    setCreateForm(createDefaultCreateForm());
-    setCreateErrors({});
+    setSelectedSourceId("");
     setSelectedUploadStatus("idle");
+    setSelectedUploadFile(null);
     setStatusMessage(message);
   };
 
@@ -1029,11 +958,6 @@ export function AdminContentKnowledgeSourcesPage() {
       setSources(items);
       setReadiness(readinessResult);
       setPineconeHealth(pineconeHealthResult);
-      setSelectedSourceId(
-        currentId =>
-          currentId
-          || getKnowledgeSourceId(items[0] ?? ({} as KnowledgeSourceItem)),
-      );
       setStatusMessage(
         items.length > 0
           ? "Knowledge-source workflows are active."
@@ -1056,25 +980,39 @@ export function AdminContentKnowledgeSourcesPage() {
     void loadSources();
   }, [loadSources]);
 
+  useEffect(() => {
+    const storedDraftId = getStoredDraftSourceId();
+
+    if (!storedDraftId) {
+      return;
+    }
+
+    const storedDraftExists = sources.some(
+      source => getKnowledgeSourceId(source) === storedDraftId && source.status === "draft",
+    );
+
+    if (!storedDraftExists) {
+      setStoredDraftSourceId("");
+    }
+  }, [sources]);
+
   const selectedSource = useMemo(
-    () =>
-      sources.find(
+    () => {
+      if (isCreateOpen && !selectedSourceId) {
+        return undefined;
+      }
+      return sources.find(
         source => getKnowledgeSourceId(source) === selectedSourceId,
-      ) ?? sources[0],
-    [selectedSourceId, sources],
+      );
+    },
+    [isCreateOpen, selectedSourceId, sources],
   );
-  const selectedSourceMetadata = useMemo(
-    () => getMetadata(selectedSource),
-    [selectedSource],
-  );
-  const approvalCandidate = useMemo(
-    () => buildApprovalCandidate(selectedSource, governanceDraft),
-    [governanceDraft, selectedSource],
-  );
+  
   const priorityCoverageGaps = useMemo(
     () => (readiness ? getPriorityCoverageGaps(readiness) : []),
     [readiness],
   );
+  
   const queueStats = useMemo(() => {
     const officialSources = sources.filter(isOfficialSource);
 
@@ -1095,106 +1033,71 @@ export function AdminContentKnowledgeSourcesPage() {
       ).length,
     };
   }, [sources]);
+  
+  const isRegistryEditable = Boolean(selectedSource) || isCreateOpen;
+  const draftFingerprint = useMemo(
+    () =>
+      stableStringify({
+        governanceDraft,
+        templateDrafts,
+        selectedUploadFileName: selectedUploadFile?.name ?? "",
+        selectedUploadFileSize: selectedUploadFile?.size ?? 0,
+      }),
+    [governanceDraft, templateDrafts, selectedUploadFile],
+  );
+  const isSavedDraftRecord = Boolean(selectedSource && selectedSource.status === "draft");
+  const isDraftDirty = !isSavedDraftRecord || draftFingerprint !== lastSavedDraftFingerprint;
 
   useEffect(() => {
-    setTemplateDraft(getTemplateValue(selectedSource, activeTemplateTab));
+    if (isCreateOpen && !selectedSource) {
+      setLastSavedDraftFingerprint("");
+      return;
+    }
+
+    setTemplateDrafts(buildTemplateDrafts(selectedSource));
     setGovernanceDraft(buildGovernanceDraft(selectedSource));
     setSelectedUploadFile(null);
     setSelectedUploadStatus("idle");
-    setSourceChunks([]);
-    setChunkPage(1);
-    setChunkTotalCount(0);
-    setChunkTotalPages(0);
-  }, [activeTemplateTab, selectedSource]);
+    setLastSavedDraftFingerprint("");
+  }, [activeTemplateTab, isCreateOpen, selectedSource]);
 
-  const saveTemplate = async (publish: boolean) => {
-    if (!selectedSource) {
-      setStatusMessage("Select a source before saving.");
-      setTemplateActionMessage({
-        tone: "error",
-        text: "Select a source before saving.",
-      });
+  useEffect(() => {
+    if (!selectedSource || selectedSource.status !== "draft") {
       return;
     }
 
-    const sourceId = getKnowledgeSourceId(selectedSource);
+    const nextFingerprint = stableStringify({
+      governanceDraft: buildGovernanceDraft(selectedSource),
+      templateDrafts: buildTemplateDrafts(selectedSource),
+      selectedUploadFileName: "",
+      selectedUploadFileSize: 0,
+    });
 
-    if (!sourceId) {
-      setStatusMessage("Selected source is missing an id.");
-      setTemplateActionMessage({
-        tone: "error",
-        text: "Selected source is missing an id.",
-      });
-      return;
+    setLastSavedDraftFingerprint(nextFingerprint);
+  }, [selectedSource]);
+
+  const reapplyLegalReviewAfterUpload = async (
+    sourceId: string,
+    fallbackSource: KnowledgeSourceItem,
+  ) => {
+    if (
+      governanceDraft.sourceCategory !== "official_legal_source"
+      || !governanceDraft.legalReviewed
+    ) {
+      return fallbackSource;
     }
 
-    setIsSaving(true);
-    setTemplateActionMessage(null);
-
-    try {
-      const metadata = getMetadata(selectedSource);
-      const templates = {
-        ...metadata.templates,
-        [activeTemplateTab]: templateDraft,
-      };
-      const updated = await updateKnowledgeSource(sourceId, {
-        ...compactGovernancePayload(governanceDraft),
-        metadata: {
-          ...metadata,
-          templates,
-        },
-      });
-      const finalSource
-        = publish && updated.status !== "approved"
-          ? await approveKnowledgeSource(sourceId)
-          : updated;
-
-      setSources(currentSources => upsertSource(currentSources, finalSource));
-      const message = publish
-        ? isExcludedFromRag(finalSource)
-          ? `Saved and approved ${finalSource.title}, but one RAG eligibility check still needs attention.`
-          : `${finalSource.title} is approved and eligible for frontend RAG citations.`
-        : `Draft saved for ${finalSource.title}.`;
-
-      setStatusMessage(
-        publish
-          ? `Saved template metadata and approved ${finalSource.title} for RAG if all eligibility checks pass.`
-          : `Draft saved for ${finalSource.title}.`,
-      );
-      setTemplateActionMessage({
-        tone: "success",
-        text: message,
-      });
-    }
-    catch (error) {
-      const message = getFriendlyError(error, "Could not save template.");
-
-      setStatusMessage(message);
-      setTemplateActionMessage({
-        tone: "error",
-        text: message,
-      });
-    }
-    finally {
-      setIsSaving(false);
-    }
+    return await updateKnowledgeSource(sourceId, {
+      legalReviewed: true,
+    });
   };
 
-  const saveGovernanceDetails = async () => {
-    if (!selectedSource) {
-      setStatusMessage("Select a source before saving registry details.");
-      return;
-    }
+  const saveGovernanceDetails = async (publish = false) => {
+    const isNewSourceDraft = isCreateOpen && !selectedSource;
+    const title = governanceDraft.title?.trim();
 
-    const sourceId = getKnowledgeSourceId(selectedSource);
-
-    if (!sourceId) {
-      setStatusMessage("Selected source is missing an id.");
-      return;
-    }
-
-    if (!governanceDraft.title?.trim()) {
-      setStatusMessage("Source title is required.");
+    if (!title) {
+      setStatusMessage("Error: Source title is required.");
       return;
     }
 
@@ -1202,36 +1105,107 @@ export function AdminContentKnowledgeSourcesPage() {
       governanceDraft.sourceCategory?.startsWith("official_")
       && !governanceDraft.url?.trim()
     ) {
-      setStatusMessage(
-        "Official legal/support sources require an authoritative source URL.",
-      );
+      setStatusMessage("Error: Official sources require a URL.");
       return;
     }
 
-    if (
-      governanceDraft.sourceCategory?.startsWith("official_")
-      && (!governanceDraft.lastUpdated || !governanceDraft.nextRefreshAt)
-    ) {
-      setStatusMessage(
-        "Official sources require last-updated and refresh dates.",
-      );
+    if (isNewSourceDraft && !selectedUploadFile) {
+      setStatusMessage("Error: Upload a document before saving a new RAG source.");
       return;
     }
 
     setIsSaving(true);
 
     try {
-      const updated = await updateKnowledgeSource(
-        sourceId,
-        compactGovernancePayload(governanceDraft),
-      );
-      setSources(currentSources => upsertSource(currentSources, updated));
-      setSelectedSourceId(getKnowledgeSourceId(updated));
-      setStatusMessage(
-        updated.status === "pending_review"
-          ? `${updated.title} saved and returned to review.`
-          : `${updated.title} registry details saved.`,
-      );
+      if (isNewSourceDraft) {
+        const created = await createKnowledgeSource({
+          ...compactGovernancePayload(governanceDraft),
+          title,
+          description:
+            governanceDraft.description?.trim()
+            || "Admin-created source awaiting review.",
+          sourceCategory: governanceDraft.sourceCategory || "official_legal_source",
+          jurisdiction: governanceDraft.jurisdiction || "AU",
+          topic: governanceDraft.topic || "other",
+          sourceType: governanceDraft.sourceType || "Guideline",
+          language: governanceDraft.language?.trim() || "en",
+          publisher: governanceDraft.publisher?.trim() || "SafeSpeak Content Team",
+          licenseStatus:
+            governanceDraft.licenseStatus?.trim() || "Government copyright",
+          status: "pending_review",
+          version: 1,
+          metadata: buildSourceMetadata(governanceDraft, templateDrafts),
+        });
+
+        let finalSource = created;
+        const createdId = getKnowledgeSourceId(created);
+
+        if (createdId && selectedUploadFile) {
+          setSelectedUploadStatus("uploading");
+          const uploadResult = await uploadKnowledgeSourceDocument(
+            createdId,
+            selectedUploadFile,
+            { ingestImmediately: true },
+          );
+          setSelectedUploadStatus(uploadResult.error ? "failed" : "indexed");
+          finalSource = uploadResult.source ?? created;
+          finalSource = await reapplyLegalReviewAfterUpload(createdId, finalSource);
+        }
+
+        if (publish && createdId) {
+          finalSource = await approveKnowledgeSource(createdId);
+        }
+
+        setSources(currentSources => upsertSource(currentSources, finalSource));
+        setSelectedSourceId(getKnowledgeSourceId(finalSource));
+        setStoredDraftSourceId("");
+        setStatusMessage(
+          publish
+            ? `${finalSource.title} created and approved for RAG.`
+            : "Registry details saved."
+        );
+      }
+      else {
+        if (!selectedSource) {
+          setStatusMessage("Error: Select a source.");
+          return;
+        }
+
+        const sourceId = getKnowledgeSourceId(selectedSource);
+        const updated = await updateKnowledgeSource(sourceId, {
+          ...compactGovernancePayload(governanceDraft),
+          metadata: {
+            ...getMetadata(selectedSource),
+            ...buildSourceMetadata(governanceDraft, templateDrafts),
+          }
+        });
+        let finalSource = updated;
+
+        if (selectedUploadFile) {
+          setSelectedUploadStatus("uploading");
+          const uploadResult = await uploadKnowledgeSourceDocument(
+            sourceId,
+            selectedUploadFile,
+            { ingestImmediately: true },
+          );
+          setSelectedUploadStatus(uploadResult.error ? "failed" : "indexed");
+          finalSource = uploadResult.source ?? updated;
+          finalSource = await reapplyLegalReviewAfterUpload(sourceId, finalSource);
+        }
+
+        if (publish) {
+          finalSource = await approveKnowledgeSource(sourceId);
+        }
+
+        setSources(currentSources => upsertSource(currentSources, finalSource));
+        setSelectedSourceId(getKnowledgeSourceId(finalSource));
+        setStoredDraftSourceId("");
+        setStatusMessage(
+          publish
+            ? `${finalSource.title} saved and approved.`
+            : `${finalSource.title} registry details saved.`
+        );
+      }
     }
     catch (error) {
       setStatusMessage(
@@ -1243,143 +1217,130 @@ export function AdminContentKnowledgeSourcesPage() {
     }
   };
 
-  const handleCreateSource = async () => {
-    const title = createForm.title.trim();
-    const validationErrors = validateCreateSourceForm(createForm);
+  const saveDraftSource = async () => {
+    const title = governanceDraft.title?.trim();
 
-    setCreateErrors(validationErrors);
-    if (hasValidationErrors(validationErrors)) {
-      setStatusMessage("Fix the highlighted source details before saving.");
+    if (!title) {
+      setStatusMessage("Error: Add a title before saving a draft.");
       return;
     }
 
     setIsSaving(true);
 
     try {
-      const metadata = buildSourceMetadata(createForm);
-      const created = await createKnowledgeSource({
-        title,
-        description:
-          createForm.description.trim()
-          || "Admin-created source awaiting review.",
-        sourceCategory: createForm.sourceCategory,
-        jurisdiction: createForm.jurisdiction,
-        topic: createForm.topic,
-        sourceType: createForm.sourceType,
-        language: "en",
-        url: createForm.url.trim() || undefined,
-        publisher: createForm.publisher.trim() || "SafeSpeak Content Team",
-        licenseStatus:
-          createForm.licenseStatus.trim() || "Government copyright",
-        lastUpdated: createForm.lastUpdated || undefined,
-        nextRefreshAt: createForm.nextRefreshAt || undefined,
-        nextReviewAt: createForm.nextReviewAt || undefined,
-        legalReviewed: createForm.legalReviewed,
-        reviewNotes: createForm.reviewNotes.trim() || undefined,
-        status: "pending_review",
-        version: 1,
-        metadata,
-      });
-
-      let finalSource = created;
-      const createdId = getKnowledgeSourceId(created);
-
-      if (createForm.documentFile && createdId) {
-        setSelectedUploadStatus("uploading");
-        const uploadResult = await uploadKnowledgeSourceDocument(
-          createdId,
-          createForm.documentFile,
-          { ingestImmediately: createForm.ingestImmediately },
-        );
-        setSelectedUploadStatus(
-          uploadResult.error
-            ? "failed"
-            : createForm.ingestImmediately
-              ? "indexed"
-              : "needs_review",
-        );
-        finalSource = uploadResult.source ?? created;
-      }
-      else
-      if (
-        createForm.ingestImmediately
-        && createdId
-        && createForm.rawContent.trim()
-      ) {
-        const ingestResult = await ingestKnowledgeSource(createdId, {
-          content: createForm.rawContent.trim() || undefined,
-          metadata,
+      if (!selectedSource) {
+        const created = await createKnowledgeSource({
+          ...compactGovernancePayload(governanceDraft),
+          title,
+          description: "Admin draft source.",
+          sourceCategory: governanceDraft.sourceCategory || "official_legal_source",
+          jurisdiction: governanceDraft.jurisdiction || "AU",
+          topic: governanceDraft.topic || "other",
+          sourceType: governanceDraft.sourceType || "Guideline",
+          language: governanceDraft.language?.trim() || "en",
+          publisher: governanceDraft.publisher?.trim() || "SafeSpeak Content Team",
+          licenseStatus: governanceDraft.licenseStatus?.trim() || "Government copyright",
+          status: "draft",
+          version: 1,
+          metadata: buildSourceMetadata(governanceDraft, templateDrafts),
         });
-        finalSource = ingestResult.source ?? created;
-      }
 
-      setSources(currentSources => upsertSource(currentSources, finalSource));
-      setSelectedSourceId(getKnowledgeSourceId(finalSource));
-      setIsCreateOpen(false);
-      setCreateForm(createDefaultCreateForm());
-      setCreateErrors({});
-      setSelectedUploadStatus("idle");
-      setStatusMessage(
-        createForm.documentFile
-          ? "New source added and document uploaded."
-          : createForm.ingestImmediately
-            ? "New source added and ingestion started."
-            : "New source added to the review queue.",
-      );
+        const createdId = getKnowledgeSourceId(created);
+        let finalSource = created;
+
+        if (createdId && selectedUploadFile) {
+          setSelectedUploadStatus("uploading");
+          const uploadResult = await uploadKnowledgeSourceDocument(
+            createdId,
+            selectedUploadFile,
+            { ingestImmediately: false },
+          );
+          setSelectedUploadStatus(uploadResult.error ? "failed" : "needs_review");
+          finalSource = uploadResult.source ?? created;
+          finalSource = await reapplyLegalReviewAfterUpload(createdId, finalSource);
+        }
+
+        setSources(currentSources => upsertSource(currentSources, finalSource));
+        const finalSourceId = getKnowledgeSourceId(finalSource);
+        setSelectedSourceId(finalSourceId);
+        setStoredDraftSourceId(finalSourceId);
+        setLastSavedDraftFingerprint(draftFingerprint);
+        setStatusMessage(`${finalSource.title} saved as draft.`);
+      }
+      else {
+        const sourceId = getKnowledgeSourceId(selectedSource);
+        let finalSource = await updateKnowledgeSource(sourceId, {
+          ...compactGovernancePayload(governanceDraft),
+          status: "draft",
+          metadata: {
+            ...getMetadata(selectedSource),
+            ...buildSourceMetadata(governanceDraft, templateDrafts),
+          },
+        });
+
+        if (selectedUploadFile) {
+          setSelectedUploadStatus("uploading");
+          const uploadResult = await uploadKnowledgeSourceDocument(
+            sourceId,
+            selectedUploadFile,
+            { ingestImmediately: false },
+          );
+          setSelectedUploadStatus(uploadResult.error ? "failed" : "needs_review");
+          finalSource = uploadResult.source ?? finalSource;
+          finalSource = await reapplyLegalReviewAfterUpload(sourceId, finalSource);
+        }
+
+        setSources(currentSources => upsertSource(currentSources, finalSource));
+        setStoredDraftSourceId(getKnowledgeSourceId(finalSource));
+        setLastSavedDraftFingerprint(draftFingerprint);
+        setStatusMessage(`${finalSource.title} draft updated.`);
+      }
     }
     catch (error) {
-      setSelectedUploadStatus("failed");
-      setStatusMessage(getFriendlyError(error, "Could not add source."));
+      setStatusMessage(getFriendlyError(error, "Could not save draft."));
     }
     finally {
       setIsSaving(false);
     }
   };
 
-  const handleFileUpload = async (file: File | null) => {
-    if (!file) {
+  const clearDraftSource = async () => {
+    if (!selectedSource) {
+      setGovernanceDraft(buildGovernanceDraft(undefined));
+      setTemplateDrafts(buildTemplateDrafts());
+      setSelectedUploadFile(null);
+      setSelectedUploadStatus("idle");
+      setStoredDraftSourceId("");
+      setLastSavedDraftFingerprint("");
+      setStatusMessage("Form cleared.");
       return;
     }
 
-    const canPreviewInBrowser = /text|json|csv|html|markdown/i.test(file.type)
-      || /\.(txt|md|html|htm|csv|json)$/i.test(file.name);
-
-    setCreateForm(current => ({
-      ...current,
-      documentFile: file,
-    }));
-    setCreateErrors(current => ({ ...current, document: undefined }));
-    setSelectedUploadStatus("selected");
-
-    if (!canPreviewInBrowser) {
-      setStatusMessage(`Selected ${file.name}. It will be uploaded to the backend for extraction.`);
-      return;
-    }
+    const sourceId = getKnowledgeSourceId(selectedSource);
+    setIsSaving(true);
 
     try {
-      const text = await file.text();
-      setCreateForm(current => ({
-        ...current,
-        rawContent: text,
-      }));
-      setStatusMessage(`Selected ${file.name} and loaded a text preview.`);
+      await deleteKnowledgeSource(sourceId);
+      setSources(currentSources =>
+        currentSources.filter(item => getKnowledgeSourceId(item) !== sourceId),
+      );
+      setSelectedSourceId("");
+      setIsCreateOpen(false);
+      setStoredDraftSourceId("");
+      setLastSavedDraftFingerprint("");
+      setStatusMessage("Draft deleted.");
     }
-    catch {
-      setStatusMessage(`Selected ${file.name}. Browser preview failed, but backend upload is still available.`);
+    catch (error) {
+      setStatusMessage(getFriendlyError(error, "Could not delete draft."));
+    }
+    finally {
+      setIsSaving(false);
     }
   };
 
   const handleIngestSource = async (source: KnowledgeSourceItem) => {
     const sourceId = getKnowledgeSourceId(source);
-
     if (!sourceId) {
-      return;
-    }
-
-    if (!hasStoredContent(source)) {
-      setStatusMessage(
-        "This source has no stored extracted text, uploaded document, or file path to ingest.",
-      );
       return;
     }
 
@@ -1390,9 +1351,7 @@ export function AdminContentKnowledgeSourcesPage() {
       });
       const nextSource = result.source ?? source;
       setSources(currentSources => upsertSource(currentSources, nextSource));
-      setStatusMessage(
-        `${nextSource.title} ingested with ${result.chunkCount ?? 0} chunk${result.chunkCount === 1 ? "" : "s"}. ${getAdminIngestionStatus(nextSource) === "partial_failed" ? "Some chunk batches still need attention." : "Search may take a short moment to become available."}`,
-      );
+      setStatusMessage(`${nextSource.title} ingested successfully.`);
     }
     catch (error) {
       setStatusMessage(getFriendlyError(error, "Could not ingest source."));
@@ -1401,7 +1360,6 @@ export function AdminContentKnowledgeSourcesPage() {
 
   const handleReindexSource = async (source: KnowledgeSourceItem) => {
     const sourceId = getKnowledgeSourceId(source);
-
     if (!sourceId) {
       return;
     }
@@ -1410,9 +1368,7 @@ export function AdminContentKnowledgeSourcesPage() {
       const result = await reindexKnowledgeSource(sourceId);
       const nextSource = result.source ?? source;
       setSources(currentSources => upsertSource(currentSources, nextSource));
-      setStatusMessage(
-        `${nextSource.title} reindexed with ${result.chunkCount ?? 0} chunk${result.chunkCount === 1 ? "" : "s"}. ${getAdminIngestionStatus(nextSource) === "partial_failed" ? "Some chunk batches still need attention." : "Search may take a short moment to become available."}`,
-      );
+      setStatusMessage(`${nextSource.title} reindexed successfully.`);
     }
     catch (error) {
       setStatusMessage(getFriendlyError(error, "Could not reindex source."));
@@ -1421,32 +1377,18 @@ export function AdminContentKnowledgeSourcesPage() {
 
   const handleRefreshSource = async (source: KnowledgeSourceItem) => {
     const sourceId = getKnowledgeSourceId(source);
-
     if (!sourceId) {
       return;
     }
 
-    if (!source.url) {
-      setStatusMessage("Official source refresh requires a source URL.");
-      return;
-    }
-
     setIsSaving(true);
-
     try {
       const result = await refreshKnowledgeSource(sourceId, {
-        metadata: {
-          refreshRequestedFrom: "admin_dashboard",
-        },
+        metadata: { refreshRequestedFrom: "admin_dashboard" },
       });
       const nextSource = result.source ?? source;
       setSources(currentSources => upsertSource(currentSources, nextSource));
-      setSelectedSourceId(getKnowledgeSourceId(nextSource));
-      setStatusMessage(
-        result.metadataOnly
-          ? `${nextSource.title} refreshed as metadata-only. Extract text before approving it for RAG.`
-          : `${nextSource.title} refreshed with ${result.chunkCount ?? 0} chunk${result.chunkCount === 1 ? "" : "s"}.`,
-      );
+      setStatusMessage(`${nextSource.title} refresh complete.`);
     }
     catch (error) {
       setStatusMessage(getFriendlyError(error, "Could not refresh source."));
@@ -1458,22 +1400,13 @@ export function AdminContentKnowledgeSourcesPage() {
 
   const handleUploadDocumentForSelectedSource = async () => {
     if (!selectedSource || !selectedUploadFile) {
-      setStatusMessage("Select a source and document before uploading.");
       return;
     }
-
     const sourceId = getKnowledgeSourceId(selectedSource);
-
-    if (!sourceId) {
-      setStatusMessage("Selected source is missing an id.");
-      return;
-    }
-
     setIsSaving(true);
     setSelectedUploadStatus("uploading");
 
     try {
-      setSelectedUploadStatus("extracting");
       const result = await uploadKnowledgeSourceDocument(
         sourceId,
         selectedUploadFile,
@@ -1481,440 +1414,126 @@ export function AdminContentKnowledgeSourcesPage() {
       );
       const nextSource = result.source ?? selectedSource;
       setSources(currentSources => upsertSource(currentSources, nextSource));
-      setSelectedSourceId(getKnowledgeSourceId(nextSource));
       setSelectedUploadStatus(result.error ? "failed" : "indexed");
-      setStatusMessage(
-        result.error
-          ? `${nextSource.title} upload finished, but extraction failed.`
-          : `${nextSource.title} uploaded and indexed with ${result.chunkCount ?? getChunkCount(nextSource)} chunk${(result.chunkCount ?? getChunkCount(nextSource)) === 1 ? "" : "s"}. ${getAdminIngestionStatus(nextSource) === "partial_failed" ? "Some chunk batches still need attention." : "Search may take a short moment to become available."}`,
-      );
-      setSelectedUploadFile(null);
+      setStatusMessage(`${nextSource.title} uploaded and indexed.`);
     }
     catch (error) {
       setSelectedUploadStatus("failed");
-      setStatusMessage(getFriendlyError(error, "Could not upload source document."));
+      setStatusMessage(getFriendlyError(error, "Upload failed."));
     }
     finally {
       setIsSaving(false);
     }
   };
 
-  const handleLoadChunks = async (page = 1) => {
-    if (!selectedSource) {
-      setStatusMessage("Select a source before loading chunks.");
-      return;
-    }
-
-    const sourceId = getKnowledgeSourceId(selectedSource);
-
-    if (!sourceId) {
-      setStatusMessage("Selected source is missing an id.");
-      return;
-    }
-
-    setIsLoadingChunks(true);
-
-    try {
-      const chunkPageResult = await listKnowledgeSourceChunks(sourceId, {
-        page,
-        limit: CHUNK_PREVIEW_PAGE_SIZE,
-      });
-      setSourceChunks(chunkPageResult.chunks);
-      setChunkPage(chunkPageResult.page);
-      setChunkTotalCount(chunkPageResult.totalCount);
-      setChunkTotalPages(chunkPageResult.totalPages);
-      setStatusMessage(
-        chunkPageResult.totalCount > 0
-          ? `Loaded chunk preview page ${chunkPageResult.page} of ${Math.max(1, chunkPageResult.totalPages)} (${chunkPageResult.totalCount} total chunks).`
-          : "No chunks are available for this source yet.",
-      );
-    }
-    catch (error) {
-      setStatusMessage(getFriendlyError(error, "Could not load source chunks."));
-    }
-    finally {
-      setIsLoadingChunks(false);
-    }
-  };
-
   const toggleLegalReview = async (source: KnowledgeSourceItem) => {
     const sourceId = getKnowledgeSourceId(source);
-
-    if (!sourceId) {
-      return;
-    }
-
     try {
       const updated = await updateKnowledgeSource(sourceId, {
         legalReviewed: !source.legalReviewed,
       });
       setSources(currentSources => upsertSource(currentSources, updated));
-      setStatusMessage(
-        `${updated.title} legal review ${updated.legalReviewed ? "enabled" : "removed"}.`,
-      );
+      setStatusMessage(`Legal review status updated for ${updated.title}.`);
     }
     catch (error) {
-      setStatusMessage(
-        getFriendlyError(error, "Could not update legal-review flag."),
-      );
+      setStatusMessage(getFriendlyError(error, "Update failed."));
     }
   };
 
   const handleRejectSource = async (source: KnowledgeSourceItem) => {
     const sourceId = getKnowledgeSourceId(source);
-
-    if (!sourceId) {
-      return;
-    }
-
     try {
       const rejected = await rejectKnowledgeSource(
         sourceId,
         "Rejected from the admin knowledge-source queue.",
       );
       setSources(currentSources => upsertSource(currentSources, rejected));
-      setStatusMessage(`${rejected.title} marked as rejected.`);
+      setStatusMessage(`${rejected.title} rejected.`);
     }
     catch (error) {
-      setStatusMessage(getFriendlyError(error, "Could not reject source."));
+      setStatusMessage(getFriendlyError(error, "Rejection failed."));
     }
   };
 
   const handleDeleteSource = async (source: KnowledgeSourceItem) => {
     const sourceId = getKnowledgeSourceId(source);
-
-    if (!sourceId) {
-      return;
-    }
-
     try {
       await deleteKnowledgeSource(sourceId);
       setSources(currentSources =>
-        currentSources.filter(
-          item => getKnowledgeSourceId(item) !== sourceId,
-        ),
-      );
-      setSelectedSourceId(currentId =>
-        currentId === sourceId ? "" : currentId,
+        currentSources.filter(item => getKnowledgeSourceId(item) !== sourceId),
       );
       setStatusMessage(`${source.title} deleted.`);
     }
     catch (error) {
-      setStatusMessage(getFriendlyError(error, "Could not delete source."));
+      setStatusMessage(getFriendlyError(error, "Deletion failed."));
     }
   };
 
   return (
     <AdminContentManagementShell>
-      <section className="w-full min-w-0 space-y-4 rounded-[12px] border border-[#D9E2EC] bg-white p-4">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-[12px] font-semibold text-[#1E293B]">
-              {isCreateOpen ? "Add New RAG Resource" : "Recent Knowledge Sources"}
-            </p>
-            {statusMessage
-              ? (
-                  <p className="mt-1 text-[12px] font-medium text-[#0F67AE]">
-                    {statusMessage}
-                  </p>
-                )
-              : null}
+      <div className="w-full min-w-0 space-y-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
+              <Activity className="h-5 w-5 text-primary" />
+              {isCreateOpen ? "Source Registration & Editor" : "Knowledge Sources Dashboard"}
+            </h3>
+            {statusMessage && (
+              <div
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11px] font-semibold border shadow-sm transition-all duration-300",
+                  getStatusBannerClass(statusMessage),
+                )}
+              >
+                {getStatusIcon(statusMessage)}
+                <span>{statusMessage}</span>
+                <button
+                  type="button"
+                  onClick={() => setStatusMessage(null)}
+                  className="ml-1 text-slate-400 hover:text-slate-600 focus:outline-none"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            )}
           </div>
-          {!isCreateOpen ? (
-            <div className="flex flex-wrap items-center gap-2">
+
+          <div className="flex flex-wrap items-center gap-2">
+            {isCreateOpen ? (
               <button
                 type="button"
-                disabled={isLoading}
-                onClick={() => void loadSources()}
-                className="inline-flex h-8 items-center gap-1 rounded-md border border-[#D8E3EE] bg-white px-3 text-[11px] font-semibold text-[#334155] transition hover:bg-[#F8FBFF] disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={() => {
+                  closeCreateSourceForm("Returned to knowledge sources.");
+                }}
+                className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 px-4 text-xs font-bold text-slate-700 transition shadow-sm"
               >
-                <RefreshCcw className="h-3 w-3" />
-                Re-scan Sources
+                <ArrowLeft className="h-4 w-4" />
+                Back to Dashboard
               </button>
-              <button
-                type="button"
-                disabled={isSaving}
-                onClick={openCreateSourceForm}
-                className="inline-flex h-8 items-center gap-1 rounded-md bg-[#F59E0B] px-3 text-[11px] font-semibold text-white transition hover:bg-[#D88B07] disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <Plus className="h-3 w-3" />
-                Add New Source
-              </button>
-            </div>
-          ) : null}
+            ) : (
+              <>
+                <button
+                  type="button"
+                  disabled={isLoading}
+                  onClick={() => void loadSources()}
+                  className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 px-4 text-xs font-bold text-slate-700 transition shadow-sm disabled:opacity-50"
+                >
+                  <RefreshCcw className={cn("h-3.5 w-3.5", isLoading && "animate-spin")} />
+                  Refresh Feed
+                </button>
+                <button
+                  type="button"
+                  disabled={isSaving}
+                  onClick={openCreateSourceForm}
+                  className="inline-flex h-9 items-center gap-2 rounded-xl bg-primary hover:bg-primary/95 px-4 text-xs font-bold text-white transition shadow-sm"
+                >
+                  <Plus className="h-4 w-4" />
+                  Add New Source
+                </button>
+              </>
+            )}
+          </div>
         </div>
-
-        {isCreateOpen
-          ? (
-              <section className="rounded-[10px] border border-[#D8E3EE] bg-[#FAFCFF] p-3">
-                <div className="mx-auto max-w-4xl space-y-5">
-                  <div className="flex flex-col gap-3 border-b border-[#E4EAF1] pb-4 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="space-y-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          closeCreateSourceForm("Returned to the knowledge-source list.");
-                        }}
-                        className="inline-flex items-center gap-2 rounded-md px-2 py-1 text-[12px] font-semibold text-[#0F67AE] transition hover:bg-[#EEF6FF]"
-                      >
-                        <ArrowLeft className="h-4 w-4" />
-                        Back to knowledge sources
-                      </button>
-                      <div>
-                        <p className="text-[18px] font-semibold text-[#1E293B]">
-                          Add New Resource
-                        </p>
-                        <p className="mt-1 max-w-2xl text-[12px] text-[#607B90]">
-                          Keep this form focused on what is needed to create a new RAG source and upload the document.
-                          You can edit the full registry details after the source is created.
-                        </p>
-                      </div>
-                    </div>
-                    <div className="rounded-[10px] border border-[#D8E3EE] bg-white px-3 py-2 text-[11px] text-[#607B90]">
-                      <p className="font-semibold text-[#334155]">Defaults applied</p>
-                      <p className="mt-1">Language: en</p>
-                      <p>Source category: official legal source</p>
-                      <p>Topic: other</p>
-                      <p>License: {createForm.licenseStatus || "Government copyright"}</p>
-                    </div>
-                  </div>
-
-                  <div className="grid gap-4 lg:grid-cols-2">
-                    <label className="space-y-1">
-                      <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                        Source Name *
-                      </p>
-                      <input
-                        type="text"
-                        value={createForm.title}
-                        onChange={event =>
-                          setCreateForm(current => ({
-                            ...current,
-                            title: event.target.value,
-                          }))}
-                        placeholder="Gender-based violence and higher education guidance"
-                        className={`h-10 w-full rounded-md border bg-white px-3 text-sm text-[#334155] outline-none transition ${fieldBorder(createErrors.title)}`}
-                      />
-                      <FieldError message={createErrors.title} />
-                    </label>
-
-                    <label className="space-y-1">
-                      <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                        Publisher *
-                      </p>
-                      <input
-                        type="text"
-                        value={createForm.publisher}
-                        onChange={event =>
-                          setCreateForm(current => ({
-                            ...current,
-                            publisher: event.target.value,
-                          }))}
-                        placeholder="Australian Government Department"
-                        className={`h-10 w-full rounded-md border bg-white px-3 text-sm text-[#334155] outline-none transition ${fieldBorder(createErrors.publisher)}`}
-                      />
-                      <FieldError message={createErrors.publisher} />
-                    </label>
-
-                    <label className="space-y-1">
-                      <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                        Document Type *
-                      </p>
-                      <select
-                        value={createForm.sourceType}
-                        onChange={event =>
-                          setCreateForm(current => ({
-                            ...current,
-                            sourceType: event.target.value as KnowledgeSourceType,
-                          }))}
-                        className={`h-10 w-full rounded-md border bg-white px-3 text-sm text-[#334155] outline-none transition ${fieldBorder(createErrors.sourceType)}`}
-                      >
-                        {SOURCE_TYPE_OPTIONS.map(option => (
-                          <option key={option} value={option}>
-                            {option}
-                          </option>
-                        ))}
-                      </select>
-                      <FieldError message={createErrors.sourceType} />
-                    </label>
-
-                    <label className="space-y-1">
-                      <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                        Jurisdiction
-                      </p>
-                      <select
-                        value={createForm.jurisdiction}
-                        onChange={event =>
-                          setCreateForm(current => ({
-                            ...current,
-                            jurisdiction: event.target.value as KnowledgeSourceJurisdiction,
-                          }))}
-                        className="h-10 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
-                      >
-                        {JURISDICTION_OPTIONS.map(option => (
-                          <option key={option} value={option}>
-                            {option}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <label className="space-y-1 lg:col-span-2">
-                      <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                        Official Source URL *
-                      </p>
-                      <input
-                        type="url"
-                        value={createForm.url}
-                        onChange={event =>
-                          setCreateForm(current => ({
-                            ...current,
-                            url: event.target.value,
-                          }))}
-                        placeholder="https://example.gov.au/source"
-                        className={`h-10 w-full rounded-md border bg-white px-3 text-sm text-[#334155] outline-none transition ${fieldBorder(createErrors.url)}`}
-                      />
-                      <FieldError message={createErrors.url} />
-                    </label>
-
-                    <label className="space-y-1">
-                      <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                        Last Updated *
-                      </p>
-                      <input
-                        type="date"
-                        value={createForm.lastUpdated}
-                        onChange={(event) => {
-                          const lastUpdated = event.target.value;
-                          setCreateForm(current => ({
-                            ...current,
-                            lastUpdated,
-                            nextRefreshAt:
-                              current.nextRefreshAt || addDaysInputValue(lastUpdated, 90),
-                          }));
-                        }}
-                        className={`h-10 w-full rounded-md border bg-white px-3 text-sm text-[#334155] outline-none transition ${fieldBorder(createErrors.lastUpdated)}`}
-                      />
-                      <FieldError message={createErrors.lastUpdated} />
-                    </label>
-
-                    <label className="space-y-1">
-                      <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                        Refresh Date *
-                      </p>
-                      <input
-                        type="date"
-                        value={createForm.nextRefreshAt}
-                        onChange={event =>
-                          setCreateForm(current => ({
-                            ...current,
-                            nextRefreshAt: event.target.value,
-                          }))}
-                        className={`h-10 w-full rounded-md border bg-white px-3 text-sm text-[#334155] outline-none transition ${fieldBorder(createErrors.nextRefreshAt)}`}
-                      />
-                      <FieldError message={createErrors.nextRefreshAt} />
-                    </label>
-                  </div>
-
-                  <div className="rounded-[12px] border border-[#D8E3EE] bg-white p-4">
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                          Document For RAG
-                        </p>
-                        <p className="mt-1 text-[12px] text-[#607B90]">
-                          Upload the source file for extraction and indexing. Text files can also preload the text preview automatically.
-                        </p>
-                      </div>
-                      <label className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-md border border-[#D8E3EE] bg-white px-3 text-sm font-semibold text-[#334155] transition hover:bg-[#F8FBFF]">
-                        <FileUp className="h-4 w-4" />
-                        Select Document
-                        <input
-                          type="file"
-                          accept=".pdf,.doc,.docx,.txt,.md,.html,.htm,.csv,.json,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown,text/html,text/csv,application/json"
-                          className="hidden"
-                          onChange={(event) => {
-                            const file = event.target.files?.[0] ?? null;
-                            void handleFileUpload(file);
-                            event.currentTarget.value = "";
-                          }}
-                        />
-                      </label>
-                    </div>
-
-                    {createForm.documentFile ? (
-                      <div className="mt-3 flex flex-col gap-2 rounded-md border border-[#E4EAF1] bg-[#FAFCFF] px-3 py-2 text-[12px] text-[#475569] sm:flex-row sm:items-center sm:justify-between">
-                        <span className="inline-flex items-center gap-2">
-                          <FileText className="h-4 w-4 text-[#0F67AE]" />
-                          {getFileLabel(createForm.documentFile)}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setCreateForm(current => ({
-                              ...current,
-                              documentFile: null,
-                            }));
-                            setSelectedUploadStatus("idle");
-                          }}
-                          className="inline-flex h-7 items-center gap-1 rounded border border-[#D8E3EE] px-2 text-[11px] font-semibold text-[#B42318] transition hover:bg-[#FFF5F5]"
-                        >
-                          <X className="h-3 w-3" />
-                          Remove
-                        </button>
-                      </div>
-                    ) : null}
-
-                    <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-[#607B90]">
-                      <span className="rounded-full bg-[#EEF6FF] px-2 py-1 font-semibold text-[#0F67AE]">
-                        Upload status: {selectedUploadStatus}
-                      </span>
-                      <span>Accepted: PDF, DOC, DOCX, TXT, MD, HTML, CSV, JSON.</span>
-                    </div>
-                    <FieldError message={createErrors.document} />
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-4 rounded-[10px] border border-[#E4EAF1] bg-white px-3 py-3">
-                    <label className="inline-flex items-center gap-2 text-[12px] text-[#334155]">
-                      <input
-                        type="checkbox"
-                        checked={createForm.ingestImmediately}
-                        onChange={event =>
-                          setCreateForm(current => ({
-                            ...current,
-                            ingestImmediately: event.target.checked,
-                          }))}
-                      />
-                      Ingest immediately after create
-                    </label>
-                    <p className="text-[11px] text-[#607B90]">
-                      Full registry details can be reviewed and edited after the upload is created.
-                    </p>
-                  </div>
-
-                  <div className="flex items-center justify-end gap-2 border-t border-[#E4EAF1] pt-4">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        closeCreateSourceForm("New resource creation cancelled.");
-                      }}
-                      className="h-9 rounded-md px-3 text-xs font-semibold text-[#64748B] transition hover:bg-[#F3F7FB]"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isSaving}
-                      onClick={() => void handleCreateSource()}
-                      className="h-9 rounded-md bg-[#0F67AE] px-4 text-xs font-semibold text-white transition hover:bg-[#0B578F] disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {isSaving ? "Creating..." : "Create Source"}
-                    </button>
-                  </div>
-                </div>
-              </section>
-            )
-          : null}
 
         <datalist id="knowledge-source-license-options">
           {LICENSE_STATUS_OPTIONS.map(option => (
@@ -1924,1371 +1543,1232 @@ export function AdminContentKnowledgeSourcesPage() {
 
         {!isCreateOpen ? (
           <>
-        <div className="grid gap-2 md:grid-cols-4">
-          <div className="rounded-md border border-[#D8E3EE] bg-[#FAFCFF] px-3 py-2">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-              Due Refresh
-            </p>
-            <p className="mt-1 text-lg font-semibold text-[#1E293B]">
-              {queueStats.needsRefresh}
-            </p>
-          </div>
-          <div className="rounded-md border border-[#D8E3EE] bg-[#FAFCFF] px-3 py-2">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-              Stale Excluded
-            </p>
-            <p className="mt-1 text-lg font-semibold text-[#1E293B]">
-              {queueStats.staleExcluded}
-            </p>
-          </div>
-          <div className="rounded-md border border-[#D8E3EE] bg-[#FAFCFF] px-3 py-2">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-              Legal Review
-            </p>
-            <p className="mt-1 text-lg font-semibold text-[#1E293B]">
-              {queueStats.needsLegalReview}
-            </p>
-          </div>
-          <div className="rounded-md border border-[#D8E3EE] bg-[#FAFCFF] px-3 py-2">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-              Ready Approval
-            </p>
-            <p className="mt-1 text-lg font-semibold text-[#1E293B]">
-              {queueStats.readyForApproval}
-            </p>
-          </div>
-        </div>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="relative overflow-hidden rounded-2xl border border-slate-100 bg-white p-5 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-md">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Due Refresh</span>
+                    <h3 className="text-2xl font-extrabold text-slate-800 tracking-tight">{queueStats.needsRefresh}</h3>
+                  </div>
+                  <div className="rounded-xl bg-amber-50 p-2.5 text-amber-600 border border-amber-100/50">
+                    <RefreshCcw className="h-5 w-5" />
+                  </div>
+                </div>
+                <div className="mt-4 flex items-center text-[10px] text-slate-500">
+                  <span className="font-semibold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded mr-1.5">Needs action</span>
+                  <span>sources require data sync</span>
+                </div>
+              </div>
 
-        {readiness
-          ? (
-              <section className="rounded-[10px] border border-[#D8E3EE] bg-[#FAFCFF] p-3">
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div className="relative overflow-hidden rounded-2xl border border-slate-100 bg-white p-5 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-md">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Stale Excluded</span>
+                    <h3 className="text-2xl font-extrabold text-slate-800 tracking-tight">{queueStats.staleExcluded}</h3>
+                  </div>
+                  <div className="rounded-xl bg-rose-50 p-2.5 text-rose-600 border border-rose-100/50">
+                    <ShieldAlert className="h-5 w-5" />
+                  </div>
+                </div>
+                <div className="mt-4 flex items-center text-[10px] text-slate-500">
+                  <span className="font-semibold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded mr-1.5">Excluded</span>
+                  <span>stale records off RAG pipeline</span>
+                </div>
+              </div>
+
+              <div className="relative overflow-hidden rounded-2xl border border-slate-100 bg-white p-5 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-md">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Legal Review</span>
+                    <h3 className="text-2xl font-extrabold text-slate-800 tracking-tight">{queueStats.needsLegalReview}</h3>
+                  </div>
+                  <div className="rounded-xl bg-violet-50 p-2.5 text-violet-600 border border-violet-100/50">
+                    <Scale className="h-5 w-5" />
+                  </div>
+                </div>
+                <div className="mt-4 flex items-center text-[10px] text-slate-500">
+                  <span className="font-semibold text-violet-600 bg-violet-50 px-1.5 py-0.5 rounded mr-1.5">Pending</span>
+                  <span>sources require legal check</span>
+                </div>
+              </div>
+
+              <div className="relative overflow-hidden rounded-2xl border border-slate-100 bg-white p-5 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-md">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Ready Approval</span>
+                    <h3 className="text-2xl font-extrabold text-slate-800 tracking-tight">{queueStats.readyForApproval}</h3>
+                  </div>
+                  <div className="rounded-xl bg-emerald-50 p-2.5 text-emerald-600 border border-emerald-100/50">
+                    <CheckCircle2 className="h-5 w-5" />
+                  </div>
+                </div>
+                <div className="mt-4 flex items-center text-[10px] text-slate-500">
+                  <span className="font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded mr-1.5">Ready</span>
+                  <span>completed ingestion queue</span>
+                </div>
+              </div>
+            </div>
+
+            {readiness && (
+              <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between border-b border-slate-100 pb-5">
                   <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                      Public Legal RAG Readiness
-                    </p>
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Public Legal RAG Readiness</span>
+                    <div className="mt-2 flex flex-wrap items-center gap-3">
                       <span
-                        className={`rounded-full border px-3 py-1 text-[11px] font-bold ${readinessStatusClass(readiness)}`}
+                        className={cn(
+                          "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold shadow-sm border",
+                          getReadinessBadgeClass(readiness.summary.readinessStatus),
+                        )}
                       >
+                        <span
+                          className={cn(
+                            "h-2 w-2 rounded-full",
+                            getReadinessDotClass(readiness.summary.readinessStatus),
+                          )}
+                        />
                         {displayReadinessStatus(readiness)}
                       </span>
-                      <span className="text-[12px] text-[#475569]">
-                        {readiness.summary.eligibleLegalSources} eligible legal source
-                        {readiness.summary.eligibleLegalSources === 1 ? "" : "s"} / {readiness.summary.totalOfficialSources} official sources
+                      <span className="text-sm font-semibold text-slate-600">
+                        {`${readiness.summary.eligibleLegalSources} eligible legal source${readiness.summary.eligibleLegalSources === 1 ? "" : "s"} / ${readiness.summary.totalOfficialSources} official sources`}
                       </span>
                     </div>
                   </div>
-                  <div className="grid min-w-0 grid-cols-2 gap-2 text-[11px] sm:grid-cols-4 lg:min-w-[520px]">
-                    <div className="rounded-md border border-[#E4EAF1] bg-white px-3 py-2">
-                      <p className="font-semibold text-[#607B90]">Citation Ready</p>
-                      <p className="mt-1 text-base font-bold text-[#1E293B]">
-                        {readiness.summary.eligibleCitationSources}
-                      </p>
+
+                  <div className="grid min-w-0 grid-cols-2 gap-2.5 sm:grid-cols-4 lg:w-auto">
+                    <div className="rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-2.5">
+                      <p className="text-[10px] font-bold uppercase text-slate-400">Citation Ready</p>
+                      <p className="mt-1 text-lg font-extrabold text-slate-700">{readiness.summary.eligibleCitationSources}</p>
                     </div>
-                    <div className="rounded-md border border-[#E4EAF1] bg-white px-3 py-2">
-                      <p className="font-semibold text-[#607B90]">Approved Current</p>
-                      <p className="mt-1 text-base font-bold text-[#1E293B]">
-                        {readiness.summary.approvedCurrentSources}
-                      </p>
+                    <div className="rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-2.5">
+                      <p className="text-[10px] font-bold uppercase text-slate-400">Approved Current</p>
+                      <p className="mt-1 text-lg font-extrabold text-slate-700">{readiness.summary.approvedCurrentSources}</p>
                     </div>
-                    <div className="rounded-md border border-[#E4EAF1] bg-white px-3 py-2">
-                      <p className="font-semibold text-[#607B90]">Blocked</p>
-                      <p className="mt-1 text-base font-bold text-[#1E293B]">
-                        {readiness.summary.blockedSources}
-                      </p>
+                    <div className="rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-2.5">
+                      <p className="text-[10px] font-bold uppercase text-slate-400">Blocked</p>
+                      <p className="mt-1 text-lg font-extrabold text-slate-700">{readiness.summary.blockedSources}</p>
                     </div>
-                    <div className="rounded-md border border-[#E4EAF1] bg-white px-3 py-2">
-                      <p className="font-semibold text-[#607B90]">Metadata Only</p>
-                      <p className="mt-1 text-base font-bold text-[#1E293B]">
-                        {readiness.summary.metadataOnlySources}
-                      </p>
+                    <div className="rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-2.5">
+                      <p className="text-[10px] font-bold uppercase text-slate-400">Metadata Only</p>
+                      <p className="mt-1 text-lg font-extrabold text-slate-700">{readiness.summary.metadataOnlySources}</p>
                     </div>
                   </div>
                 </div>
 
-                <div className="mt-3 grid gap-2 text-[11px] lg:grid-cols-4">
-                  <div
-                    className={`rounded-md border px-3 py-2 ${readinessConfigClass(
-                      readiness.configuration.openAiApiKeyConfigured,
-                    )}`}
-                  >
-                    <p className="font-semibold">OpenAI Embeddings</p>
-                    <p className="mt-1">
+                <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className={cn(
+                    "rounded-xl border p-4 shadow-sm transition-all duration-200 hover:shadow-md",
+                    readiness.configuration.openAiApiKeyConfigured
+                      ? "bg-emerald-50/30 border-emerald-100 text-emerald-800"
+                      : "bg-amber-50/30 border-amber-100 text-amber-800"
+                  )}>
+                    <div className="flex items-center gap-2">
+                      <Cpu className="h-4 w-4 text-emerald-600" />
+                      <p className="text-xs font-bold uppercase tracking-wider">OpenAI Embeddings</p>
+                    </div>
+                    <p className="mt-2 text-xs font-medium text-slate-600">
                       {readiness.configuration.openAiApiKeyConfigured
                         ? `Configured: ${readiness.configuration.embeddingModel}`
                         : "OPENAI_API_KEY is missing"}
                     </p>
                   </div>
-                  <div
-                    className={`rounded-md border px-3 py-2 ${readinessConfigClass(
-                      readiness.configuration.vectorIndex.status === "ready",
-                    )}`}
-                  >
-                    <p className="font-semibold">Vector Index</p>
-                    <p className="mt-1">
+
+                  <div className={cn(
+                    "rounded-xl border p-4 shadow-sm transition-all duration-200 hover:shadow-md",
+                    readiness.configuration.vectorIndex.status === "ready"
+                      ? "bg-emerald-50/30 border-emerald-100 text-emerald-800"
+                      : "bg-amber-50/30 border-amber-100 text-amber-800"
+                  )}>
+                    <div className="flex items-center gap-2">
+                      <Layers className="h-4 w-4 text-emerald-600" />
+                      <p className="text-xs font-bold uppercase tracking-wider">Vector Index</p>
+                    </div>
+                    <p className="mt-2 text-xs font-medium text-slate-600 truncate" title={formatVectorIndexLabel(readiness)}>
                       {formatVectorIndexLabel(readiness)}
                     </p>
                   </div>
-                  <div
-                    className={`rounded-md border px-3 py-2 ${readinessConfigClass(
-                      readiness.configuration.retrievalReady,
-                    )}`}
-                  >
-                    <p className="font-semibold">Retrieval Config</p>
-                    <p className="mt-1">
+
+                  <div className={cn(
+                    "rounded-xl border p-4 shadow-sm transition-all duration-200 hover:shadow-md",
+                    readiness.configuration.retrievalReady
+                      ? "bg-emerald-50/30 border-emerald-100 text-emerald-800"
+                      : "bg-amber-50/30 border-amber-100 text-amber-800"
+                  )}>
+                    <div className="flex items-center gap-2">
+                      <Activity className="h-4 w-4 text-emerald-600" />
+                      <p className="text-xs font-bold uppercase tracking-wider">Retrieval Config</p>
+                    </div>
+                    <p className="mt-2 text-xs font-medium text-slate-600 truncate">
                       {readiness.configuration.retrievalReady
                         ? "Ready for live retrieval"
                         : readiness.configuration.vectorIndex.message}
                     </p>
                   </div>
-                  <div
-                    className={`rounded-md border px-3 py-2 ${readinessConfigClass(
-                      Boolean(pineconeHealth?.configured && pineconeHealth.reachable),
-                    )}`}
-                  >
-                    <p className="font-semibold">Pinecone</p>
-                    <p className="mt-1">
+
+                  <div className={cn(
+                    "rounded-xl border p-4 shadow-sm transition-all duration-200 hover:shadow-md",
+                    Boolean(pineconeHealth?.configured && pineconeHealth.reachable)
+                      ? "bg-emerald-50/30 border-emerald-100 text-emerald-800"
+                      : "bg-amber-50/30 border-amber-100 text-amber-800"
+                  )}>
+                    <div className="flex items-center gap-2">
+                      <Server className="h-4 w-4 text-emerald-600" />
+                      <p className="text-xs font-bold uppercase tracking-wider">Pinecone DB</p>
+                    </div>
+                    <p className="mt-2 text-xs font-medium text-slate-600 truncate" title={pineconeHealth ? pineconeHealth.indexName : ""}>
                       {pineconeHealth
                         ? pineconeHealth.configured
-                          ? `${pineconeHealth.reachable ? "Reachable" : "Not reachable"}: ${pineconeHealth.indexName ?? "index unset"} / ${pineconeHealth.namespace ?? "namespace unset"}`
-                          : "Disabled: PINECONE_API_KEY is missing"
+                          ? `${pineconeHealth.reachable ? "Reachable" : "Not reachable"}: ${pineconeHealth.indexName ?? "unset"}`
+                          : "Disabled: PINECONE_API_KEY missing"
                         : "Health not loaded"}
                     </p>
                   </div>
                 </div>
 
-                {readiness.blockers.length > 0
-                  ? (
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {readiness.blockers.slice(0, 6).map(blocker => (
-                          <span
-                            key={blocker.code}
-                            className="rounded-full border border-[#FDE68A] bg-[#FFFBEB] px-2.5 py-1 text-[10px] font-semibold text-[#92400E]"
-                            title={blocker.sourceTitles.slice(0, 4).join(", ")}
-                          >
-                            {blocker.label}: {blocker.count}
-                          </span>
-                        ))}
-                      </div>
-                    )
-                  : null}
-
-                {priorityCoverageGaps.length > 0
-                  ? (
-                      <div className="mt-3 overflow-x-auto rounded-md border border-[#E4EAF1] bg-white">
-                        <table className="w-full min-w-[680px] border-collapse text-left">
-                          <thead className="bg-[#F8FBFF] text-[10px] uppercase tracking-wide text-[#607B90]">
-                            <tr>
-                              <th className="px-3 py-2 font-semibold">Coverage Cell</th>
-                              <th className="px-3 py-2 font-semibold">Eligible</th>
-                              <th className="px-3 py-2 font-semibold">Needs Legal</th>
-                              <th className="px-3 py-2 font-semibold">Needs Refresh</th>
-                              <th className="px-3 py-2 font-semibold">No Chunks</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {priorityCoverageGaps.map(cell => (
-                              <tr
-                                key={`${cell.sourceCategory}-${cell.jurisdiction}-${cell.topic}`}
-                                className="border-t border-[#E4EAF1] text-[11px] text-[#1E293B]"
-                              >
-                                <td className="px-3 py-2 font-semibold">
-                                  {displaySourceCategoryLabel(cell.sourceCategory)} / {cell.jurisdiction} / {cell.topic}
-                                </td>
-                                <td className="px-3 py-2 text-[#607B90]">
-                                  {cell.eligibleSources}/{cell.totalSources}
-                                </td>
-                                <td className="px-3 py-2 text-[#607B90]">
-                                  {cell.needsLegalReviewSources}
-                                </td>
-                                <td className="px-3 py-2 text-[#607B90]">
-                                  {cell.needsRefreshSources}
-                                </td>
-                                <td className="px-3 py-2 text-[#607B90]">
-                                  {cell.noChunkSources}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )
-                  : null}
-              </section>
-            )
-          : null}
-
-        <div className="overflow-x-auto rounded-[10px] border border-[#D5DEE7]">
-          <table className="w-full min-w-full border-collapse text-left lg:min-w-[900px]">
-            <thead className="bg-[#F8FBFF]">
-              <tr className="text-[10px] uppercase tracking-wide text-[#607B90]">
-                <th className="px-3 py-2 font-semibold">Source Name</th>
-                <th className="px-3 py-2 font-semibold">Category</th>
-                <th className="px-3 py-2 font-semibold">Jurisdiction</th>
-                <th className="px-3 py-2 font-semibold">Ingestion</th>
-                <th className="px-3 py-2 font-semibold">Legal</th>
-                <th className="px-3 py-2 font-semibold">Approval</th>
-                <th className="px-3 py-2 font-semibold">Last Ingested</th>
-                <th className="px-3 py-2 font-semibold">Chunks</th>
-                <th className="px-3 py-2 font-semibold">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {isLoading
-                ? (
-                    <tr>
-                      <td
-                        colSpan={9}
-                        className="px-3 py-8 text-center text-[12px] text-[#607B90]"
-                      >
-                        Loading knowledge sources...
-                      </td>
-                    </tr>
-                  )
-                : null}
-              {!isLoading && sources.length === 0
-                ? (
-                    <tr>
-                      <td
-                        colSpan={9}
-                        className="px-3 py-8 text-center text-[12px] text-[#607B90]"
-                      >
-                        No knowledge sources have been added yet.
-                      </td>
-                    </tr>
-                  )
-                : null}
-              {sources.map((row) => {
-                const sourceId = getKnowledgeSourceId(row);
-                const category = displayCategory(row);
-                const status = displayStatus(row);
-                const adminIngestionStatus = getAdminIngestionStatus(row);
-                const approvalBlockReason = getApprovalBlockReason(row);
-                return (
-                  <tr
-                    key={sourceId}
-                    className="cursor-pointer border-t border-[#E4EAF1] text-[12px] text-[#1E293B] transition hover:bg-[#F8FBFF]"
-                    onClick={() => {
-                      setSelectedSourceId(sourceId);
-                      setStatusMessage(`Editing templates for ${row.title}.`);
-                    }}
-                  >
-                    <td className="px-3 py-2.5 font-medium">{row.title}</td>
-                    <td className="px-3 py-2.5">
+                {readiness.blockers.length > 0 && (
+                  <div className="mt-4 flex flex-wrap gap-2 items-center border-t border-slate-50 pt-4">
+                    <span className="text-[11px] font-bold text-slate-400 mr-1 flex items-center gap-1">
+                      <AlertTriangle className="h-3.5 w-3.5 text-amber-500 animate-pulse" />
+                      Active Blockers:
+                    </span>
+                    {readiness.blockers.slice(0, 6).map(blocker => (
                       <span
-                        className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${categoryClass(category)}`}
+                        key={blocker.code}
+                        className="inline-flex items-center gap-1 rounded-full bg-amber-50 border border-amber-200/50 px-2.5 py-0.5 text-[10px] font-semibold text-amber-800"
+                        title={blocker.sourceTitles.slice(0, 4).join(", ")}
                       >
-                        {category}
+                        {`${blocker.label} (${blocker.count})`}
                       </span>
-                    </td>
-                    <td className="px-3 py-2.5 text-[#607B90]">
-                      {row.jurisdiction}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${ingestionClass(status)}`}
-                      >
-                        {adminIngestionStatus}
-                      </span>
-                      {getIndexingProgressLabel(row) ? (
-                        <p className="mt-1 text-[10px] text-[#607B90]">
-                          {getIndexingProgressLabel(row)}
-                        </p>
-                      ) : null}
-                      {(row.ingestionStatus === "failed" || row.ingestionStatus === "partial_index_failed") && row.ingestionError ? (
-                        <p className="mt-1 max-w-[180px] truncate text-[10px] text-[#B42318]">
-                          {row.ingestionError}
-                        </p>
-                      ) : null}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <span className={row.legalReviewed ? "text-[#15803D]" : "text-[#B45309]"}>
-                        {row.legalReviewed ? "Reviewed" : "Incomplete"}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2.5 text-[#607B90]">
-                      {row.status}
-                    </td>
-                    <td className="px-3 py-2.5 text-[#607B90]">
-                      {formatDate(row.ingestedAt)}
-                    </td>
-                    <td className="px-3 py-2.5 text-[#607B90]">
-                      {getChunkCount(row)}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <div className="flex flex-wrap items-center gap-1">
-                        <button
-                          type="button"
-                          disabled={isSaving || !hasStoredContent(row)}
-                          title={
-                            hasStoredContent(row)
-                              ? "Run ingestion from stored extracted text or uploaded document."
-                              : "Upload a document, store extracted text, or add a file path before ingestion."
-                          }
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            void handleIngestSource(row);
-                          }}
-                          className="rounded border border-[#D8E3EE] px-2 py-1 text-[10px] font-semibold text-[#0F67AE] transition hover:bg-[#EEF6FF] disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          Ingest
-                        </button>
-                        <button
-                          type="button"
-                          disabled={isSaving || getChunkCount(row) <= 0}
-                          title={
-                            getChunkCount(row) > 0
-                              ? "Re-index stored extracted text."
-                              : "No chunks or extracted text are available to re-index."
-                          }
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            void handleReindexSource(row);
-                          }}
-                          className="inline-flex items-center gap-1 rounded border border-[#D8E3EE] px-2 py-1 text-[10px] font-semibold text-[#0F67AE] transition hover:bg-[#EEF6FF] disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          <RotateCcw className="h-3 w-3" />
-                          Reindex
-                        </button>
-                        {isOfficialSource(row)
-                          ? (
-                              <button
-                                type="button"
-                                disabled={isSaving || !row.url || row.status === "archived" || row.status === "expired"}
-                                title={
-                                  row.url
-                                    ? "Fetch the official URL and update verification metadata."
-                                    : "Add a source URL before refreshing."
-                                }
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  void handleRefreshSource(row);
-                                }}
-                                className="inline-flex items-center gap-1 rounded border border-[#D8E3EE] px-2 py-1 text-[10px] font-semibold text-[#0F67AE] transition hover:bg-[#EEF6FF] disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                <RefreshCcw className="h-3 w-3" />
-                                Refresh
-                              </button>
-                            )
-                          : null}
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            void toggleLegalReview(row);
-                          }}
-                          className="rounded border border-[#D8E3EE] px-2 py-1 text-[10px] font-semibold text-[#0F67AE] transition hover:bg-[#EEF6FF]"
-                        >
-                          {row.legalReviewed ? "Legal OK" : "Mark Legal"}
-                        </button>
-                        {row.status !== "approved"
-                          ? (
-                              <button
-                                type="button"
-                                disabled={Boolean(approvalBlockReason)}
-                                title={approvalBlockReason || "Approve this source."}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  void approveKnowledgeSource(sourceId)
-                                    .then((approvedSource) => {
-                                      setSources(currentSources =>
-                                        upsertSource(
-                                          currentSources,
-                                          approvedSource,
-                                        ),
-                                      );
-                                      setStatusMessage(
-                                        `${approvedSource.title} approved.`,
-                                      );
-                                    })
-                                    .catch((error: unknown) => {
-                                      setStatusMessage(
-                                        getFriendlyError(
-                                          error,
-                                          "Could not approve source.",
-                                        ),
-                                      );
-                                    });
-                                }}
-                                className="rounded border border-[#D8E3EE] px-2 py-1 text-[10px] font-semibold text-[#0F67AE] transition hover:bg-[#EEF6FF] disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                Approve
-                              </button>
-                            )
-                          : null}
-                        {row.status !== "rejected" && row.status !== "archived" && row.status !== "expired"
-                          ? (
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  void handleRejectSource(row);
-                                }}
-                                className="rounded border border-[#D8E3EE] px-2 py-1 text-[10px] font-semibold text-[#B45309] transition hover:bg-[#FFF7ED]"
-                              >
-                                Reject
-                              </button>
-                            )
-                          : null}
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setSelectedSourceId(sourceId);
-                            setStatusMessage(`Viewing details for ${row.title}.`);
-                          }}
-                          className="rounded border border-[#D8E3EE] px-2 py-1 text-[10px] font-semibold text-[#475569] transition hover:bg-[#F8FBFF]"
-                        >
-                          Details
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            void handleDeleteSource(row);
-                          }}
-                          className="inline-flex h-6 w-6 items-center justify-center rounded text-[#B42318] transition hover:bg-[#FFF5F5]"
-                          aria-label={`Delete ${row.title}`}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-
-        <section className="rounded-[10px] border border-[#D8E3EE] bg-[#FAFCFF] p-3">
-          <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <h3 className="text-sm font-semibold text-[#1E293B]">
-                Registry Governance
-              </h3>
-              <p className="text-[11px] text-[#607B90]">
-                Official sources need authoritative URLs, licensing, update
-                metadata, refresh dates, and legal review before RAG can cite
-                them.
-              </p>
-            </div>
-            {selectedSource
-              ? (
-                  <span className="rounded-full border border-[#D8E3EE] bg-white px-2 py-1 text-[10px] font-semibold text-[#475569]">
-                    {displaySourceCategory(selectedSource)}
-                  </span>
-                )
-              : null}
-          </div>
-
-          <div className="mt-3 grid gap-3 lg:grid-cols-2">
-            <label className="space-y-1">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                Title
-              </p>
-              <input
-                type="text"
-                value={governanceDraft.title ?? ""}
-                disabled={!selectedSource}
-                onChange={event =>
-                  setGovernanceDraft(current => ({
-                    ...current,
-                    title: event.target.value,
-                  }))}
-                className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE] disabled:text-[#94A3B8]"
-              />
-            </label>
-            <label className="space-y-1">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                Source Category
-              </p>
-              <div className="flex flex-col gap-2">
-                <select
-                  value={
-                    SOURCE_CATEGORY_OPTIONS.some(opt => opt.value === governanceDraft.sourceCategory)
-                      ? governanceDraft.sourceCategory
-                      : "Other"
-                  }
-                  disabled={!selectedSource}
-                  onChange={(event) => {
-                    const val = event.target.value;
-                    setGovernanceDraft(current => ({
-                      ...current,
-                      sourceCategory: val === "Other" ? "" : val as KnowledgeSourceCategory,
-                    }));
-                  }}
-                  className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE] disabled:text-[#94A3B8]"
-                >
-                  {SOURCE_CATEGORY_OPTIONS.map(option => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                  <option value="Other">Other (Specify...)</option>
-                </select>
-                {selectedSource && (!SOURCE_CATEGORY_OPTIONS.some(opt => opt.value === governanceDraft.sourceCategory) || governanceDraft.sourceCategory === "") && (
-                  <input
-                    type="text"
-                    placeholder="Enter custom source category"
-                    value={governanceDraft.sourceCategory}
-                    onChange={event =>
-                      setGovernanceDraft(current => ({
-                        ...current,
-                        sourceCategory: event.target.value as KnowledgeSourceCategory,
-                      }))}
-                    className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
-                  />
-                )}
-              </div>
-            </label>
-            <label className="space-y-1">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                Publisher
-              </p>
-              <input
-                type="text"
-                value={governanceDraft.publisher ?? ""}
-                disabled={!selectedSource}
-                onChange={event =>
-                  setGovernanceDraft(current => ({
-                    ...current,
-                    publisher: event.target.value,
-                  }))}
-                className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE] disabled:text-[#94A3B8]"
-              />
-            </label>
-            <label className="space-y-1">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                License Status
-              </p>
-              <input
-                type="text"
-                list="knowledge-source-license-options"
-                value={governanceDraft.licenseStatus ?? ""}
-                disabled={!selectedSource}
-                onChange={event =>
-                  setGovernanceDraft(current => ({
-                    ...current,
-                    licenseStatus: event.target.value,
-                  }))}
-                className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE] disabled:text-[#94A3B8]"
-              />
-            </label>
-            <label className="space-y-1">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                Jurisdiction
-              </p>
-              <div className="flex flex-col gap-2">
-                <select
-                  value={
-                    JURISDICTION_OPTIONS.includes(governanceDraft.jurisdiction)
-                      ? governanceDraft.jurisdiction
-                      : "Other"
-                  }
-                  disabled={!selectedSource}
-                  onChange={(event) => {
-                    const val = event.target.value;
-                    setGovernanceDraft(current => ({
-                      ...current,
-                      jurisdiction: val === "Other" ? "" : val as KnowledgeSourceJurisdiction,
-                    }));
-                  }}
-                  className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE] disabled:text-[#94A3B8]"
-                >
-                  {JURISDICTION_OPTIONS.map(option => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                  <option value="Other">Other (Specify...)</option>
-                </select>
-                {selectedSource && (!JURISDICTION_OPTIONS.includes(governanceDraft.jurisdiction) || governanceDraft.jurisdiction === "") && (
-                  <input
-                    type="text"
-                    placeholder="Enter custom jurisdiction"
-                    value={governanceDraft.jurisdiction}
-                    onChange={event =>
-                      setGovernanceDraft(current => ({
-                        ...current,
-                        jurisdiction: event.target.value as KnowledgeSourceJurisdiction,
-                      }))}
-                    className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
-                  />
-                )}
-              </div>
-            </label>
-            <label className="space-y-1">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                Topic
-              </p>
-              <div className="flex flex-col gap-2">
-                <select
-                  value={
-                    TOPIC_OPTIONS.includes(governanceDraft.topic) && governanceDraft.topic !== "other"
-                      ? governanceDraft.topic
-                      : "other"
-                  }
-                  disabled={!selectedSource}
-                  onChange={(event) => {
-                    const val = event.target.value;
-                    setGovernanceDraft(current => ({
-                      ...current,
-                      topic: val as KnowledgeSourceTopic,
-                    }));
-                  }}
-                  className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE] disabled:text-[#94A3B8]"
-                >
-                  {TOPIC_OPTIONS.map(option => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                  <option value="other">Other (Specify...)</option>
-                </select>
-                {selectedSource && (!TOPIC_OPTIONS.includes(governanceDraft.topic) || governanceDraft.topic === "other") && (
-                  <input
-                    type="text"
-                    placeholder="Enter custom topic"
-                    value={governanceDraft.topic === "other" ? "" : governanceDraft.topic}
-                    onChange={event =>
-                      setGovernanceDraft(current => ({
-                        ...current,
-                        topic: event.target.value as KnowledgeSourceTopic,
-                      }))}
-                    className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
-                  />
-                )}
-              </div>
-            </label>
-            <label className="space-y-1">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                Source Type
-              </p>
-              <div className="flex flex-col gap-2">
-                <select
-                  value={
-                    SOURCE_TYPE_OPTIONS.includes(governanceDraft.sourceType)
-                      ? governanceDraft.sourceType
-                      : "Other"
-                  }
-                  disabled={!selectedSource}
-                  onChange={(event) => {
-                    const val = event.target.value;
-                    setGovernanceDraft(current => ({
-                      ...current,
-                      sourceType: val === "Other" ? "" : val as KnowledgeSourceType,
-                    }));
-                  }}
-                  className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE] disabled:text-[#94A3B8]"
-                >
-                  {SOURCE_TYPE_OPTIONS.map(option => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                  <option value="Other">Other (Specify...)</option>
-                </select>
-                {selectedSource && (!SOURCE_TYPE_OPTIONS.includes(governanceDraft.sourceType) || governanceDraft.sourceType === "") && (
-                  <input
-                    type="text"
-                    placeholder="Enter custom source type"
-                    value={governanceDraft.sourceType}
-                    onChange={event =>
-                      setGovernanceDraft(current => ({
-                        ...current,
-                        sourceType: event.target.value as KnowledgeSourceType,
-                      }))}
-                    className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
-                  />
-                )}
-              </div>
-            </label>
-            <label className="space-y-1">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                Language
-              </p>
-              <input
-                type="text"
-                value={governanceDraft.language ?? "en"}
-                disabled={!selectedSource}
-                onChange={event =>
-                  setGovernanceDraft(current => ({
-                    ...current,
-                    language: event.target.value,
-                  }))}
-                className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE] disabled:text-[#94A3B8]"
-              />
-            </label>
-          </div>
-
-          <div className="mt-3 grid gap-3 lg:grid-cols-3">
-            <label className="space-y-1">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                Last Updated
-              </p>
-              <input
-                type="date"
-                value={governanceDraft.lastUpdated ?? ""}
-                disabled={!selectedSource}
-                onChange={event =>
-                  setGovernanceDraft(current => ({
-                    ...current,
-                    lastUpdated: event.target.value,
-                  }))}
-                className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE] disabled:text-[#94A3B8]"
-              />
-            </label>
-            <label className="space-y-1">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                Refresh Date
-              </p>
-              <input
-                type="date"
-                value={governanceDraft.nextRefreshAt ?? ""}
-                disabled={!selectedSource}
-                onChange={event =>
-                  setGovernanceDraft(current => ({
-                    ...current,
-                    nextRefreshAt: event.target.value,
-                  }))}
-                className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE] disabled:text-[#94A3B8]"
-              />
-            </label>
-            <label className="space-y-1">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                Review Due
-              </p>
-              <input
-                type="date"
-                value={governanceDraft.nextReviewAt ?? ""}
-                disabled={!selectedSource}
-                onChange={event =>
-                  setGovernanceDraft(current => ({
-                    ...current,
-                    nextReviewAt: event.target.value,
-                  }))}
-                className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE] disabled:text-[#94A3B8]"
-              />
-            </label>
-          </div>
-
-          <div className="mt-3 grid gap-3 lg:grid-cols-2">
-            <label className="space-y-1">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                Source URL
-              </p>
-              <input
-                type="url"
-                value={governanceDraft.url ?? ""}
-                disabled={!selectedSource}
-                onChange={event =>
-                  setGovernanceDraft(current => ({
-                    ...current,
-                    url: event.target.value,
-                  }))}
-                className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE] disabled:text-[#94A3B8]"
-              />
-            </label>
-            <div className="space-y-1">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                Source Document
-              </p>
-              <div className="flex flex-col gap-2 rounded-md border border-[#D8E3EE] bg-white p-2">
-                <label className="inline-flex h-8 cursor-pointer items-center justify-center gap-2 rounded-md border border-[#D8E3EE] px-3 text-xs font-semibold text-[#334155] transition hover:bg-[#F8FBFF]">
-                  <FileUp className="h-3.5 w-3.5" />
-                  Select Replacement
-                  <input
-                    type="file"
-                    accept=".pdf,.doc,.docx,.txt,.md,.html,.htm,.csv,.json,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown,text/html,text/csv,application/json"
-                    className="hidden"
-                    disabled={!selectedSource}
-                    onChange={(event) => {
-                      setSelectedUploadFile(event.target.files?.[0] ?? null);
-                      setSelectedUploadStatus(event.target.files?.[0] ? "selected" : "idle");
-                      event.currentTarget.value = "";
-                    }}
-                  />
-                </label>
-                {selectedUploadFile ? (
-                  <div className="flex items-center justify-between gap-2 text-[11px] text-[#475569]">
-                    <span className="truncate">{getFileLabel(selectedUploadFile)}</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedUploadFile(null);
-                        setSelectedUploadStatus("idle");
-                      }}
-                      className="text-[#B42318]"
-                    >
-                      Remove
-                    </button>
+                    ))}
                   </div>
-                ) : (
-                  <p className="text-[11px] text-[#607B90]">
-                    {getMetadata(selectedSource).uploadedFile?.originalFileName
-                      ? `Uploaded: ${getMetadata(selectedSource).uploadedFile?.originalFileName}`
-                      : "No uploaded document recorded."}
-                  </p>
                 )}
+
+                {priorityCoverageGaps.length > 0 && (
+                  <div className="mt-5 border-t border-slate-100 pt-5">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Database className="h-4 w-4 text-slate-400" />
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Priority RAG Coverage Cells</h4>
+                    </div>
+                    <div className="overflow-x-auto rounded-xl border border-slate-100 bg-white">
+                      <table className="w-full min-w-[680px] border-collapse text-left text-xs">
+                        <thead>
+                          <tr className="bg-slate-50/75 border-b border-slate-100 text-[10px] uppercase font-bold tracking-wider text-slate-400">
+                            <th className="px-4 py-2.5 font-semibold">Coverage Cell (Category / Jurisdiction / Topic)</th>
+                            <th className="px-4 py-2.5 font-semibold">Eligible Sources</th>
+                            <th className="px-4 py-2.5 font-semibold text-amber-600">Needs Legal</th>
+                            <th className="px-4 py-2.5 font-semibold text-amber-600">Needs Refresh</th>
+                            <th className="px-4 py-2.5 font-semibold text-rose-600">No Chunks</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {priorityCoverageGaps.map(cell => (
+                            <tr
+                              key={`${cell.sourceCategory}-${cell.jurisdiction}-${cell.topic}`}
+                              className="border-b border-slate-100 text-slate-700 hover:bg-slate-50/50 transition-colors"
+                            >
+                              <td className="px-4 py-2.5 font-semibold text-slate-800">
+                                {`${displaySourceCategoryLabel(cell.sourceCategory)} / ${cell.jurisdiction} / ${cell.topic}`}
+                              </td>
+                              <td className="px-4 py-2.5 text-slate-500 font-medium">
+                                {`${cell.eligibleSources}/${cell.totalSources}`}
+                              </td>
+                              <td className="px-4 py-2.5 text-slate-500">
+                                <span className={cell.needsLegalReviewSources > 0 ? "text-amber-700 font-semibold" : ""}>{cell.needsLegalReviewSources}</span>
+                              </td>
+                              <td className="px-4 py-2.5 text-slate-500">
+                                <span className={cell.needsRefreshSources > 0 ? "text-amber-700 font-semibold" : ""}>{cell.needsRefreshSources}</span>
+                              </td>
+                              <td className="px-4 py-2.5 text-slate-500">
+                                <span className={cell.noChunkSources > 0 ? "text-rose-700 font-semibold" : ""}>{cell.noChunkSources}</span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm">
+              <table className="w-full min-w-full border-collapse text-left lg:min-w-[900px] text-xs">
+                <thead>
+                  <tr className="bg-slate-50/75 border-b border-slate-100 text-[10px] uppercase font-bold tracking-wider text-slate-400">
+                    <th className="px-4 py-3.5 font-bold">Source Name</th>
+                    <th className="px-4 py-3.5 font-bold">Category</th>
+                    <th className="px-4 py-3.5 font-bold">Jurisdiction</th>
+                    <th className="px-4 py-3.5 font-bold">Ingestion</th>
+                    <th className="px-4 py-3.5 font-bold">Legal Status</th>
+                    <th className="px-4 py-3.5 font-bold">Approval Status</th>
+                    <th className="px-4 py-3.5 font-bold">Last Ingested</th>
+                    <th className="px-4 py-3.5 font-bold">Chunks</th>
+                    <th className="px-4 py-3.5 font-bold text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {isLoading ? (
+                    <tr>
+                      <td colSpan={9} className="px-4 py-12 text-center text-slate-400 font-medium">
+                        <div className="flex flex-col items-center justify-center gap-2">
+                          <RefreshCcw className="h-6 w-6 animate-spin text-primary" />
+                          <span>Loading knowledge sources...</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : null}
+                  {!isLoading && sources.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="px-4 py-12 text-center text-slate-400 font-medium">
+                        <div className="flex flex-col items-center justify-center gap-2">
+                          <Database className="h-8 w-8 text-slate-300" />
+                          <span>No knowledge sources have been added yet.</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : null}
+                  {!isLoading && sources.map((row) => {
+                    const sourceId = getKnowledgeSourceId(row);
+                    const category = displayCategory(row);
+                    const adminIngestionStatus = getAdminIngestionStatus(row);
+                    const approvalBlockReason = getApprovalBlockReason(row);
+
+                    return (
+                      <tr
+                        key={sourceId}
+                        className="group border-b border-slate-100 hover:bg-slate-50/50 transition-colors duration-150 cursor-pointer"
+                        onClick={() => {
+                          setIsCreateOpen(true);
+                          setSelectedSourceId(sourceId);
+                          setStatusMessage(`Editing details and templates for: ${row.title}`);
+                        }}
+                      >
+                        <td className="px-4 py-3.5 font-semibold text-slate-800 max-w-[220px]">
+                          <div className="flex items-center gap-2">
+                            <FileText className="h-4 w-4 shrink-0 text-slate-400 group-hover:text-primary transition-colors" />
+                            <span className="truncate" title={row.title}>{row.title}</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3.5">
+                          <span
+                            className={cn(
+                              "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold border",
+                              getCategoryBadgeClass(category),
+                            )}
+                          >
+                            {category}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3.5 text-slate-500 font-medium">
+                          {row.jurisdiction}
+                        </td>
+                        <td className="px-4 py-3.5">
+                          <div className="space-y-1">
+                            <span
+                              className={cn(
+                                "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold border",
+                                getIngestionStatusBadgeClass(adminIngestionStatus),
+                              )}
+                            >
+                              <span
+                                className={cn(
+                                  "h-1.5 w-1.5 rounded-full",
+                                  getIngestionStatusDotClass(adminIngestionStatus),
+                                )}
+                              />
+                              {adminIngestionStatus}
+                            </span>
+                            {getIndexingProgressLabel(row) && (
+                              <p className="text-[9px] font-medium text-slate-400 ml-1">
+                                {getIndexingProgressLabel(row)}
+                              </p>
+                            )}
+                            {(row.ingestionStatus === "failed" || row.ingestionStatus === "partial_index_failed") && row.ingestionError && (
+                              <p className="max-w-[150px] truncate text-[9px] font-semibold text-rose-600 ml-1" title={row.ingestionError}>
+                                {row.ingestionError}
+                              </p>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3.5 font-medium">
+                          <span className={`inline-flex items-center gap-1 ${
+                            row.legalReviewed ? "text-emerald-600" : "text-amber-600"
+                          }`}>
+                            {row.legalReviewed ? (
+                              <Check className="h-3.5 w-3.5" />
+                            ) : (
+                              <AlertCircle className="h-3.5 w-3.5" />
+                            )}
+                            {row.legalReviewed ? "Reviewed" : "Requires Review"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3.5 text-slate-500 font-medium">
+                          <span
+                            className={cn(
+                              "inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold border",
+                              getApprovalStatusBadgeClass(row.status),
+                            )}
+                          >
+                            {row.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3.5 text-slate-500 font-medium">
+                          {formatDate(row.ingestedAt)}
+                        </td>
+                        <td className="px-4 py-3.5 text-slate-500 font-bold">
+                          {getChunkCount(row)}
+                        </td>
+                        <td className="px-4 py-3.5 text-right" onClick={(e) => e.stopPropagation()}>
+                          <div className="inline-flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsCreateOpen(true);
+                                setSelectedSourceId(sourceId);
+                                setStatusMessage(`Editing details for: ${row.title}`);
+                              }}
+                              className="rounded-lg bg-slate-50 border border-slate-200 hover:bg-slate-100 hover:text-slate-800 transition px-3 py-1.5 text-[11px] font-bold text-slate-700"
+                            >
+                              Edit Details
+                            </button>
+
+                            <div className="relative">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveDropdownId(activeDropdownId === sourceId ? null : sourceId);
+                                }}
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-700 transition"
+                              >
+                                <MoreHorizontal className="h-4 w-4" />
+                              </button>
+
+                              {activeDropdownId === sourceId && (
+                                <>
+                                  <div
+                                    className="fixed inset-0 z-30"
+                                    onClick={() => setActiveDropdownId(null)}
+                                  />
+                                  <div className="absolute right-0 mt-1.5 w-48 origin-top-right rounded-xl border border-slate-100 bg-white py-1.5 shadow-lg z-40 text-left">
+                                    <div className="px-3 py-1 border-b border-slate-50 mb-1">
+                                      <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Pipeline Actions</p>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      disabled={isSaving || !hasStoredContent(row)}
+                                      onClick={() => {
+                                        setActiveDropdownId(null);
+                                        void handleIngestSource(row);
+                                      }}
+                                      className="w-full px-3 py-1.5 text-left text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:hover:bg-transparent font-medium flex items-center gap-1.5"
+                                    >
+                                      <Database className="h-3.5 w-3.5 text-slate-400" />
+                                      Ingest Source
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={isSaving || getChunkCount(row) <= 0}
+                                      onClick={() => {
+                                        setActiveDropdownId(null);
+                                        void handleReindexSource(row);
+                                      }}
+                                      className="w-full px-3 py-1.5 text-left text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:hover:bg-transparent font-medium flex items-center gap-1.5"
+                                    >
+                                      <RotateCcw className="h-3.5 w-3.5 text-slate-400" />
+                                      Reindex chunks
+                                    </button>
+                                    {isOfficialSource(row) && (
+                                      <button
+                                        type="button"
+                                        disabled={isSaving || !row.url || row.status === "archived" || row.status === "expired"}
+                                        onClick={() => {
+                                          setActiveDropdownId(null);
+                                          void handleRefreshSource(row);
+                                        }}
+                                        className="w-full px-3 py-1.5 text-left text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:hover:bg-transparent font-medium flex items-center gap-1.5"
+                                      >
+                                        <RefreshCcw className="h-3.5 w-3.5 text-slate-400" />
+                                        Fetch Refresh
+                                      </button>
+                                    )}
+                                    <div className="h-[1px] bg-slate-50 my-1" />
+                                    <div className="px-3 py-1 mb-1">
+                                      <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Governance</p>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setActiveDropdownId(null);
+                                        void toggleLegalReview(row);
+                                      }}
+                                      className="w-full px-3 py-1.5 text-left text-slate-700 hover:bg-slate-50 font-medium flex items-center gap-1.5"
+                                    >
+                                      <Scale className="h-3.5 w-3.5 text-slate-400" />
+                                      {row.legalReviewed ? "Revoke Legal OK" : "Mark Legal OK"}
+                                    </button>
+                                    {row.status !== "approved" && (
+                                      <button
+                                        type="button"
+                                        disabled={Boolean(approvalBlockReason)}
+                                        onClick={() => {
+                                          setActiveDropdownId(null);
+                                          void approveKnowledgeSource(sourceId)
+                                            .then((approvedSource) => {
+                                              setSources(currentSources => upsertSource(currentSources, approvedSource));
+                                              setStatusMessage(`${approvedSource.title} approved.`);
+                                            })
+                                            .catch((error: unknown) => {
+                                              setStatusMessage(getFriendlyError(error, "Could not approve source."));
+                                            });
+                                        }}
+                                        className="w-full px-3 py-1.5 text-left text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:hover:bg-transparent font-medium flex items-center gap-1.5"
+                                      >
+                                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                                        Approve for RAG
+                                      </button>
+                                    )}
+                                    {row.status !== "rejected" && row.status !== "archived" && row.status !== "expired" && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setActiveDropdownId(null);
+                                          void handleRejectSource(row);
+                                        }}
+                                        className="w-full px-3 py-1.5 text-left text-amber-700 hover:bg-amber-50 font-medium flex items-center gap-1.5"
+                                      >
+                                        <X className="h-3.5 w-3.5 text-amber-500" />
+                                        Reject Source
+                                      </button>
+                                    )}
+                                    <div className="h-[1px] bg-slate-50 my-1" />
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setActiveDropdownId(null);
+                                        void handleDeleteSource(row);
+                                      }}
+                                      className="w-full px-3 py-1.5 text-left text-rose-600 hover:bg-rose-50 font-semibold flex items-center gap-1.5"
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5 text-rose-500" />
+                                      Delete Source
+                                    </button>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
+        ) : (
+          <div className="space-y-6">
+            <div className="rounded-2xl border border-slate-100 bg-gradient-to-r from-slate-50/50 to-white p-5 shadow-sm">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div className="space-y-1">
+                  <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                    <Settings className="h-5 w-5 text-primary" />
+                    {selectedSource ? "Source Registry Governance & Editing" : "Register New Knowledge Source"}
+                  </h3>
+                  <p className="text-xs text-slate-500 max-w-2xl">
+                    {selectedSource 
+                      ? `Modify registry details, refresh documentation, or re-draft the answer templates for "${selectedSource.title}".`
+                      : "Provide registry metadata, upload document source files, and configure automated pipeline indexing rules."
+                    }
+                  </p>
+                </div>
+
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-full bg-[#EEF6FF] px-2 py-0.5 text-[10px] font-semibold text-[#0F67AE]">
-                    {selectedUploadStatus}
+                  <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold border ${
+                    selectedSource 
+                      ? "bg-blue-50 border-blue-100 text-blue-700" 
+                      : "bg-amber-50 border-amber-100 text-amber-700"
+                  }`}>
+                    <span className={`h-1.5 w-1.5 rounded-full ${selectedSource ? 'bg-blue-500' : 'bg-amber-500 animate-pulse'}`} />
+                    {selectedSource ? "Active Source" : "New Source Draft"}
                   </span>
+
                   <button
                     type="button"
-                    disabled={!selectedSource || !selectedUploadFile || isSaving}
-                    onClick={() => void handleUploadDocumentForSelectedSource()}
-                    className="h-7 rounded-md bg-[#0F67AE] px-3 text-[11px] font-semibold text-white transition hover:bg-[#0B578F] disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={isSaving}
+                    onClick={() => void saveDraftSource()}
+                    className="inline-flex h-8 items-center justify-center rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3 text-xs font-bold text-slate-700 transition shadow-sm"
                   >
-                    Upload & Ingest
+                    {isSaving
+                      ? "Saving..."
+                      : isSavedDraftRecord
+                        ? isDraftDirty
+                          ? "Update Draft"
+                          : "Saved"
+                        : "Save Draft"}
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={isSaving}
+                    onClick={() => void clearDraftSource()}
+                    className="inline-flex h-8 items-center justify-center rounded-lg border border-rose-200 bg-rose-50/30 hover:bg-rose-50 px-3 text-xs font-bold text-rose-700 transition"
+                  >
+                    Clear Form
                   </button>
                 </div>
               </div>
             </div>
-          </div>
 
-          <label className="mt-3 block space-y-1">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-              Review Notes
-            </p>
-            <textarea
-              rows={3}
-              value={governanceDraft.reviewNotes ?? ""}
-              disabled={!selectedSource}
-              onChange={event =>
-                setGovernanceDraft(current => ({
-                  ...current,
-                  reviewNotes: event.target.value,
-                }))}
-              className="w-full resize-none rounded-md border border-[#D8E3EE] bg-white px-3 py-2 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE] disabled:text-[#94A3B8]"
-            />
-          </label>
-
-          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <label className="inline-flex items-center gap-2 text-[12px] text-[#334155]">
-              <input
-                type="checkbox"
-                checked={Boolean(governanceDraft.legalReviewed)}
-                disabled={!selectedSource}
-                onChange={event =>
-                  setGovernanceDraft(current => ({
-                    ...current,
-                    legalReviewed: event.target.checked,
-                  }))}
-              />
-              Legal review complete
-            </label>
-            <button
-              type="button"
-              disabled={!selectedSource || isSaving}
-              onClick={() => void saveGovernanceDetails()}
-              className="inline-flex h-8 items-center justify-center rounded-md bg-[#0F67AE] px-3 text-xs font-semibold text-white transition hover:bg-[#0B578F] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              Save Registry Details
-            </button>
-          </div>
-        </section>
-
-        <section className="rounded-[10px] border border-[#D8E3EE]">
-          <div className="border-b border-[#E4EAF1] px-3 py-2">
-            <h3 className="text-sm font-semibold text-[#1E293B]">
-              Explanation Template Editor
-            </h3>
-            <p className="mt-0.5 text-[11px] text-[#607B90]">
-              Editing response for:
-              {" "}
-              <span className="font-medium text-[#0F67AE]">
-                {selectedSource?.title ?? "No source selected"}
-              </span>
-            </p>
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
-              {TEMPLATE_TABS.map(tab => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setActiveTemplateTab(tab.id)}
-                  className={
-                    tab.id === activeTemplateTab
-                      ? "rounded border border-[#0F67AE] bg-[#EEF6FF] px-2 py-0.5 font-medium text-[#0F67AE]"
-                      : "rounded border border-[#D8E3EE] px-2 py-0.5 text-[#607B90] transition hover:bg-[#F8FBFF]"
-                  }
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="border-b border-[#E4EAF1] px-3 py-2 text-[10px] text-[#607B90]">
-            VARIABLES
-            <span className="ml-2 rounded bg-[#EFF6FF] px-1.5 py-0.5 text-[#1D4ED8]">{`{User_Name}`}</span>
-            <span className="ml-1 rounded bg-[#FFE4E6] px-1.5 py-0.5 text-[#BE123C]">{`{Scam_Type}`}</span>
-            <span className="ml-1 rounded bg-[#DCFCE7] px-1.5 py-0.5 text-[#15803D]">{`{Risk_Level}`}</span>
-          </div>
-
-          <textarea
-            rows={9}
-            value={templateDraft}
-            onChange={event => setTemplateDraft(event.target.value)}
-            disabled={!selectedSource}
-            className="w-full resize-none rounded-b-[10px] bg-white px-3 py-3 text-sm leading-6 text-[#334155] outline-none disabled:text-[#94A3B8]"
-          />
-        </section>
-
-        {selectedSource
-          ? (
-              <section className="rounded-[10px] border border-[#D8E3EE] bg-[#FAFCFF] p-3">
-                <h3 className="text-sm font-semibold text-[#1E293B]">
-                  RAG Publishing Status
-                </h3>
-                <p className="mt-1 text-[11px] text-[#607B90]">
-                  Approval makes this source available for retrieval only after all checks pass. This does not train the AI model.
-                </p>
-                <div
-                  className={
-                    isExcludedFromRag(selectedSource)
-                      ? "mt-3 rounded-md border border-[#FDE68A] bg-[#FFFBEB] px-3 py-2 text-[12px] text-[#92400E]"
-                      : "mt-3 rounded-md border border-[#BBF7D0] bg-[#F0FDF4] px-3 py-2 text-[12px] text-[#166534]"
-                  }
-                >
-                  <span className="inline-flex items-center gap-2 font-semibold">
-                    {isExcludedFromRag(selectedSource)
-                      ? <AlertCircle className="h-4 w-4" />
-                      : <CheckCircle2 className="h-4 w-4" />}
-                    {isExcludedFromRag(selectedSource)
-                      ? "Not eligible for legal RAG"
-                      : "Eligible for legal RAG answers"}
-                  </span>
-                  {isExcludedFromRag(selectedSource) ? (
-                    <p className="mt-1">
-                      {getRagEligibilityReasons(selectedSource).join("; ")}
-                    </p>
-                  ) : null}
+            <div className="grid gap-6 lg:grid-cols-3">
+              <div className="lg:col-span-2 rounded-2xl border border-slate-100 bg-white p-5 shadow-sm space-y-4">
+                <div className="flex items-center gap-2 border-b border-slate-50 pb-3 mb-2">
+                  <FileText className="h-4 w-4 text-primary" />
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Registry Details</h4>
                 </div>
-                <div className="mt-3 grid gap-2 text-[12px] text-[#475569] lg:grid-cols-2">
-                  {getRagEligibilityChecks(selectedSource).map(check => (
-                    <div
-                      key={check.label}
-                      className="flex items-center gap-2 rounded-md border border-[#E4EAF1] bg-white px-3 py-2"
-                    >
-                      <span
-                        className={
-                          check.passed
-                            ? "inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#DCFCE7] text-[10px] font-bold text-[#15803D]"
-                            : "inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#FEF3C7] text-[10px] font-bold text-[#B45309]"
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="space-y-1 block">
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Title</span>
+                    <input
+                      type="text"
+                      value={governanceDraft.title ?? ""}
+                      disabled={!isRegistryEditable}
+                      onChange={event =>
+                        setGovernanceDraft(current => ({
+                          ...current,
+                          title: event.target.value,
+                        }))}
+                      placeholder="e.g. Domestic Violence Prevention Act 1989"
+                      className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3.5 text-sm text-slate-800 shadow-sm transition-all focus:border-primary focus:ring-2 focus:ring-primary/10 outline-none disabled:bg-slate-50 disabled:text-slate-400"
+                    />
+                  </label>
+
+                  <label className="space-y-1 block">
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Source Category</span>
+                    <div className="relative">
+                      <select
+                        value={
+                          SOURCE_CATEGORY_OPTIONS.some(opt => opt.value === governanceDraft.sourceCategory)
+                            ? governanceDraft.sourceCategory
+                            : "official_support_source"
                         }
+                        disabled={!isRegistryEditable}
+                        onChange={(event) =>
+                          setGovernanceDraft(current => ({
+                            ...current,
+                            sourceCategory: event.target.value as KnowledgeSourceCategory,
+                          }))}
+                        className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-3.5 pr-10 text-sm text-slate-800 shadow-sm transition-all focus:border-primary focus:ring-2 focus:ring-primary/10 outline-none disabled:bg-slate-50 disabled:text-slate-400"
                       >
-                        {check.passed ? "✓" : "!"}
-                      </span>
-                      <span>{check.label}</span>
+                        {SOURCE_CATEGORY_OPTIONS.map(option => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 pointer-events-none" />
                     </div>
-                  ))}
-                </div>
-                <div className="mt-3 rounded-md border border-[#D8E3EE] bg-white px-3 py-2 text-[12px] text-[#334155]">
-                  <span className="font-semibold text-[#1E293B]">Next step:</span>
-                  {" "}
-                  {getRagNextStep(selectedSource)}
-                </div>
-                <h4 className="mt-4 text-sm font-semibold text-[#1E293B]">
-                  Detected Legal Metadata
-                </h4>
-                <div className="mt-2 grid gap-2 text-[12px] text-[#475569] lg:grid-cols-2">
-                  <p>
-                    <span className="font-semibold text-[#1E293B]">
-                      Legal reviewed:
-                    </span>
-                    {" "}
-                    {selectedSource.legalReviewed ? "Yes" : "No"}
-                  </p>
-                  <p>
-                    <span className="font-semibold text-[#1E293B]">Ingestion:</span>
-                    {" "}
-                    {selectedSource.ingestionStatus ?? "metadata_only"}
-                  </p>
-                  <p>
-                    <span className="font-semibold text-[#1E293B]">
-                      Last updated:
-                    </span>
-                    {" "}
-                    {formatDate(selectedSource.lastUpdated)}
-                  </p>
-                  <p>
-                    <span className="font-semibold text-[#1E293B]">
-                      Refresh date:
-                    </span>
-                    {" "}
-                    {formatRefreshDue(selectedSource)}
-                  </p>
-                  <p>
-                    <span className="font-semibold text-[#1E293B]">
-                      Last verified:
-                    </span>
-                    {" "}
-                    {formatDate(selectedSource.lastVerifiedAt)}
-                  </p>
-                  <p>
-                    <span className="font-semibold text-[#1E293B]">
-                      RAG eligibility:
-                    </span>
-                    {" "}
-                    {isExcludedFromRag(selectedSource)
-                      ? `Not eligible: ${getRagNextStep(selectedSource)}`
-                      : "Eligible for citations"}
-                  </p>
-                  <p>
-                    <span className="font-semibold text-[#1E293B]">
-                      Detected type:
-                    </span>
-                    {" "}
-                    {typeof selectedSourceMetadata.detectedLegalType === "string"
-                      ? selectedSourceMetadata.detectedLegalType
-                      : "Not detected"}
-                  </p>
-                  <p>
-                    <span className="font-semibold text-[#1E293B]">
-                      Extraction:
-                    </span>
-                    {" "}
-                    {typeof selectedSourceMetadata.extractionStatus === "string"
-                      ? selectedSourceMetadata.extractionStatus
-                      : "Not started"}
-                  </p>
-                  <p>
-                    <span className="font-semibold text-[#1E293B]">
-                      Processing stage:
-                    </span>
-                    {" "}
-                    {typeof selectedSourceMetadata.processingStage === "string"
-                      ? selectedSourceMetadata.processingStage
-                      : "Not started"}
-                  </p>
-                  <p>
-                    <span className="font-semibold text-[#1E293B]">
-                      Extracted pages:
-                    </span>
-                    {" "}
-                    {typeof selectedSourceMetadata.extractedPageCount === "number"
-                      ? selectedSourceMetadata.extractedPageCount
-                      : "Unknown"}
-                  </p>
-                  <p>
-                    <span className="font-semibold text-[#1E293B]">
-                      Chunk count:
-                    </span>
-                    {" "}
-                    {typeof selectedSourceMetadata.chunkCount === "number"
-                      ? selectedSourceMetadata.chunkCount
-                      : 0}
-                  </p>
-                  <p>
-                    <span className="font-semibold text-[#1E293B]">
-                      Indexed chunks:
-                    </span>
-                    {" "}
-                    {typeof selectedSourceMetadata.indexedChunkCount === "number"
-                      ? selectedSourceMetadata.indexedChunkCount
-                      : 0}
-                  </p>
-                  <p>
-                    <span className="font-semibold text-[#1E293B]">
-                      Search readiness:
-                    </span>
-                    {" "}
-                    {typeof selectedSourceMetadata.searchReadinessStatus === "string"
-                      ? selectedSourceMetadata.searchReadinessStatus
-                      : "not_indexed"}
-                  </p>
-                  {selectedSourceMetadata.searchReadinessStatus === "indexed_pending_search"
-                    ? (
-                        <p className="lg:col-span-2 text-[#0F67AE]">
-                          Indexed successfully. Search may take a short moment to become available.
-                        </p>
-                      )
-                    : null}
-                  <p>
-                    <span className="font-semibold text-[#1E293B]">
-                      Pinecone:
-                    </span>
-                    {" "}
-                    {selectedSourceMetadata.pineconeIndexName || selectedSourceMetadata.pineconeNamespace
-                      ? `${selectedSourceMetadata.pineconeIndexName ?? "index unset"} / ${selectedSourceMetadata.pineconeNamespace ?? "namespace unset"}`
-                      : "Not configured or not indexed"}
-                  </p>
-                  <p className="lg:col-span-2">
-                    <span className="font-semibold text-[#1E293B]">
-                      Acts / instruments:
-                    </span>
-                    {" "}
-                    {Array.isArray(selectedSourceMetadata.detectedActNames)
-                      && selectedSourceMetadata.detectedActNames.length
-                      ? selectedSourceMetadata.detectedActNames.join(", ")
-                      : "None detected"}
-                  </p>
-                  <p className="lg:col-span-2">
-                    <span className="font-semibold text-[#1E293B]">
-                      Sections / articles:
-                    </span>
-                    {" "}
-                    {Array.isArray(selectedSourceMetadata.detectedSectionRefs)
-                      && selectedSourceMetadata.detectedSectionRefs.length
-                      ? selectedSourceMetadata.detectedSectionRefs.join(", ")
-                      : "None detected"}
-                  </p>
-                  <p className="lg:col-span-2">
-                    <span className="font-semibold text-[#1E293B]">
-                      Constitutional mentions:
-                    </span>
-                    {" "}
-                    {Array.isArray(
-                      selectedSourceMetadata.detectedConstitutionalMentions,
-                    )
-                    && selectedSourceMetadata.detectedConstitutionalMentions.length
-                      ? selectedSourceMetadata.detectedConstitutionalMentions.join(
-                          ", ",
-                        )
-                      : "None detected"}
-                  </p>
-                  {(selectedSource.ingestionStatus === "failed" || selectedSource.ingestionStatus === "partial_index_failed") && selectedSource.ingestionError
-                    ? (
-                        <p className="lg:col-span-2 text-[#B42318]">
-                          <span className="font-semibold">Ingestion error:</span>
-                          {" "}
-                          {selectedSource.ingestionError}
-                        </p>
-                      )
-                    : null}
-                  {selectedSourceMetadata.indexingError || selectedSourceMetadata.processingError
-                    ? (
-                        <p className="lg:col-span-2 text-[#B42318]">
-                          <span className="font-semibold">Indexing / processing error:</span>
-                          {" "}
-                          {String(selectedSourceMetadata.indexingError ?? selectedSourceMetadata.processingError)}
-                        </p>
-                      )
-                    : null}
-                </div>
+                  </label>
 
-                <h4 className="mt-4 text-sm font-semibold text-[#1E293B]">
-                  Source Details
-                </h4>
-                <div className="mt-2 grid gap-2 text-[12px] text-[#475569] lg:grid-cols-2">
-                  <p>
-                    <span className="font-semibold text-[#1E293B]">Approval:</span>
-                    {" "}
-                    {selectedSource.status}
-                  </p>
-                  <p>
-                    <span className="font-semibold text-[#1E293B]">Ingestion status:</span>
-                    {" "}
-                    {getAdminIngestionStatus(selectedSource)}
-                  </p>
-                  <p>
-                    <span className="font-semibold text-[#1E293B]">Embedding/indexing:</span>
-                    {" "}
-                    {getEmbeddingStatus(selectedSource)}
-                  </p>
-                  <p>
-                    <span className="font-semibold text-[#1E293B]">Created:</span>
-                    {" "}
-                    {formatDate(selectedSource.createdAt)}
-                  </p>
-                  <p>
-                    <span className="font-semibold text-[#1E293B]">Updated:</span>
-                    {" "}
-                    {formatDate(selectedSource.updatedAt)}
-                  </p>
-                  <p>
-                    <span className="font-semibold text-[#1E293B]">Approved:</span>
-                    {" "}
-                    {formatDate(selectedSource.approvedAt)}
-                  </p>
-                  <p>
-                    <span className="font-semibold text-[#1E293B]">Legal reviewed:</span>
-                    {" "}
-                    {formatDate(selectedSource.legalReviewedAt)}
-                  </p>
-                  <p>
-                    <span className="font-semibold text-[#1E293B]">Ingested:</span>
-                    {" "}
-                    {formatDate(selectedSource.ingestedAt)}
-                  </p>
-                  <p>
-                    <span className="font-semibold text-[#1E293B]">Indexing progress:</span>
-                    {" "}
-                    {getIndexingProgressLabel(selectedSource) || "Not started"}
-                  </p>
-                  <p className="lg:col-span-2">
-                    <span className="font-semibold text-[#1E293B]">Uploaded file:</span>
-                    {" "}
-                    {selectedSourceMetadata.uploadedFile?.originalFileName
-                      ? `${selectedSourceMetadata.uploadedFile.originalFileName} (${formatFileSize(selectedSourceMetadata.uploadedFile.fileSizeBytes)}, ${selectedSourceMetadata.uploadedFile.mimeType ?? "unknown type"})`
-                      : "No uploaded file recorded"}
-                  </p>
-                  <p className="lg:col-span-2">
-                    <span className="font-semibold text-[#1E293B]">Citation metadata:</span>
-                    {" "}
-                    {selectedSource.url || selectedSource.publisher
-                      ? `${selectedSource.publisher}${selectedSource.url ? ` · ${selectedSource.url}` : ""}`
-                      : "Not set"}
-                  </p>
-                </div>
+                  <label className="space-y-1 block">
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Publisher</span>
+                    <input
+                      type="text"
+                      value={governanceDraft.publisher ?? ""}
+                      disabled={!isRegistryEditable}
+                      onChange={event =>
+                        setGovernanceDraft(current => ({
+                          ...current,
+                          publisher: event.target.value,
+                        }))}
+                      placeholder="e.g. Attorney-General's Department"
+                      className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3.5 text-sm text-slate-800 shadow-sm transition-all focus:border-primary focus:ring-2 focus:ring-primary/10 outline-none disabled:bg-slate-50 disabled:text-slate-400"
+                    />
+                  </label>
 
-                <div className="mt-4 grid gap-3 lg:grid-cols-2">
-                  <div className="rounded-md border border-[#D8E3EE] bg-white p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <h4 className="text-sm font-semibold text-[#1E293B]">
-                        Extracted Text Preview
-                      </h4>
-                      <span className="text-[10px] text-[#607B90]">
-                        {selectedSource.rawTextLength ? `${selectedSource.rawTextLength} chars` : "Empty"}
-                      </span>
-                    </div>
-                    {getLargeDocumentWarning(selectedSource) ? (
-                      <p className="mt-2 rounded-md border border-[#FDE68A] bg-[#FFFBEB] px-3 py-2 text-[11px] text-[#92400E]">
-                        {getLargeDocumentWarning(selectedSource)}
-                      </p>
-                    ) : null}
-                    <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap rounded-md bg-[#F8FBFF] p-3 text-[11px] leading-5 text-[#475569]">
-                      {selectedSource.rawTextPreview || "No extracted text preview is available yet."}
-                    </pre>
-                  </div>
+                  <label className="space-y-1 block">
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">License Status</span>
+                    <input
+                      type="text"
+                      list="knowledge-source-license-options"
+                      value={governanceDraft.licenseStatus ?? ""}
+                      disabled={!isRegistryEditable}
+                      onChange={event =>
+                        setGovernanceDraft(current => ({
+                          ...current,
+                          licenseStatus: event.target.value,
+                        }))}
+                      placeholder="Select or type license type"
+                      className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3.5 text-sm text-slate-800 shadow-sm transition-all focus:border-primary focus:ring-2 focus:ring-primary/10 outline-none disabled:bg-slate-50 disabled:text-slate-400"
+                    />
+                  </label>
 
-                  <div className="rounded-md border border-[#D8E3EE] bg-white p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <h4 className="text-sm font-semibold text-[#1E293B]">
-                        Chunks Preview
-                      </h4>
-                      <button
-                        type="button"
-                        disabled={!selectedSource || isLoadingChunks}
-                        onClick={() => void handleLoadChunks(1)}
-                        className="h-7 rounded-md border border-[#D8E3EE] px-2 text-[11px] font-semibold text-[#0F67AE] transition hover:bg-[#EEF6FF] disabled:cursor-not-allowed disabled:opacity-50"
+                  <label className="space-y-1 block">
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Jurisdiction</span>
+                    <div className="relative">
+                      <select
+                        value={
+                          JURISDICTION_OPTIONS.includes(governanceDraft.jurisdiction)
+                            ? governanceDraft.jurisdiction
+                            : "AU"
+                        }
+                        disabled={!isRegistryEditable}
+                        onChange={(event) =>
+                          setGovernanceDraft(current => ({
+                            ...current,
+                            jurisdiction: event.target.value as KnowledgeSourceJurisdiction,
+                          }))}
+                        className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-3.5 pr-10 text-sm text-slate-800 shadow-sm transition-all focus:border-primary focus:ring-2 focus:ring-primary/10 outline-none disabled:bg-slate-50 disabled:text-slate-400"
                       >
-                        {isLoadingChunks ? "Loading..." : "Load Chunks"}
-                      </button>
+                        {JURISDICTION_OPTIONS.map(option => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 pointer-events-none" />
                     </div>
-                    <div className="mt-2 flex items-center justify-between gap-2 text-[10px] text-[#607B90]">
-                      <span>
-                        {chunkTotalCount > 0
-                          ? `Page ${chunkPage} of ${Math.max(1, chunkTotalPages)} · ${chunkTotalCount} total chunks`
-                          : "Chunk previews load 25 at a time."}
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          disabled={isLoadingChunks || chunkPage <= 1}
-                          onClick={() => void handleLoadChunks(chunkPage - 1)}
-                          className="h-7 rounded-md border border-[#D8E3EE] px-2 text-[10px] font-semibold text-[#334155] transition hover:bg-[#F8FBFF] disabled:cursor-not-allowed disabled:opacity-50"
+                  </label>
+
+                  <label className="space-y-1 block">
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Topic Area</span>
+                    <div className="space-y-2">
+                      <div className="relative">
+                        <select
+                          value={
+                            TOPIC_OPTIONS.includes(governanceDraft.topic) && governanceDraft.topic !== "other"
+                              ? governanceDraft.topic
+                              : "other"
+                          }
+                          disabled={!isRegistryEditable}
+                          onChange={(event) => {
+                            const val = event.target.value;
+                            setGovernanceDraft(current => ({
+                              ...current,
+                              topic: val as KnowledgeSourceTopic,
+                            }));
+                          }}
+                          className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-3.5 pr-10 text-sm text-slate-800 shadow-sm transition-all focus:border-primary focus:ring-2 focus:ring-primary/10 outline-none disabled:bg-slate-50 disabled:text-slate-400"
                         >
-                          Prev
-                        </button>
-                        <button
-                          type="button"
-                          disabled={isLoadingChunks || chunkPage >= chunkTotalPages}
-                          onClick={() => void handleLoadChunks(chunkPage + 1)}
-                          className="h-7 rounded-md border border-[#D8E3EE] px-2 text-[10px] font-semibold text-[#334155] transition hover:bg-[#F8FBFF] disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          Next
-                        </button>
+                          {TOPIC_OPTIONS.map(option => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                          <option value="other">Other (Specify...)</option>
+                        </select>
+                        <ChevronDown className="absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 pointer-events-none" />
                       </div>
-                    </div>
-                    <div className="mt-2 max-h-56 space-y-2 overflow-auto">
-                      {sourceChunks.length > 0 ? sourceChunks.map(chunk => (
-                        <div
-                          key={chunk.id}
-                          className="rounded-md border border-[#E4EAF1] bg-[#FAFCFF] p-2 text-[11px] leading-5 text-[#475569]"
-                        >
-                          <p className="font-semibold text-[#1E293B]">
-                            Chunk {chunk.chunkIndex + 1}
-                            {" "}
-                            <span className="font-normal text-[#607B90]">
-                              {chunk.tokenCount} tokens
-                            </span>
-                          </p>
-                          {chunk.sectionRef || chunk.metadata?.sectionNumber || chunk.metadata?.sectionHeading ? (
-                            <p className="mt-1 font-semibold text-[#334155]">
-                              {[chunk.sectionRef ?? chunk.metadata?.sectionNumber, chunk.metadata?.sectionHeading]
-                                .filter(Boolean)
-                                .join(" - ")}
-                            </p>
-                          ) : null}
-                          <p className="mt-1">{chunk.text.slice(0, 700)}</p>
-                          {chunk.metadata?.embeddingStatus ? (
-                            <p className="mt-1 text-[#607B90]">
-                              Embedding: {String(chunk.metadata.embeddingStatus)}
-                              {chunk.metadata.pineconeVectorId ? " / Pinecone vector linked" : ""}
-                            </p>
-                          ) : null}
-                          {chunk.citationLabel ? (
-                            <p className="mt-1 text-[#607B90]">
-                              Citation: {chunk.citationLabel}
-                            </p>
-                          ) : null}
-                        </div>
-                      )) : (
-                        <p className="rounded-md bg-[#F8FBFF] p-3 text-[11px] text-[#607B90]">
-                          No chunks loaded. Use Load Chunks after ingestion/indexing.
-                        </p>
+                      {isRegistryEditable && (!TOPIC_OPTIONS.includes(governanceDraft.topic) || governanceDraft.topic === "other") && (
+                        <input
+                          type="text"
+                          placeholder="Specify custom topic area"
+                          value={governanceDraft.customTopic ?? ""}
+                          onChange={event =>
+                            setGovernanceDraft(current => ({
+                              ...current,
+                              customTopic: event.target.value,
+                            }))}
+                          className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3.5 text-sm text-slate-800 shadow-sm transition-all focus:border-primary focus:ring-2 focus:ring-primary/10 outline-none"
+                        />
                       )}
                     </div>
+                  </label>
+
+                  <label className="space-y-1 block">
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Source Type</span>
+                    <div className="relative">
+                      <select
+                        value={
+                          SOURCE_TYPE_OPTIONS.includes(governanceDraft.sourceType)
+                            ? governanceDraft.sourceType
+                            : "Guideline"
+                        }
+                        disabled={!isRegistryEditable}
+                        onChange={(event) =>
+                          setGovernanceDraft(current => ({
+                            ...current,
+                            sourceType: event.target.value as KnowledgeSourceType,
+                          }))}
+                        className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-3.5 pr-10 text-sm text-slate-800 shadow-sm transition-all focus:border-primary focus:ring-2 focus:ring-primary/10 outline-none disabled:bg-slate-50 disabled:text-slate-400"
+                      >
+                        {SOURCE_TYPE_OPTIONS.map(option => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                    </div>
+                  </label>
+
+                  <label className="space-y-1 block">
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Language</span>
+                    <input
+                      type="text"
+                      value={governanceDraft.language ?? "en"}
+                      disabled={!isRegistryEditable}
+                      onChange={event =>
+                        setGovernanceDraft(current => ({
+                          ...current,
+                          language: event.target.value,
+                        }))}
+                      className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3.5 text-sm text-slate-800 shadow-sm transition-all focus:border-primary focus:ring-2 focus:ring-primary/10 outline-none disabled:bg-slate-50 disabled:text-slate-400"
+                    />
+                  </label>
+                </div>
+
+                <div className="h-[1px] bg-slate-100 my-4" />
+
+                <div className="flex items-center gap-2 border-b border-slate-50 pb-2 mb-2 pt-2">
+                  <Calendar className="h-4 w-4 text-primary" />
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Dates & Resource Link</h4>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <label className="space-y-1 block">
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Last Updated</span>
+                    <input
+                      type="date"
+                      value={governanceDraft.lastUpdated ?? ""}
+                      disabled={!isRegistryEditable}
+                      onChange={event =>
+                        setGovernanceDraft(current => ({
+                          ...current,
+                          lastUpdated: event.target.value,
+                        }))}
+                      className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3.5 text-sm text-slate-800 shadow-sm transition-all focus:border-primary focus:ring-2 focus:ring-primary/10 outline-none disabled:bg-slate-50 disabled:text-slate-400"
+                    />
+                  </label>
+
+                  <label className="space-y-1 block">
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Refresh Date</span>
+                    <input
+                      type="date"
+                      value={governanceDraft.nextRefreshAt ?? ""}
+                      disabled={!isRegistryEditable}
+                      onChange={event =>
+                        setGovernanceDraft(current => ({
+                          ...current,
+                          nextRefreshAt: event.target.value,
+                        }))}
+                      className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3.5 text-sm text-slate-800 shadow-sm transition-all focus:border-primary focus:ring-2 focus:ring-primary/10 outline-none disabled:bg-slate-50 disabled:text-slate-400"
+                    />
+                  </label>
+
+                  <label className="space-y-1 block">
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Review Due</span>
+                    <input
+                      type="date"
+                      value={governanceDraft.nextReviewAt ?? ""}
+                      disabled={!isRegistryEditable}
+                      onChange={event =>
+                        setGovernanceDraft(current => ({
+                          ...current,
+                          nextReviewAt: event.target.value,
+                        }))}
+                      className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3.5 text-sm text-slate-800 shadow-sm transition-all focus:border-primary focus:ring-2 focus:ring-primary/10 outline-none disabled:bg-slate-50 disabled:text-slate-400"
+                    />
+                  </label>
+                </div>
+
+                <label className="space-y-1 block pt-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400 flex items-center gap-1">
+                    Source Authority URL
+                    <ExternalLink className="h-3 w-3 text-slate-400" />
+                  </span>
+                  <input
+                    type="url"
+                    value={governanceDraft.url ?? ""}
+                    disabled={!isRegistryEditable}
+                    onChange={event =>
+                      setGovernanceDraft(current => ({
+                        ...current,
+                        url: event.target.value,
+                      }))}
+                    placeholder="https://legislation.gov.au/details/..."
+                    className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3.5 text-sm text-slate-800 shadow-sm transition-all focus:border-primary focus:ring-2 focus:ring-primary/10 outline-none disabled:bg-slate-50 disabled:text-slate-400"
+                  />
+                </label>
+              </div>
+
+              <div className="space-y-6">
+                <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm space-y-4">
+                  <div className="flex items-center gap-2 border-b border-slate-50 pb-3 mb-1">
+                    <CloudUpload className="h-4 w-4 text-primary" />
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Source Document</h4>
+                  </div>
+
+                  <div
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                    className={cn(
+                      "border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition-all duration-200 flex flex-col items-center justify-center min-h-[140px]",
+                      isDragging
+                        ? "border-primary bg-blue-50/50"
+                        : "border-slate-200 bg-slate-50/30 hover:border-primary/40 hover:bg-slate-50/50"
+                    )}
+                  >
+                    <FileUp className="h-8 w-8 text-slate-400 mb-2.5" />
+                    <p className="text-xs font-bold text-slate-700">Drag & drop source document</p>
+                    <p className="text-[10px] text-slate-400 mt-1 max-w-[200px] leading-relaxed">
+                      Supports PDF, DOCX, TXT, MD, HTML, CSV, JSON (max 50MB)
+                    </p>
+
+                    <label className="mt-3 inline-flex h-7 items-center justify-center rounded-md border border-slate-200 bg-white hover:bg-slate-50 px-3 text-[11px] font-bold text-slate-700 transition shadow-sm cursor-pointer">
+                      Browse Files
+                      <input
+                        type="file"
+                        accept=".pdf,.docx,.txt,.md,.html,.htm,.csv,.json,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown,text/html,text/csv,application/json"
+                        className="hidden"
+                        disabled={!isRegistryEditable}
+                        onChange={(event) => {
+                          setSelectedUploadFile(event.target.files?.[0] ?? null);
+                          setSelectedUploadStatus(event.target.files?.[0] ? "selected" : "idle");
+                          event.currentTarget.value = "";
+                        }}
+                      />
+                    </label>
+                  </div>
+
+                  {selectedUploadFile ? (
+                    <div className="flex flex-col gap-2 rounded-xl border border-emerald-100 bg-emerald-50/20 p-3.5">
+                      <div className="flex items-start gap-2.5">
+                        <FileText className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-bold text-slate-800 truncate" title={selectedUploadFile.name}>
+                            {selectedUploadFile.name}
+                          </p>
+                          <p className="text-[10px] text-slate-500 font-medium mt-0.5">
+                            {`${formatFileSize(selectedUploadFile.size)} · ${selectedUploadFile.type || "binary"}`}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedUploadFile(null);
+                            setSelectedUploadStatus("idle");
+                          }}
+                          className="rounded-md p-1 hover:bg-emerald-100/50 text-slate-400 hover:text-rose-500 transition"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+
+                      <div className="mt-1 flex items-center justify-between gap-2 border-t border-emerald-100/30 pt-2">
+                        <p className="text-[10px] text-slate-500 font-medium">
+                          {selectedUploadStatus === "uploading" ? (
+                            <span className="flex items-center gap-1.5 text-blue-600">
+                              <RefreshCcw className="h-3 w-3 animate-spin text-blue-500" />
+                              Uploading document file...
+                            </span>
+                          ) : selectedUploadStatus === "indexed" ? (
+                            <span className="flex items-center gap-1 text-emerald-600 font-semibold">
+                              <Check className="h-3 w-3 text-emerald-500" />
+                              Uploaded and indexed
+                            </span>
+                          ) : selectedUploadStatus === "failed" ? (
+                            <span className="flex items-center gap-1 text-rose-600 font-semibold">
+                              <X className="h-3 w-3 text-rose-500" />
+                              Upload failed. Please retry.
+                            </span>
+                          ) : (
+                            <span className="text-slate-500 font-medium">
+                              File selected
+                            </span>
+                          )}
+                        </p>
+
+                        {selectedUploadStatus === "selected" && (
+                          <button
+                            type="button"
+                            onClick={() => void handleUploadDocumentForSelectedSource()}
+                            className="inline-flex h-6 items-center justify-center rounded bg-emerald-600 hover:bg-emerald-700 text-white px-3 text-[10px] font-bold transition shadow-sm"
+                          >
+                            Upload & Ingest
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-slate-100 bg-slate-50/50 p-2.5 text-center">
+                      <p className="text-[10px] text-slate-500 font-medium truncate">
+                        {selectedSource && getMetadata(selectedSource).uploadedFile?.originalFileName
+                          ? `Active File: ${getMetadata(selectedSource).uploadedFile?.originalFileName}`
+                          : selectedSource
+                          ? "No document uploaded for this RAG source."
+                          : "No file selected."}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm space-y-4">
+                  <div className="flex items-center gap-2 border-b border-slate-50 pb-3 mb-1">
+                    <Scale className="h-4 w-4 text-primary" />
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Legal Governance</h4>
+                  </div>
+
+                  <label className="block space-y-1">
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Review Notes</span>
+                    <textarea
+                      rows={3}
+                      value={governanceDraft.reviewNotes ?? ""}
+                      disabled={!isRegistryEditable}
+                      onChange={event =>
+                        setGovernanceDraft(current => ({
+                          ...current,
+                          reviewNotes: event.target.value,
+                        }))}
+                      placeholder="Add compliance notes, jurisdictional scope restrictions, or review details..."
+                      className="w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm transition-all focus:border-primary focus:ring-2 focus:ring-primary/10 outline-none disabled:bg-slate-50 disabled:text-slate-400 leading-normal"
+                    />
+                  </label>
+
+                  <div className="flex items-center justify-between gap-4 pt-1.5">
+                    <label className="inline-flex items-center gap-2 text-xs font-bold text-slate-600 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(governanceDraft.legalReviewed)}
+                        disabled={!isRegistryEditable}
+                        onChange={event =>
+                          setGovernanceDraft(current => ({
+                            ...current,
+                            legalReviewed: event.target.checked,
+                          }))}
+                        className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary/20 accent-primary"
+                      />
+                      Legal review complete
+                    </label>
                   </div>
                 </div>
-              </section>
-            )
-          : null}
+              </div>
+            </div>
 
-        <div className="flex flex-col gap-2 text-[11px] sm:flex-row sm:items-center sm:justify-between">
-          <div className="space-y-1">
-            <p className="text-[#94A3B8]">
-              {selectedSource?.updatedAt
-                ? `Last synced ${formatSourceAge(selectedSource)}. Saving or approving updates retrieval metadata only, not model training.`
-                : "Select a source to edit templates"}
-            </p>
-            {templateActionMessage ? (
-              <p
-                className={
-                  templateActionMessage.tone === "success"
-                    ? "font-semibold text-[#15803D]"
-                    : "font-semibold text-[#B42318]"
-                }
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end border-t border-slate-100 pt-5">
+              <button
+                type="button"
+                disabled={!isRegistryEditable || isSaving}
+                onClick={() => void saveGovernanceDetails()}
+                className="inline-flex h-10 items-center justify-center rounded-xl bg-primary hover:bg-primary/95 text-white px-5 text-sm font-bold transition shadow-sm disabled:opacity-50"
               >
-                {templateActionMessage.text}
-              </p>
-            ) : null}
+                Save Registry Details
+              </button>
+              <button
+                type="button"
+                disabled={!isRegistryEditable || isSaving}
+                onClick={() => void saveGovernanceDetails(true)}
+                className="inline-flex h-10 items-center justify-center rounded-xl bg-amber-500 hover:bg-amber-600 text-white px-5 text-sm font-bold transition shadow-sm disabled:opacity-50"
+              >
+                Save & Approve for RAG
+              </button>
+            </div>
+
+            <div className="grid gap-6 lg:grid-cols-3">
+              <div className="lg:col-span-2 rounded-2xl border border-slate-100 bg-white p-5 shadow-sm space-y-4">
+                <div className="flex flex-col gap-2 border-b border-slate-50 pb-4 mb-2">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-4 w-5 text-primary" />
+                    <h3 className="text-sm font-bold text-slate-800">
+                      Explanation Template Editor
+                    </h3>
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    {selectedSource
+                      ? `Drafting response messages for: "${selectedSource.title}"`
+                      : "Configure response wording that will ship with this new knowledge record."}
+                  </p>
+
+                  <div className="flex space-x-1 rounded-xl bg-slate-100 p-1 mt-2.5">
+                    {TEMPLATE_TABS.map(tab => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setActiveTemplateTab(tab.id)}
+                        className={cn(
+                          "w-full rounded-lg py-2 text-xs font-bold leading-5 transition-all duration-200",
+                          tab.id === activeTemplateTab
+                            ? "bg-white text-slate-800 shadow-sm"
+                            : "text-slate-500 hover:bg-white/40 hover:text-slate-800",
+                        )}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1.5 bg-slate-50/50 p-2.5 rounded-xl border border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-wide">
+                  <span className="mr-1.5 flex items-center gap-1 shrink-0">
+                    <Activity className="h-3.5 w-3.5" />
+                    <span>Variables:</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => insertVariable("{User_Name}")}
+                    className="rounded bg-blue-50 border border-blue-100 hover:bg-blue-100 px-2 py-1 text-blue-700 transition"
+                  >
+                    User Name
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => insertVariable("{Scam_Type}")}
+                    className="rounded bg-rose-50 border border-rose-100 hover:bg-rose-100 px-2 py-1 text-rose-700 transition"
+                  >
+                    Scam Type
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => insertVariable("{Risk_Level}")}
+                    className="rounded bg-emerald-50 border border-emerald-100 hover:bg-emerald-100 px-2 py-1 text-emerald-700 transition"
+                  >
+                    Risk Level
+                  </button>
+                  <span className="ml-auto lowercase font-normal italic text-slate-400 hidden sm:inline">Click to insert at cursor</span>
+                </div>
+
+                <textarea
+                  id="template-textarea"
+                  rows={9}
+                  value={templateDraft}
+                  onChange={event =>
+                    setTemplateDrafts(current => ({
+                      ...current,
+                      [activeTemplateTab]: event.target.value,
+                    }))}
+                  disabled={!selectedSource && !isCreateOpen}
+                  placeholder="Based on recent reports..."
+                  className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm leading-relaxed text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/10 disabled:bg-slate-50 disabled:text-slate-400"
+                />
+              </div>
+
+              <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center gap-2 border-b border-slate-50 pb-3 mb-4">
+                    <CheckCircle className="h-4 w-4 text-primary" />
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">RAG Publishing Pipeline</h4>
+                  </div>
+                  <p className="text-xs text-slate-500 leading-normal">
+                    Understand the lifecycle status and requirements necessary to publish this source document into the live vector retrieval context.
+                  </p>
+
+                  <div className="relative mt-6 space-y-6 pl-4 border-l border-slate-100">
+                    {/* Stepper Step 1 */}
+                    <div className="relative">
+                      <div className={cn(
+                        "absolute -left-[30px] flex h-5 w-5 items-center justify-center rounded-full border text-[10px] font-bold shadow-sm transition-colors",
+                        selectedSource
+                          ? "bg-emerald-500 border-emerald-500 text-white"
+                          : "bg-white border-slate-200 text-slate-500 ring-2 ring-primary/10",
+                      )}>
+                        {selectedSource ? (
+                          <Check className="h-3 w-3" />
+                        ) : "1"}
+                      </div>
+                      <div className="space-y-0.5">
+                        <p className={cn("text-xs font-bold", selectedSource ? "text-slate-800" : "text-slate-400")}>
+                          1. Setup Registry
+                        </p>
+                        <p className="text-[10px] text-slate-400 leading-normal">
+                          Registry details and legal metadata saved in context.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Stepper Step 2 */}
+                    <div className="relative">
+                      <div className={cn(
+                        "absolute -left-[30px] flex h-5 w-5 items-center justify-center rounded-full border text-[10px] font-bold shadow-sm transition-colors",
+                        selectedSource && (getAdminIngestionStatus(selectedSource) === "indexed" || getChunkCount(selectedSource) > 0)
+                          ? "bg-emerald-500 border-emerald-500 text-white"
+                          : selectedSource
+                          ? "bg-white border-slate-300 text-slate-700 ring-2 ring-primary/10"
+                          : "bg-white border-slate-200 text-slate-400",
+                      )}>
+                        {selectedSource && (getAdminIngestionStatus(selectedSource) === "indexed" || getChunkCount(selectedSource) > 0) ? (
+                          <Check className="h-3 w-3" />
+                        ) : "2"}
+                      </div>
+                      <div className="space-y-0.5">
+                        <p className={cn("text-xs font-bold", selectedSource && (getAdminIngestionStatus(selectedSource) === "indexed" || getChunkCount(selectedSource) > 0) ? "text-slate-800" : "text-slate-400")}>
+                          2. Extract & Index
+                        </p>
+                        <p className="text-[10px] text-slate-400 leading-normal">
+                          Document uploaded, chunks indexed into the vector database.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Stepper Step 3 */}
+                    <div className="relative">
+                      <div className={cn(
+                        "absolute -left-[30px] flex h-5 w-5 items-center justify-center rounded-full border text-[10px] font-bold shadow-sm transition-colors",
+                        selectedSource && selectedSource.legalReviewed
+                          ? "bg-emerald-500 border-emerald-500 text-white"
+                          : selectedSource && (getAdminIngestionStatus(selectedSource) === "indexed" || getChunkCount(selectedSource) > 0)
+                          ? "bg-white border-slate-300 text-slate-700 ring-2 ring-primary/10"
+                          : "bg-white border-slate-200 text-slate-400",
+                      )}>
+                        {selectedSource && selectedSource.legalReviewed ? (
+                          <Check className="h-3 w-3" />
+                        ) : "3"}
+                      </div>
+                      <div className="space-y-0.5">
+                        <p className={cn("text-xs font-bold", selectedSource && selectedSource.legalReviewed ? "text-slate-800" : "text-slate-400")}>
+                          3. Legal Compliance
+                        </p>
+                        <p className="text-[10px] text-slate-400 leading-normal">
+                          Administrator verifies legal guidelines and compliance flags.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Stepper Step 4 */}
+                    <div className="relative">
+                      <div className={cn(
+                        "absolute -left-[30px] flex h-5 w-5 items-center justify-center rounded-full border text-[10px] font-bold shadow-sm transition-colors",
+                        selectedSource && selectedSource.status === "approved"
+                          ? "bg-emerald-500 border-emerald-500 text-white"
+                          : selectedSource && selectedSource.legalReviewed
+                          ? "bg-white border-slate-300 text-slate-700 ring-2 ring-primary/10"
+                          : "bg-white border-slate-200 text-slate-400",
+                      )}>
+                        {selectedSource && selectedSource.status === "approved" ? (
+                          <Check className="h-3 w-3" />
+                        ) : "4"}
+                      </div>
+                      <div className="space-y-0.5">
+                        <p className={cn("text-xs font-bold", selectedSource && selectedSource.status === "approved" ? "text-slate-800" : "text-slate-400")}>
+                          4. Approve for RAG
+                        </p>
+                        <p className="text-[10px] text-slate-400 leading-normal">
+                          Source approved, enabling real-time retrieval by AI agents.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-6 border-t border-slate-50 pt-4 text-center">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Current Phase</p>
+                  <p className="text-xs font-extrabold text-slate-700 mt-1">
+                    {selectedSource 
+                      ? selectedSource.status === "approved"
+                        ? "Pipeline Completed (Active)"
+                        : !selectedSource.legalReviewed
+                        ? "Awaiting Legal Compliance"
+                        : "Awaiting Final Approval"
+                      : "Awaiting Source Registration"
+                    }
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              disabled={!selectedSource || isSaving}
-              onClick={() => void saveTemplate(false)}
-              className="inline-flex h-8 items-center rounded-md border border-[#D8E3EE] bg-white px-3 font-semibold text-[#334155] transition hover:bg-[#F8FBFF] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              Save Draft
-            </button>
-            <button
-              type="button"
-              disabled={
-                !selectedSource
-                || isSaving
-                || Boolean(approvalCandidate && getApprovalBlockReason(approvalCandidate))
-              }
-              title={
-                approvalCandidate
-                  ? getApprovalBlockReason(approvalCandidate) || "Save template metadata and approve."
-                  : "Select a source first."
-              }
-              onClick={() => void saveTemplate(true)}
-              className="inline-flex h-8 items-center rounded-md bg-[#F59E0B] px-3 font-semibold text-white transition hover:bg-[#D88B07] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              Save & Approve for RAG
-            </button>
-          </div>
-        </div>
-          </>
-        ) : null}
-      </section>
+        )}
+      </div>
     </AdminContentManagementShell>
   );
 }
