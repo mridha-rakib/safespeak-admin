@@ -33,10 +33,13 @@ import { cn } from "@/lib/utils";
 
 import type {
   KnowledgeSourceCategory,
+  KnowledgeSourceChunkPreview,
+  KnowledgeSourceArtifacts,
   KnowledgeSourceInput,
   KnowledgeSourceItem,
   KnowledgeSourceJurisdiction,
   KnowledgeSourceMetadata,
+  KnowledgeSourcePipelineStatus,
   KnowledgeSourceReadiness,
   KnowledgeSourceTopic,
   KnowledgeSourceType,
@@ -48,10 +51,13 @@ import {
   approveKnowledgeSource,
   createKnowledgeSource,
   deleteKnowledgeSource,
+  getKnowledgeSourceArtifacts,
   getKnowledgeSourceId,
   getKnowledgeSourceReadiness,
+  getKnowledgeSourceStatus,
   getPineconeHealth,
   ingestKnowledgeSource,
+  listKnowledgeSourceChunks,
   listKnowledgeSources,
   refreshKnowledgeSource,
   reindexKnowledgeSource,
@@ -185,6 +191,15 @@ type GovernanceDraft = Pick<
   customTopic?: string;
 };
 
+type SourcePipelineSnapshot = {
+  status: KnowledgeSourcePipelineStatus | null;
+  artifacts: KnowledgeSourceArtifacts | null;
+  chunks: KnowledgeSourceChunkPreview[];
+  totalChunks: number;
+  loading: boolean;
+  error: string | null;
+};
+
 function toDateInputValue(value?: string): string {
   if (!value) {
     return "";
@@ -282,6 +297,15 @@ function formatFileSize(bytes?: number) {
   }
 
   return `${value.toFixed(value >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+}
+
+function truncateText(value: string, limit = 1200) {
+  const text = value.trim();
+  if (!text) {
+    return "";
+  }
+
+  return text.length > limit ? `${text.slice(0, limit)}...` : text;
 }
 
 function getMetadata(source?: KnowledgeSourceItem): KnowledgeSourceMetadata {
@@ -942,6 +966,14 @@ export function AdminContentKnowledgeSourcesPage() {
   const [lastSavedDraftFingerprint, setLastSavedDraftFingerprint] = useState<string>("");
   const [activeDropdownId, setActiveDropdownId] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [pipelineSnapshot, setPipelineSnapshot] = useState<SourcePipelineSnapshot>({
+    status: null,
+    artifacts: null,
+    chunks: [],
+    totalChunks: 0,
+    loading: false,
+    error: null,
+  });
   const templateDraft = templateDrafts[activeTemplateTab] ?? "";
 
   const insertVariable = (variable: string) => {
@@ -1088,6 +1120,13 @@ export function AdminContentKnowledgeSourcesPage() {
     () => getMetadata(selectedSource).uploadedFile,
     [selectedSource],
   );
+  const extractedTextPreview = useMemo(() => {
+    const rawText = pipelineSnapshot.artifacts?.rawText;
+    const structuredText = pipelineSnapshot.artifacts?.structured?.text;
+    const sourcePreview = selectedSource?.rawTextPreview;
+
+    return (rawText || structuredText || sourcePreview || "").trim();
+  }, [pipelineSnapshot.artifacts, selectedSource]);
   const persistedUploadStatus = useMemo(() => {
     if (!selectedSource || !persistedUploadedFile) {
       return null;
@@ -1190,6 +1229,64 @@ export function AdminContentKnowledgeSourcesPage() {
     setLastSavedDraftFingerprint(nextFingerprint);
   }, [selectedSource]);
 
+  useEffect(() => {
+    const sourceId = selectedSource ? getKnowledgeSourceId(selectedSource) : "";
+
+    if (!sourceId) {
+      setPipelineSnapshot({
+        status: null,
+        artifacts: null,
+        chunks: [],
+        totalChunks: 0,
+        loading: false,
+        error: null,
+      });
+      return;
+    }
+
+    let cancelled = false;
+
+    setPipelineSnapshot(current => ({
+      ...current,
+      loading: true,
+      error: null,
+    }));
+
+    void Promise.allSettled([
+      getKnowledgeSourceStatus(sourceId),
+      getKnowledgeSourceArtifacts(sourceId),
+      listKnowledgeSourceChunks(sourceId, { page: 1, limit: 5 }),
+    ]).then((results) => {
+      if (cancelled) {
+        return;
+      }
+
+      const [statusResult, artifactsResult, chunksResult] = results;
+      const status = statusResult.status === "fulfilled" ? statusResult.value : null;
+      const artifacts = artifactsResult.status === "fulfilled" ? artifactsResult.value : null;
+      const chunksPage = chunksResult.status === "fulfilled" ? chunksResult.value : null;
+
+      const error = statusResult.status === "rejected"
+        ? getFriendlyError(statusResult.reason, "Could not load pipeline status.")
+        : artifactsResult.status === "rejected" && chunksResult.status === "rejected"
+          ? "Could not load extracted artifacts or chunk preview yet."
+          : null;
+
+      setPipelineSnapshot({
+        status,
+        artifacts,
+        chunks: chunksPage?.chunks ?? [],
+        totalChunks: chunksPage?.totalCount ?? 0,
+        loading: false,
+        error,
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSource]);
+
   const reapplyLegalReviewAfterUpload = async (
     sourceId: string,
     fallbackSource: KnowledgeSourceItem,
@@ -1206,6 +1303,55 @@ export function AdminContentKnowledgeSourcesPage() {
     });
   };
 
+  const ensureLegalReviewForPublish = async (
+    sourceId: string,
+    fallbackSource: KnowledgeSourceItem,
+  ) => {
+    if (governanceDraft.sourceCategory !== "official_legal_source") {
+      return fallbackSource;
+    }
+
+    if (fallbackSource.legalReviewed) {
+      return fallbackSource;
+    }
+
+    const updated = await updateKnowledgeSource(sourceId, {
+      legalReviewed: true,
+    });
+    setGovernanceDraft(current => ({
+      ...current,
+      legalReviewed: true,
+    }));
+    return updated;
+  };
+
+  const createSourceFromCurrentDraft = async (status: KnowledgeSourceItem["status"]) => {
+    const title = governanceDraft.title?.trim();
+
+    if (!title) {
+      throw new Error("Source title is required.");
+    }
+
+    return await createKnowledgeSource({
+      ...compactGovernancePayload(governanceDraft),
+      title,
+      description:
+        governanceDraft.description?.trim()
+        || (status === "draft" ? "Admin draft source." : "Admin-created source awaiting review."),
+      sourceCategory: governanceDraft.sourceCategory || "official_legal_source",
+      jurisdiction: governanceDraft.jurisdiction || "AU",
+      topic: governanceDraft.topic || "other",
+      sourceType: governanceDraft.sourceType || "Guideline",
+      language: governanceDraft.language?.trim() || "en",
+      publisher: governanceDraft.publisher?.trim() || "SafeSpeak Content Team",
+      licenseStatus:
+        governanceDraft.licenseStatus?.trim() || "Government copyright",
+      status,
+      version: 1,
+      metadata: buildSourceMetadata(governanceDraft, templateDrafts),
+    });
+  };
+
   const saveGovernanceDetails = async (publish = false) => {
     const isNewSourceDraft = isCreateOpen && !selectedSource;
     const title = governanceDraft.title?.trim();
@@ -1215,41 +1361,11 @@ export function AdminContentKnowledgeSourcesPage() {
       return;
     }
 
-    if (
-      governanceDraft.sourceCategory?.startsWith("official_")
-      && !governanceDraft.url?.trim()
-    ) {
-      setStatusMessage("Error: Official sources require a URL.");
-      return;
-    }
-
-    if (isNewSourceDraft && !selectedUploadFile) {
-      setStatusMessage("Error: Upload a document before saving a new RAG source.");
-      return;
-    }
-
     setIsSaving(true);
 
     try {
       if (isNewSourceDraft) {
-        const created = await createKnowledgeSource({
-          ...compactGovernancePayload(governanceDraft),
-          title,
-          description:
-            governanceDraft.description?.trim()
-            || "Admin-created source awaiting review.",
-          sourceCategory: governanceDraft.sourceCategory || "official_legal_source",
-          jurisdiction: governanceDraft.jurisdiction || "AU",
-          topic: governanceDraft.topic || "other",
-          sourceType: governanceDraft.sourceType || "Guideline",
-          language: governanceDraft.language?.trim() || "en",
-          publisher: governanceDraft.publisher?.trim() || "SafeSpeak Content Team",
-          licenseStatus:
-            governanceDraft.licenseStatus?.trim() || "Government copyright",
-          status: "pending_review",
-          version: 1,
-          metadata: buildSourceMetadata(governanceDraft, templateDrafts),
-        });
+        const created = await createSourceFromCurrentDraft("pending_review");
 
         let finalSource = created;
         const createdId = getKnowledgeSourceId(created);
@@ -1267,6 +1383,10 @@ export function AdminContentKnowledgeSourcesPage() {
         }
 
         if (publish && createdId) {
+          if (!selectedUploadFile && !getMetadata(finalSource).uploadedFile?.originalFileName) {
+            throw new Error("Upload a document before approving this source for live RAG.");
+          }
+          finalSource = await ensureLegalReviewForPublish(createdId, finalSource);
           finalSource = await approveKnowledgeSource(createdId);
         }
 
@@ -1308,6 +1428,10 @@ export function AdminContentKnowledgeSourcesPage() {
         }
 
         if (publish) {
+          if (!selectedUploadFile && !getMetadata(finalSource).uploadedFile?.originalFileName) {
+            throw new Error("Upload a document before approving this source for live RAG.");
+          }
+          finalSource = await ensureLegalReviewForPublish(sourceId, finalSource);
           finalSource = await approveKnowledgeSource(sourceId);
         }
 
@@ -1343,21 +1467,7 @@ export function AdminContentKnowledgeSourcesPage() {
 
     try {
       if (!selectedSource) {
-        const created = await createKnowledgeSource({
-          ...compactGovernancePayload(governanceDraft),
-          title,
-          description: "Admin draft source.",
-          sourceCategory: governanceDraft.sourceCategory || "official_legal_source",
-          jurisdiction: governanceDraft.jurisdiction || "AU",
-          topic: governanceDraft.topic || "other",
-          sourceType: governanceDraft.sourceType || "Guideline",
-          language: governanceDraft.language?.trim() || "en",
-          publisher: governanceDraft.publisher?.trim() || "SafeSpeak Content Team",
-          licenseStatus: governanceDraft.licenseStatus?.trim() || "Government copyright",
-          status: "draft",
-          version: 1,
-          metadata: buildSourceMetadata(governanceDraft, templateDrafts),
-        });
+        const created = await createSourceFromCurrentDraft("draft");
 
         const createdId = getKnowledgeSourceId(created);
         let finalSource = created;
@@ -1513,20 +1623,32 @@ export function AdminContentKnowledgeSourcesPage() {
   };
 
   const handleUploadDocumentForSelectedSource = async () => {
-    if (!selectedSource || !selectedUploadFile) {
+    if (!selectedUploadFile) {
+      setStatusMessage("Select a document first.");
       return;
     }
-    const sourceId = getKnowledgeSourceId(selectedSource);
     setIsSaving(true);
     setSelectedUploadStatus("uploading");
 
     try {
+      let workingSource = selectedSource;
+
+      if (!workingSource) {
+        workingSource = await createSourceFromCurrentDraft("pending_review");
+      }
+      if (!workingSource) {
+        throw new Error("Could not create the source before upload.");
+      }
+      setSources(currentSources => upsertSource(currentSources, workingSource));
+      setSelectedSourceId(getKnowledgeSourceId(workingSource));
+
+      const sourceId = getKnowledgeSourceId(workingSource);
       const result = await uploadKnowledgeSourceDocument(
         sourceId,
         selectedUploadFile,
         { ingestImmediately: true },
       );
-      const nextSource = result.source ?? selectedSource;
+      const nextSource = result.source ?? workingSource;
       setSources(currentSources => upsertSource(currentSources, nextSource));
       setSelectedUploadStatus(result.error ? "failed" : "indexed");
       setStatusMessage(`${nextSource.title} uploaded and indexed.`);
@@ -2747,6 +2869,214 @@ export function AdminContentKnowledgeSourcesPage() {
               >
                 Save & Approve for RAG
               </button>
+            </div>
+
+            <div className="grid gap-6 lg:grid-cols-3">
+              <div className="lg:col-span-2 rounded-2xl border border-slate-100 bg-white p-5 shadow-sm space-y-4">
+                <div className="flex flex-col gap-2 border-b border-slate-50 pb-4">
+                  <div className="flex items-center gap-2">
+                    <Database className="h-4 w-4 text-primary" />
+                    <h3 className="text-sm font-bold text-slate-800">
+                      RAG Extraction & Pipeline Details
+                    </h3>
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    Review the real extracted document text, chunk preview, and indexing details for this uploaded source.
+                  </p>
+                </div>
+
+                {pipelineSnapshot.loading ? (
+                  <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-6 text-center text-sm text-slate-500">
+                    <div className="flex flex-col items-center gap-2">
+                      <RefreshCcw className="h-5 w-5 animate-spin text-primary" />
+                      <span>Loading extraction and chunk details...</span>
+                    </div>
+                  </div>
+                ) : null}
+
+                {!pipelineSnapshot.loading && pipelineSnapshot.error ? (
+                  <div className="rounded-xl border border-rose-100 bg-rose-50/40 p-4 text-sm text-rose-700">
+                    {pipelineSnapshot.error}
+                  </div>
+                ) : null}
+
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Ingestion Status</p>
+                    <p className="mt-1 text-sm font-bold text-slate-800">
+                      {pipelineSnapshot.status?.ingestionStatus ?? selectedSource?.ingestionStatus ?? "Not started"}
+                    </p>
+                    <p className="mt-1 text-[10px] text-slate-500">Document processing state for RAG.</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Extraction Method</p>
+                    <p className="mt-1 text-sm font-bold text-slate-800">
+                      {pipelineSnapshot.status?.extractionMethod
+                        || pipelineSnapshot.artifacts?.structured?.extractionMethod
+                        || "Unknown"}
+                    </p>
+                    <p className="mt-1 text-[10px] text-slate-500">How the file text was extracted.</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Chunks Created</p>
+                    <p className="mt-1 text-sm font-bold text-slate-800">
+                      {pipelineSnapshot.status?.mongoChunkCount ?? pipelineSnapshot.totalChunks ?? (selectedSource ? getChunkCount(selectedSource) : 0)}
+                    </p>
+                    <p className="mt-1 text-[10px] text-slate-500">Searchable text chunks stored for retrieval.</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Vector Index</p>
+                    <p className="mt-1 text-sm font-bold text-slate-800">
+                      {pipelineSnapshot.status?.pineconeVectorCount ?? (selectedSource ? getIndexedChunkCount(selectedSource) : 0)}
+                    </p>
+                    <p className="mt-1 text-[10px] text-slate-500">Vectors available for live RAG search.</p>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <div className="rounded-xl border border-slate-100 bg-slate-50/40 p-4">
+                    <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                      <p className="text-xs font-bold text-slate-700">Extracted Text Preview</p>
+                      <span className="text-[10px] text-slate-400">
+                        {pipelineSnapshot.status?.ocrPageCount
+                          ? `${pipelineSnapshot.status.ocrPageCount} pages`
+                          : pipelineSnapshot.artifacts?.structured?.pageCount
+                            ? `${pipelineSnapshot.artifacts.structured.pageCount} pages`
+                            : "Preview"}
+                      </span>
+                    </div>
+                    <div className="mt-3 max-h-72 overflow-auto rounded-lg border border-slate-100 bg-white p-3 text-xs leading-6 text-slate-700 whitespace-pre-wrap">
+                      {extractedTextPreview || "No extracted text preview is available yet. Upload and ingest the document to see extracted content here."}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-100 bg-slate-50/40 p-4">
+                    <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                      <p className="text-xs font-bold text-slate-700">Chunk Preview</p>
+                      <span className="text-[10px] text-slate-400">
+                        {pipelineSnapshot.totalChunks > 0
+                          ? `${Math.min(pipelineSnapshot.chunks.length, pipelineSnapshot.totalChunks)} of ${pipelineSnapshot.totalChunks} shown`
+                          : "No chunks"}
+                      </span>
+                    </div>
+                    <div className="mt-3 space-y-2">
+                      {pipelineSnapshot.chunks.length > 0 ? pipelineSnapshot.chunks.map((chunk) => (
+                        <div
+                          key={chunk.id}
+                          className="rounded-lg border border-slate-100 bg-white p-3"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-[11px] font-bold text-slate-700">
+                              {`Chunk ${chunk.chunkIndex + 1}`}
+                            </p>
+                            <span className="text-[10px] text-slate-400">
+                              {chunk.tokenCount ? `${chunk.tokenCount} tokens` : "Chunk preview"}
+                            </span>
+                          </div>
+                          <p className="mt-2 text-xs leading-5 text-slate-600">
+                            {truncateText(chunk.text || "", 260) || "No chunk text available."}
+                          </p>
+                          {chunk.sectionRef || chunk.sectionHeading ? (
+                            <p className="mt-2 text-[10px] font-medium text-slate-400">
+                              {[chunk.sectionRef, chunk.sectionHeading].filter(Boolean).join(" · ")}
+                            </p>
+                          ) : null}
+                        </div>
+                      )) : (
+                        <div className="rounded-lg border border-slate-100 bg-white p-4 text-xs text-slate-500">
+                          No chunk preview is available yet. Once the document is extracted and indexed, the first chunks will appear here.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm space-y-4">
+                <div className="flex items-center gap-2 border-b border-slate-50 pb-3 mb-1">
+                  <Settings className="h-4 w-4 text-primary" />
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Pipeline Diagnostics</h4>
+                </div>
+
+                <div className="space-y-3 text-xs">
+                  <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Processing Stage</p>
+                    <p className="mt-1 font-semibold text-slate-700">
+                      {pipelineSnapshot.status?.processingStage || getMetadata(selectedSource).processingStage || "Unknown"}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Index Sync</p>
+                    <p className="mt-1 font-semibold text-slate-700">
+                      {pipelineSnapshot.status?.indexSyncStatus || "Unknown"}
+                    </p>
+                    <p className="mt-1 text-[10px] text-slate-400">
+                      {pipelineSnapshot.status?.lastIndexedAt
+                        ? `Last indexed ${formatDate(pipelineSnapshot.status.lastIndexedAt)}`
+                        : "Index timestamp not available yet."}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Storage & Search</p>
+                    <p className="mt-1 font-semibold text-slate-700">
+                      {pipelineSnapshot.status?.pineconeIndex
+                        ? `${pipelineSnapshot.status.pineconeIndex}${pipelineSnapshot.status.pineconeNamespace ? ` / ${pipelineSnapshot.status.pineconeNamespace}` : ""}`
+                        : "Vector index not reported"}
+                    </p>
+                    <p className="mt-1 text-[10px] text-slate-400">
+                      {pipelineSnapshot.status?.embeddingModel || "Embedding model not reported"}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Document Integrity</p>
+                    <p className={cn(
+                      "mt-1 font-semibold",
+                      pipelineSnapshot.status?.integrityWarnings?.length
+                        ? "text-amber-700"
+                        : "text-emerald-700",
+                    )}>
+                      {pipelineSnapshot.status?.integrityWarnings?.length
+                        ? "Needs review"
+                        : "Looks consistent"}
+                    </p>
+                    <p className="mt-1 text-[10px] text-slate-400">
+                      {pipelineSnapshot.status?.uploadedFileSizeBytes
+                        ? `${formatFileSize(pipelineSnapshot.status.uploadedFileSizeBytes)} uploaded`
+                        : "Uploaded file size unknown"}
+                      {typeof pipelineSnapshot.status?.rawTextLength === "number"
+                        ? ` · ${pipelineSnapshot.status.rawTextLength} extracted characters`
+                        : ""}
+                    </p>
+                    {pipelineSnapshot.status?.uploadedFileExists === false ? (
+                      <p className="mt-1 text-[10px] font-semibold text-rose-600">
+                        Stored file missing from knowledge storage.
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Warnings / Errors</p>
+                    <div className="mt-1 space-y-1 text-[11px] text-slate-600">
+                      {pipelineSnapshot.status?.ingestionError ? (
+                        <p className="text-rose-600 font-semibold">{pipelineSnapshot.status.ingestionError}</p>
+                      ) : null}
+                      {(pipelineSnapshot.status?.integrityWarnings ?? []).length > 0 ? (
+                        (pipelineSnapshot.status?.integrityWarnings ?? []).map((warning, index) => (
+                          <p key={`integrity-${warning}-${index}`} className="text-amber-700">
+                            {warning}
+                          </p>
+                        ))
+                      ) : null}
+                      {(pipelineSnapshot.status?.ocrWarnings ?? []).length > 0 ? (
+                        (pipelineSnapshot.status?.ocrWarnings ?? []).map((warning, index) => (
+                          <p key={`${warning}-${index}`}>{warning}</p>
+                        ))
+                      ) : !pipelineSnapshot.status?.ingestionError && !(pipelineSnapshot.status?.integrityWarnings ?? []).length ? (
+                        <p>No pipeline warnings reported.</p>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div className="grid gap-6 lg:grid-cols-3">

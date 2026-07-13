@@ -249,6 +249,48 @@ export type KnowledgeSourceChunkPreviewPage = {
   chunks: KnowledgeSourceChunkPreview[];
 };
 
+export type KnowledgeSourceArtifacts = {
+  rawText?: string;
+  markdown?: string;
+  structured?: {
+    text?: string;
+    pageCount?: number;
+    warnings?: string[];
+    extractionMethod?: string;
+    sha256?: string;
+    [key: string]: unknown;
+  };
+  legalStructure?: unknown;
+};
+
+export type KnowledgeSourcePipelineStatus = {
+  id: string;
+  sourceId: string;
+  sourceTitle?: string;
+  ingestionStatus?: KnowledgeSourceItem["ingestionStatus"];
+  legalReviewed: boolean;
+  active: boolean;
+  extractionMethod?: string;
+  ocrStatus?: string;
+  ocrPageCount?: number;
+  ocrWarnings?: string[];
+  embeddingModel?: string;
+  pineconeIndex?: string;
+  pineconeNamespace?: string;
+  indexSyncStatus?: string;
+  mongoChunkCount?: number;
+  pineconeVectorCount?: number;
+  lastIndexedAt?: string;
+  processingStage?: string;
+  ingestionError?: string;
+  uploadedFileExists?: boolean;
+  uploadedFileSizeBytes?: number;
+  rawTextLength?: number;
+  likelySampleDocument?: boolean;
+  integrityWarnings?: string[];
+  metadata?: KnowledgeSourceMetadata;
+};
+
 export type KnowledgeSourceReadinessStatus =
   | "ready"
   | "ready_with_gaps"
@@ -429,6 +471,26 @@ export async function listKnowledgeSourceChunks(
   );
 
   return response.data;
+}
+
+export async function getKnowledgeSourceArtifacts(
+  id: string,
+): Promise<KnowledgeSourceArtifacts> {
+  const response = await knowledgeApiRequest<{ artifacts: KnowledgeSourceArtifacts }>(
+    `/rag/knowledge-sources/${id}/artifacts`,
+  );
+
+  return response.data.artifacts;
+}
+
+export async function getKnowledgeSourceStatus(
+  id: string,
+): Promise<KnowledgeSourcePipelineStatus> {
+  const response = await knowledgeApiRequest<{ status: KnowledgeSourcePipelineStatus }>(
+    `/rag/knowledge-sources/${id}/status`,
+  );
+
+  return response.data.status;
 }
 
 export async function approveKnowledgeSource(
