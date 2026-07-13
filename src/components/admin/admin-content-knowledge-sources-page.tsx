@@ -2936,7 +2936,10 @@ export function AdminContentKnowledgeSourcesPage() {
                 <div className="grid gap-4 lg:grid-cols-2">
                   <div className="rounded-xl border border-slate-100 bg-slate-50/40 p-4">
                     <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
-                      <p className="text-xs font-bold text-slate-700">Extracted Text Preview</p>
+                      <div>
+                        <p className="text-xs font-bold text-slate-700">Extracted Text Preview</p>
+                        <p className="mt-0.5 text-[10px] text-slate-400">Full extracted document text</p>
+                      </div>
                       <span className="text-[10px] text-slate-400">
                         {pipelineSnapshot.status?.ocrPageCount
                           ? `${pipelineSnapshot.status.ocrPageCount} pages`
@@ -2945,36 +2948,39 @@ export function AdminContentKnowledgeSourcesPage() {
                             : "Preview"}
                       </span>
                     </div>
-                    <div className="mt-3 max-h-72 overflow-auto rounded-lg border border-slate-100 bg-white p-3 text-xs leading-6 text-slate-700 whitespace-pre-wrap">
+                    <div className="mt-3 h-[360px] overflow-auto rounded-lg border border-slate-100 bg-white px-3 py-2.5 text-[11px] leading-6 text-slate-700 whitespace-pre-wrap">
                       {extractedTextPreview || "No extracted text preview is available yet. Upload and ingest the document to see extracted content here."}
                     </div>
                   </div>
 
                   <div className="rounded-xl border border-slate-100 bg-slate-50/40 p-4">
                     <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
-                      <p className="text-xs font-bold text-slate-700">Chunk Preview</p>
+                      <div>
+                        <p className="text-xs font-bold text-slate-700">Chunk Preview</p>
+                        <p className="mt-0.5 text-[10px] text-slate-400">How the extracted text was split for retrieval</p>
+                      </div>
                       <span className="text-[10px] text-slate-400">
                         {pipelineSnapshot.totalChunks > 0
                           ? `${Math.min(pipelineSnapshot.chunks.length, pipelineSnapshot.totalChunks)} of ${pipelineSnapshot.totalChunks} shown`
                           : "No chunks"}
                       </span>
                     </div>
-                    <div className="mt-3 space-y-2">
+                    <div className="mt-3 h-[360px] space-y-2 overflow-auto pr-1">
                       {pipelineSnapshot.chunks.length > 0 ? pipelineSnapshot.chunks.map((chunk) => (
                         <div
                           key={chunk.id}
-                          className="rounded-lg border border-slate-100 bg-white p-3"
+                          className="rounded-lg border border-slate-100 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
                         >
                           <div className="flex items-center justify-between gap-2">
                             <p className="text-[11px] font-bold text-slate-700">
                               {`Chunk ${chunk.chunkIndex + 1}`}
                             </p>
-                            <span className="text-[10px] text-slate-400">
+                            <span className="rounded-full bg-slate-50 px-2 py-0.5 text-[10px] text-slate-400">
                               {chunk.tokenCount ? `${chunk.tokenCount} tokens` : "Chunk preview"}
                             </span>
                           </div>
-                          <p className="mt-2 text-xs leading-5 text-slate-600">
-                            {truncateText(chunk.text || "", 260) || "No chunk text available."}
+                          <p className="mt-2 text-[11px] leading-5 text-slate-600">
+                            {truncateText(chunk.text || "", 220) || "No chunk text available."}
                           </p>
                           {chunk.sectionRef || chunk.sectionHeading ? (
                             <p className="mt-2 text-[10px] font-medium text-slate-400">
