@@ -1,4 +1,5 @@
 import {
+  ArrowLeft,
   AlertCircle,
   CheckCircle2,
   FileText,
@@ -241,12 +242,12 @@ function createDefaultCreateForm(): CreateSourceFormState {
     adminCategory: "Regulation",
     description: "",
     sourceCategory: "official_legal_source",
-    publisher: "Australian Government",
+    publisher: "",
     licenseStatus: "Government copyright",
     url: "",
     jurisdiction: "AU",
-    topic: "discrimination",
-    sourceType: "Act",
+    topic: "other",
+    sourceType: "Guideline",
     lastUpdated,
     nextRefreshAt: addDaysInputValue(lastUpdated, 90),
     nextReviewAt: "",
@@ -1000,6 +1001,21 @@ export function AdminContentKnowledgeSourcesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
+  const openCreateSourceForm = () => {
+    setIsCreateOpen(true);
+    setCreateErrors({});
+    setSelectedUploadStatus("idle");
+    setStatusMessage("Add the document details and upload a file for RAG.");
+  };
+
+  const closeCreateSourceForm = (message = "Returned to knowledge sources.") => {
+    setIsCreateOpen(false);
+    setCreateForm(createDefaultCreateForm());
+    setCreateErrors({});
+    setSelectedUploadStatus("idle");
+    setStatusMessage(message);
+  };
+
   const loadSources = useCallback(async () => {
     setIsLoading(true);
 
@@ -1302,6 +1318,7 @@ export function AdminContentKnowledgeSourcesPage() {
       setIsCreateOpen(false);
       setCreateForm(createDefaultCreateForm());
       setCreateErrors({});
+      setSelectedUploadStatus("idle");
       setStatusMessage(
         createForm.documentFile
           ? "New source added and document uploaded."
@@ -1593,7 +1610,7 @@ export function AdminContentKnowledgeSourcesPage() {
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-[12px] font-semibold text-[#1E293B]">
-              Recent Knowledge Sources
+              {isCreateOpen ? "Add New RAG Resource" : "Recent Knowledge Sources"}
             </p>
             {statusMessage
               ? (
@@ -1603,38 +1620,66 @@ export function AdminContentKnowledgeSourcesPage() {
                 )
               : null}
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              disabled={isLoading}
-              onClick={() => void loadSources()}
-              className="inline-flex h-8 items-center gap-1 rounded-md border border-[#D8E3EE] bg-white px-3 text-[11px] font-semibold text-[#334155] transition hover:bg-[#F8FBFF] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <RefreshCcw className="h-3 w-3" />
-              Re-scan Sources
-            </button>
-            <button
-              type="button"
-              disabled={isSaving}
-              onClick={() => {
-                setIsCreateOpen(true);
-                setCreateErrors({});
-                setSelectedUploadStatus("idle");
-                setStatusMessage("Fill in the new knowledge source details.");
-              }}
-              className="inline-flex h-8 items-center gap-1 rounded-md bg-[#F59E0B] px-3 text-[11px] font-semibold text-white transition hover:bg-[#D88B07] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <Plus className="h-3 w-3" />
-              Add New Source
-            </button>
-          </div>
+          {!isCreateOpen ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={isLoading}
+                onClick={() => void loadSources()}
+                className="inline-flex h-8 items-center gap-1 rounded-md border border-[#D8E3EE] bg-white px-3 text-[11px] font-semibold text-[#334155] transition hover:bg-[#F8FBFF] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <RefreshCcw className="h-3 w-3" />
+                Re-scan Sources
+              </button>
+              <button
+                type="button"
+                disabled={isSaving}
+                onClick={openCreateSourceForm}
+                className="inline-flex h-8 items-center gap-1 rounded-md bg-[#F59E0B] px-3 text-[11px] font-semibold text-white transition hover:bg-[#D88B07] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Plus className="h-3 w-3" />
+                Add New Source
+              </button>
+            </div>
+          ) : null}
         </div>
 
         {isCreateOpen
           ? (
               <section className="rounded-[10px] border border-[#D8E3EE] bg-[#FAFCFF] p-3">
-                <div className="flex flex-col gap-3">
-                  <div className="flex flex-col gap-3 lg:grid lg:grid-cols-[1fr_180px]">
+                <div className="mx-auto max-w-4xl space-y-5">
+                  <div className="flex flex-col gap-3 border-b border-[#E4EAF1] pb-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="space-y-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          closeCreateSourceForm("Returned to the knowledge-source list.");
+                        }}
+                        className="inline-flex items-center gap-2 rounded-md px-2 py-1 text-[12px] font-semibold text-[#0F67AE] transition hover:bg-[#EEF6FF]"
+                      >
+                        <ArrowLeft className="h-4 w-4" />
+                        Back to knowledge sources
+                      </button>
+                      <div>
+                        <p className="text-[18px] font-semibold text-[#1E293B]">
+                          Add New Resource
+                        </p>
+                        <p className="mt-1 max-w-2xl text-[12px] text-[#607B90]">
+                          Keep this form focused on what is needed to create a new RAG source and upload the document.
+                          You can edit the full registry details after the source is created.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="rounded-[10px] border border-[#D8E3EE] bg-white px-3 py-2 text-[11px] text-[#607B90]">
+                      <p className="font-semibold text-[#334155]">Defaults applied</p>
+                      <p className="mt-1">Language: en</p>
+                      <p>Source category: official legal source</p>
+                      <p>Topic: other</p>
+                      <p>License: {createForm.licenseStatus || "Government copyright"}</p>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 lg:grid-cols-2">
                     <label className="space-y-1">
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
                         Source Name *
@@ -1647,126 +1692,12 @@ export function AdminContentKnowledgeSourcesPage() {
                             ...current,
                             title: event.target.value,
                           }))}
-                        placeholder="Community Safety Bulletin"
-                        className={`h-9 w-full rounded-md border bg-white px-3 text-sm text-[#334155] outline-none transition ${fieldBorder(createErrors.title)}`}
+                        placeholder="Gender-based violence and higher education guidance"
+                        className={`h-10 w-full rounded-md border bg-white px-3 text-sm text-[#334155] outline-none transition ${fieldBorder(createErrors.title)}`}
                       />
                       <FieldError message={createErrors.title} />
                     </label>
-                    <label className="space-y-1">
-                      <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                        Category
-                      </p>
-                      <div className="flex flex-col gap-2">
-                        <select
-                          value={
-                            (CATEGORY_OPTIONS as readonly string[]).includes(createForm.adminCategory)
-                              ? createForm.adminCategory
-                              : "Other"
-                          }
-                          onChange={(event) => {
-                            const val = event.target.value;
-                            if (val === "Other") {
-                              setCreateForm(current => ({
-                                ...current,
-                                adminCategory: "" as any,
-                              }));
-                            } else {
-                              setCreateForm(current => ({
-                                ...current,
-                                adminCategory: val as any,
-                                sourceCategory:
-                              val === "Scam Pattern"
-                                ? "admin_content"
-                                : val === "Support"
-                                  ? "official_support_source"
-                                  : "official_legal_source",
-                                topic:
-                              val === "Scam Pattern"
-                                ? "scam"
-                                : val === "Support"
-                                  ? "support"
-                                  : current.topic,
-                                sourceType:
-                              val === "Scam Pattern"
-                                ? "Report"
-                                : val === "Support"
-                                  ? "SupportResource"
-                                  : val === "Regulation"
-                                    ? "Regulation"
-                                    : "Act",
-                              }));
-                            }
-                          }}
-                          className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
-                        >
-                          {CATEGORY_OPTIONS.map(category => (
-                            <option key={category} value={category}>
-                              {category}
-                            </option>
-                          ))}
-                          <option value="Other">Other (Specify...)</option>
-                        </select>
-                        {(!(CATEGORY_OPTIONS as readonly string[]).includes(createForm.adminCategory) || createForm.adminCategory === "") && (
-                          <input
-                            type="text"
-                            placeholder="Enter custom category"
-                            value={createForm.adminCategory === "Other" ? "" : createForm.adminCategory}
-                            onChange={event =>
-                              setCreateForm(current => ({
-                                ...current,
-                                adminCategory: event.target.value as any,
-                              }))}
-                            className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
-                          />
-                        )}
-                      </div>
-                    </label>
-                  </div>
 
-                  <div className="grid gap-3 lg:grid-cols-2">
-                    <label className="space-y-1">
-                      <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                        Source Category *
-                      </p>
-                      <div className="flex flex-col gap-2">
-                        <select
-                          value={
-                            SOURCE_CATEGORY_OPTIONS.some(opt => opt.value === createForm.sourceCategory)
-                              ? createForm.sourceCategory
-                              : "Other"
-                          }
-                          onChange={(event) => {
-                            const val = event.target.value;
-                            setCreateForm(current => ({
-                              ...current,
-                              sourceCategory: val === "Other" ? "" : val as KnowledgeSourceCategory,
-                            }));
-                          }}
-                          className={`h-9 w-full rounded-md border bg-white px-3 text-sm text-[#334155] outline-none transition ${fieldBorder(createErrors.sourceCategory)}`}
-                        >
-                          {SOURCE_CATEGORY_OPTIONS.map(option => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                          <option value="Other">Other (Specify...)</option>
-                        </select>
-                        {(!SOURCE_CATEGORY_OPTIONS.some(opt => opt.value === createForm.sourceCategory) || createForm.sourceCategory === "") && (
-                          <input
-                            type="text"
-                            placeholder="Enter custom source category"
-                            value={createForm.sourceCategory}
-                            onChange={event =>
-                              setCreateForm(current => ({
-                                ...current,
-                                sourceCategory: event.target.value as KnowledgeSourceCategory,
-                              }))}
-                            className={`h-9 w-full rounded-md border bg-white px-3 text-sm text-[#334155] outline-none transition ${fieldBorder(createErrors.sourceCategory)}`}
-                          />
-                        )}
-                      </div>
-                      <FieldError message={createErrors.sourceCategory} />
-                    </label>
                     <label className="space-y-1">
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
                         Publisher *
@@ -1779,157 +1710,58 @@ export function AdminContentKnowledgeSourcesPage() {
                             ...current,
                             publisher: event.target.value,
                           }))}
-                        className={`h-9 w-full rounded-md border bg-white px-3 text-sm text-[#334155] outline-none transition ${fieldBorder(createErrors.publisher)}`}
+                        placeholder="Australian Government Department"
+                        className={`h-10 w-full rounded-md border bg-white px-3 text-sm text-[#334155] outline-none transition ${fieldBorder(createErrors.publisher)}`}
                       />
                       <FieldError message={createErrors.publisher} />
                     </label>
+
                     <label className="space-y-1">
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                        License Status *
+                        Document Type *
                       </p>
-                      <input
-                        type="text"
-                        list="knowledge-source-license-options"
-                        value={createForm.licenseStatus}
+                      <select
+                        value={createForm.sourceType}
                         onChange={event =>
                           setCreateForm(current => ({
                             ...current,
-                            licenseStatus: event.target.value,
+                            sourceType: event.target.value as KnowledgeSourceType,
                           }))}
-                        className={`h-9 w-full rounded-md border bg-white px-3 text-sm text-[#334155] outline-none transition ${fieldBorder(createErrors.licenseStatus)}`}
-                      />
-                      <FieldError message={createErrors.licenseStatus} />
+                        className={`h-10 w-full rounded-md border bg-white px-3 text-sm text-[#334155] outline-none transition ${fieldBorder(createErrors.sourceType)}`}
+                      >
+                        {SOURCE_TYPE_OPTIONS.map(option => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                      <FieldError message={createErrors.sourceType} />
                     </label>
+
                     <label className="space-y-1">
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
                         Jurisdiction
                       </p>
-                      <div className="flex flex-col gap-2">
-                        <select
-                          value={
-                            JURISDICTION_OPTIONS.includes(createForm.jurisdiction)
-                              ? createForm.jurisdiction
-                              : "Other"
-                          }
-                          onChange={(event) => {
-                            const val = event.target.value;
-                            setCreateForm(current => ({
-                              ...current,
-                              jurisdiction: val === "Other" ? "" : val as KnowledgeSourceJurisdiction,
-                            }));
-                          }}
-                          className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
-                        >
-                          {JURISDICTION_OPTIONS.map(option => (
-                            <option key={option} value={option}>
-                              {option}
-                            </option>
-                          ))}
-                          <option value="Other">Other (Specify...)</option>
-                        </select>
-                        {(!JURISDICTION_OPTIONS.includes(createForm.jurisdiction) || createForm.jurisdiction === "") && (
-                          <input
-                            type="text"
-                            placeholder="Enter custom jurisdiction"
-                            value={createForm.jurisdiction}
-                            onChange={event =>
-                              setCreateForm(current => ({
-                                ...current,
-                                jurisdiction: event.target.value as KnowledgeSourceJurisdiction,
-                              }))}
-                            className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
-                          />
-                        )}
-                      </div>
+                      <select
+                        value={createForm.jurisdiction}
+                        onChange={event =>
+                          setCreateForm(current => ({
+                            ...current,
+                            jurisdiction: event.target.value as KnowledgeSourceJurisdiction,
+                          }))}
+                        className="h-10 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
+                      >
+                        {JURISDICTION_OPTIONS.map(option => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
                     </label>
-                    <label className="space-y-1">
+
+                    <label className="space-y-1 lg:col-span-2">
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                        Topic
-                      </p>
-                      <div className="flex flex-col gap-2">
-                        <select
-                          value={
-                            TOPIC_OPTIONS.includes(createForm.topic) && createForm.topic !== "other"
-                              ? createForm.topic
-                              : "other"
-                          }
-                          onChange={(event) => {
-                            const val = event.target.value;
-                            setCreateForm(current => ({
-                              ...current,
-                              topic: val as KnowledgeSourceTopic,
-                            }));
-                          }}
-                          className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
-                        >
-                          {TOPIC_OPTIONS.map(option => (
-                            <option key={option} value={option}>
-                              {option}
-                            </option>
-                          ))}
-                          <option value="other">Other (Specify...)</option>
-                        </select>
-                        {(!TOPIC_OPTIONS.includes(createForm.topic) || createForm.topic === "other") && (
-                          <input
-                            type="text"
-                            placeholder="Enter custom topic"
-                            value={createForm.topic === "other" ? "" : createForm.topic}
-                            onChange={event =>
-                              setCreateForm(current => ({
-                                ...current,
-                                topic: event.target.value as KnowledgeSourceTopic,
-                              }))}
-                            className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
-                          />
-                        )}
-                      </div>
-                    </label>
-                    <label className="space-y-1">
-                      <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                        Source Type *
-                      </p>
-                      <div className="flex flex-col gap-2">
-                        <select
-                          value={
-                            SOURCE_TYPE_OPTIONS.includes(createForm.sourceType)
-                              ? createForm.sourceType
-                              : "Other"
-                          }
-                          onChange={(event) => {
-                            const val = event.target.value;
-                            setCreateForm(current => ({
-                              ...current,
-                              sourceType: val === "Other" ? "" : val as KnowledgeSourceType,
-                            }));
-                          }}
-                          className={`h-9 w-full rounded-md border bg-white px-3 text-sm text-[#334155] outline-none transition ${fieldBorder(createErrors.sourceType)}`}
-                        >
-                          {SOURCE_TYPE_OPTIONS.map(option => (
-                            <option key={option} value={option}>
-                              {option}
-                            </option>
-                          ))}
-                          <option value="Other">Other (Specify...)</option>
-                        </select>
-                        {(!SOURCE_TYPE_OPTIONS.includes(createForm.sourceType) || createForm.sourceType === "") && (
-                          <input
-                            type="text"
-                            placeholder="Enter custom source type"
-                            value={createForm.sourceType}
-                            onChange={event =>
-                              setCreateForm(current => ({
-                                ...current,
-                                sourceType: event.target.value as KnowledgeSourceType,
-                              }))}
-                            className={`h-9 w-full rounded-md border bg-white px-3 text-sm text-[#334155] outline-none transition ${fieldBorder(createErrors.sourceType)}`}
-                          />
-                        )}
-                      </div>
-                      <FieldError message={createErrors.sourceType} />
-                    </label>
-                    <label className="space-y-1">
-                      <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                        Source URL *
+                        Official Source URL *
                       </p>
                       <input
                         type="url"
@@ -1939,31 +1771,12 @@ export function AdminContentKnowledgeSourcesPage() {
                             ...current,
                             url: event.target.value,
                           }))}
-                        placeholder="https://example.org/source"
-                        className={`h-9 w-full rounded-md border bg-white px-3 text-sm text-[#334155] outline-none transition ${fieldBorder(createErrors.url)}`}
+                        placeholder="https://example.gov.au/source"
+                        className={`h-10 w-full rounded-md border bg-white px-3 text-sm text-[#334155] outline-none transition ${fieldBorder(createErrors.url)}`}
                       />
                       <FieldError message={createErrors.url} />
                     </label>
-                  </div>
 
-                  <label className="space-y-1">
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                      Description
-                    </p>
-                    <textarea
-                      rows={3}
-                      value={createForm.description}
-                      onChange={event =>
-                        setCreateForm(current => ({
-                          ...current,
-                          description: event.target.value,
-                        }))}
-                      placeholder="Short note about what this source controls."
-                      className="w-full resize-none rounded-md border border-[#D8E3EE] bg-white px-3 py-2 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
-                    />
-                  </label>
-
-                  <div className="grid gap-3 lg:grid-cols-3">
                     <label className="space-y-1">
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
                         Last Updated *
@@ -1977,14 +1790,14 @@ export function AdminContentKnowledgeSourcesPage() {
                             ...current,
                             lastUpdated,
                             nextRefreshAt:
-                          current.nextRefreshAt
-                          || addDaysInputValue(lastUpdated, 90),
+                              current.nextRefreshAt || addDaysInputValue(lastUpdated, 90),
                           }));
                         }}
-                        className={`h-9 w-full rounded-md border bg-white px-3 text-sm text-[#334155] outline-none transition ${fieldBorder(createErrors.lastUpdated)}`}
+                        className={`h-10 w-full rounded-md border bg-white px-3 text-sm text-[#334155] outline-none transition ${fieldBorder(createErrors.lastUpdated)}`}
                       />
                       <FieldError message={createErrors.lastUpdated} />
                     </label>
+
                     <label className="space-y-1">
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
                         Refresh Date *
@@ -1997,107 +1810,23 @@ export function AdminContentKnowledgeSourcesPage() {
                             ...current,
                             nextRefreshAt: event.target.value,
                           }))}
-                        className={`h-9 w-full rounded-md border bg-white px-3 text-sm text-[#334155] outline-none transition ${fieldBorder(createErrors.nextRefreshAt)}`}
+                        className={`h-10 w-full rounded-md border bg-white px-3 text-sm text-[#334155] outline-none transition ${fieldBorder(createErrors.nextRefreshAt)}`}
                       />
                       <FieldError message={createErrors.nextRefreshAt} />
                     </label>
-                    <label className="space-y-1">
-                      <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                        Review Due
-                      </p>
-                      <input
-                        type="date"
-                        value={createForm.nextReviewAt}
-                        onChange={event =>
-                          setCreateForm(current => ({
-                            ...current,
-                            nextReviewAt: event.target.value,
-                          }))}
-                        className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
-                      />
-                    </label>
                   </div>
 
-                  <label className="space-y-1">
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                      Review Notes
-                    </p>
-                    <textarea
-                      rows={2}
-                      value={createForm.reviewNotes}
-                      onChange={event =>
-                        setCreateForm(current => ({
-                          ...current,
-                          reviewNotes: event.target.value,
-                        }))}
-                      placeholder="Record licence check, source currency, or counsel review notes."
-                      className="w-full resize-none rounded-md border border-[#D8E3EE] bg-white px-3 py-2 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
-                    />
-                  </label>
-
-                  <div className="grid gap-3 lg:grid-cols-2">
-                    <label className="space-y-1">
-                      <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                        Constitutional / Legal Basis
-                      </p>
-                      <input
-                        type="text"
-                        value={createForm.constitutionalBasis}
-                        onChange={event =>
-                          setCreateForm(current => ({
-                            ...current,
-                            constitutionalBasis: event.target.value,
-                          }))}
-                        placeholder="Australian Constitution, Anti-Discrimination Act"
-                        className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
-                      />
-                    </label>
-                    <label className="space-y-1">
-                      <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                        Legislation Tags
-                      </p>
-                      <input
-                        type="text"
-                        value={createForm.legislationTags}
-                        onChange={event =>
-                          setCreateForm(current => ({
-                            ...current,
-                            legislationTags: event.target.value,
-                          }))}
-                        placeholder="racial hatred, vilification, discrimination"
-                        className="h-9 w-full rounded-md border border-[#D8E3EE] bg-white px-3 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
-                      />
-                    </label>
-                  </div>
-
-                  <label className="space-y-1">
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                      Resource Text For AI Ingestion
-                    </p>
-                    <textarea
-                      rows={8}
-                      value={createForm.rawContent}
-                      onChange={event =>
-                        setCreateForm(current => ({
-                          ...current,
-                          rawContent: event.target.value,
-                        }))}
-                      placeholder="Paste legislation, policy, guidance, or support content here."
-                      className="w-full resize-none rounded-md border border-[#D8E3EE] bg-white px-3 py-2 text-sm text-[#334155] outline-none transition focus:border-[#0F67AE]"
-                    />
-                  </label>
-
-                  <div className="rounded-md border border-[#D8E3EE] bg-white p-3">
+                  <div className="rounded-[12px] border border-[#D8E3EE] bg-white p-4">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div>
                         <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
-                          Legal Document Upload
+                          Document For RAG
                         </p>
-                        <p className="mt-0.5 text-[11px] text-[#607B90]">
-                          PDF, Word, TXT, MD, HTML, CSV, and JSON are accepted. PDFs and Word documents are uploaded to the backend for extraction.
+                        <p className="mt-1 text-[12px] text-[#607B90]">
+                          Upload the source file for extraction and indexing. Text files can also preload the text preview automatically.
                         </p>
                       </div>
-                      <label className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-md border border-[#D8E3EE] bg-white px-3 text-sm font-semibold text-[#334155] transition hover:bg-[#F8FBFF]">
+                      <label className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-md border border-[#D8E3EE] bg-white px-3 text-sm font-semibold text-[#334155] transition hover:bg-[#F8FBFF]">
                         <FileUp className="h-4 w-4" />
                         Select Document
                         <input
@@ -2136,30 +1865,16 @@ export function AdminContentKnowledgeSourcesPage() {
                       </div>
                     ) : null}
 
-                    <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-[#607B90]">
+                    <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-[#607B90]">
                       <span className="rounded-full bg-[#EEF6FF] px-2 py-1 font-semibold text-[#0F67AE]">
                         Upload status: {selectedUploadStatus}
                       </span>
-                      {createForm.documentFile ? (
-                        <span>Replacing is supported by selecting another file before saving.</span>
-                      ) : null}
+                      <span>Accepted: PDF, DOC, DOCX, TXT, MD, HTML, CSV, JSON.</span>
                     </div>
                     <FieldError message={createErrors.document} />
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-4">
-                    <label className="inline-flex items-center gap-2 text-[12px] text-[#334155]">
-                      <input
-                        type="checkbox"
-                        checked={createForm.legalReviewed}
-                        onChange={event =>
-                          setCreateForm(current => ({
-                            ...current,
-                            legalReviewed: event.target.checked,
-                          }))}
-                      />
-                      Mark as legally reviewed
-                    </label>
+                  <div className="flex flex-wrap items-center gap-4 rounded-[10px] border border-[#E4EAF1] bg-white px-3 py-3">
                     <label className="inline-flex items-center gap-2 text-[12px] text-[#334155]">
                       <input
                         type="checkbox"
@@ -2172,19 +1887,18 @@ export function AdminContentKnowledgeSourcesPage() {
                       />
                       Ingest immediately after create
                     </label>
+                    <p className="text-[11px] text-[#607B90]">
+                      Full registry details can be reviewed and edited after the upload is created.
+                    </p>
                   </div>
 
-                  <div className="flex items-center justify-end gap-2">
+                  <div className="flex items-center justify-end gap-2 border-t border-[#E4EAF1] pt-4">
                     <button
                       type="button"
                       onClick={() => {
-                        setIsCreateOpen(false);
-                        setCreateForm(createDefaultCreateForm());
-                        setCreateErrors({});
-                        setSelectedUploadStatus("idle");
-                        setStatusMessage("New source cancelled.");
+                        closeCreateSourceForm("New resource creation cancelled.");
                       }}
-                      className="h-8 rounded-md px-3 text-xs font-semibold text-[#64748B] transition hover:bg-[#F3F7FB]"
+                      className="h-9 rounded-md px-3 text-xs font-semibold text-[#64748B] transition hover:bg-[#F3F7FB]"
                     >
                       Cancel
                     </button>
@@ -2192,7 +1906,7 @@ export function AdminContentKnowledgeSourcesPage() {
                       type="button"
                       disabled={isSaving}
                       onClick={() => void handleCreateSource()}
-                      className="h-8 rounded-md bg-[#0F67AE] px-4 text-xs font-semibold text-white transition hover:bg-[#0B578F] disabled:cursor-not-allowed disabled:opacity-60"
+                      className="h-9 rounded-md bg-[#0F67AE] px-4 text-xs font-semibold text-white transition hover:bg-[#0B578F] disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {isSaving ? "Creating..." : "Create Source"}
                     </button>
@@ -2208,6 +1922,8 @@ export function AdminContentKnowledgeSourcesPage() {
           ))}
         </datalist>
 
+        {!isCreateOpen ? (
+          <>
         <div className="grid gap-2 md:grid-cols-4">
           <div className="rounded-md border border-[#D8E3EE] bg-[#FAFCFF] px-3 py-2">
             <p className="text-[10px] font-semibold uppercase tracking-wide text-[#607B90]">
@@ -3570,6 +3286,8 @@ export function AdminContentKnowledgeSourcesPage() {
             </button>
           </div>
         </div>
+          </>
+        ) : null}
       </section>
     </AdminContentManagementShell>
   );
